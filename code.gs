@@ -240,6 +240,38 @@ function logAction(userID, username, role, action, details) {
 // ===== AUTHENTICATION =====
 function handleLogin(data) {
   Logger.log(`[LOGIN] Attempting login for: ${data.username}`);
+  
+  // Verifikasi reCAPTCHA
+  if (!data.recaptchaToken) {
+    Logger.log(`[LOGIN] Failed: Missing reCAPTCHA token`);
+    return errorResponse('reCAPTCHA verification failed');
+  }
+  
+  // Verifikasi token reCAPTCHA dengan Google
+  const secretKey = '6Le9mlIsAAAAACr5NOnHt_RXtnOLg6Ed27BQ3AbR'; // Ganti dengan Secret Key Anda
+  const verifyUrl = 'https://www.google.com/recaptcha/api/siteverify';
+  
+  try {
+    const response = UrlFetchApp.fetch(verifyUrl, {
+      method: 'post',
+      payload: {
+        secret: secretKey,
+        response: data.recaptchaToken
+      }
+    });
+    
+    const result = JSON.parse(response.getContentText());
+    
+    if (!result.success) {
+      Logger.log(`[LOGIN] reCAPTCHA verification failed`);
+      return errorResponse('reCAPTCHA verification failed');
+    }
+  } catch (error) {
+    Logger.log(`[LOGIN] reCAPTCHA error: ${error}`);
+    return errorResponse('reCAPTCHA verification error');
+  }
+  
+  // Lanjutkan dengan verifikasi username/password seperti biasa
   const sheet = getSheet(SHEETS.USERS);
   const values = sheet.getDataRange().getValues();
   

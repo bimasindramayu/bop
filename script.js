@@ -1,6 +1,6 @@
 // ===== KONFIGURASI =====
 const CONFIG = {
-    SCRIPT_URL: 'https://script.google.com/macros/s/AKfycbzspoVwWeC4yPfn9vxsSg0q9qg9LH85nMlGl-L7ySZnUKT9duO4zanGjRE6-fs4kXOE/exec',
+    SCRIPT_URL: 'https://script.google.com/macros/s/AKfycbzysH2F287w0zxfR2cGTk1duuzBO9nK14UuFsuxgsaVML_2HmXpaT4X5LIyyPJw65gf/exec',
     KUA_LIST: [
         'KUA Anjatan', 'KUA Arahan', 'KUA Balongan', 'KUA Bangodua', 'KUA Bongas',
         'KUA Cantigi', 'KUA Cikedung', 'KUA Gantar', 'KUA Gabuswetan', 'KUA Haurgeulis',
@@ -206,17 +206,34 @@ async function apiCall(action, data = {}) {
 document.getElementById('loginForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     console.log('[LOGIN] Attempting login...');
+    
+    // Validasi reCAPTCHA
+    const recaptchaResponse = grecaptcha.getResponse();
+    if (!recaptchaResponse) {
+        showNotification('Silakan centang "I\'m not a robot"', 'warning');
+        return;
+    }
+    
     const username = document.getElementById('username').value;
     const password = document.getElementById('password').value;
 
     try {
-        const user = await apiCall('login', { username, password });
+        const user = await apiCall('login', { 
+            username, 
+            password,
+            recaptchaToken: recaptchaResponse
+        });
         currentUser = user;
         sessionStorage.setItem('user', JSON.stringify(user));
         showDashboard();
         showNotification('Login berhasil', 'success');
+        
+        // Reset reCAPTCHA setelah login berhasil
+        grecaptcha.reset();
     } catch (error) {
         showNotification('Username atau password salah', 'error');
+        // Reset reCAPTCHA setelah login gagal
+        grecaptcha.reset();
     }
 });
 
