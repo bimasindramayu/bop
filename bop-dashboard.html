@@ -373,7 +373,7 @@
             if (confirm('Apakah Anda yakin ingin keluar?')) {
                 currentUser = null;
                 sessionStorage.removeItem('user');
-                window.location.href = 'login.html';
+                window.location.href = 'index.html';
             }
         }
 
@@ -385,7 +385,7 @@
             
             if (!storedUser) {
                 console.log('[BOP DASHBOARD] No session found, redirecting to login');
-                window.location.href = 'login.html';
+                window.location.href = 'index.html';
                 return;
             }
 

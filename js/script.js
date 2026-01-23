@@ -250,7 +250,7 @@ if (loginForm) {
 function logout() {
     console.log('[LOGOUT] Default logout function');
     sessionStorage.removeItem('user');
-    window.location.href = 'login.html';
+    window.location.href = 'index.html';
 }
 
 // ===== CHANGE PASSWORD =====
