@@ -328,7 +328,7 @@ function buildNavMenu() {
             { id: 'dashboardPage', label: 'Dashboard' },
             { id: 'budgetingPage', label: 'Budget' },
             { id: 'verifikasiPage', label: 'Verifikasi' },
-            { id: 'reportsPage', label: 'Laporan' },
+            // { id: 'reportsPage', label: 'Laporan' },
             { id: 'userManagementPage', label: 'Pengguna' },
             { id: 'rpdConfigPage', label: 'Konfigurasi RPD' }
         ];
