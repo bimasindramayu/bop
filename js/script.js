@@ -1,6 +1,6 @@
 // ===== KONFIGURASI =====
 const CONFIG = {
-    SCRIPT_URL: 'https://script.google.com/macros/s/AKfycbzXXMwTW1wtWZE1Qh_STjsqMigwQFsht7gLTHe9kMKuNoFTN-1-yYuTv5P8bN43GvNs/exec',
+    SCRIPT_URL: 'https://script.google.com/macros/s/AKfycbwObYzPRB_hauW95ZbI45XZIepERtdF2yBG0LxZF0srt-5urRK7n2-4QXtH5RTURgWq/exec',
     KUA_LIST: [
         'KUA Anjatan', 'KUA Arahan', 'KUA Balongan', 'KUA Bangodua', 'KUA Bongas',
         'KUA Cantigi', 'KUA Cikedung', 'KUA Gantar', 'KUA Gabuswetan', 'KUA Haurgeulis',
@@ -53,22 +53,26 @@ let uploadedFiles = [];
 // ===== UTILITY FUNCTIONS =====
 function showLoading() {
     console.log('[UI] Showing loading spinner');
-    document.getElementById('loading').classList.add('active');
+    const loading = document.getElementById('loading');
+    if (loading) loading.classList.add('active');
 }
 
 function hideLoading() {
     console.log('[UI] Hiding loading spinner');
-    document.getElementById('loading').classList.remove('active');
-}
+    const loading = document.getElementById('loading');
+    if (loading) loading.classList.remove('active');
+}   
 
 function showNotification(message, type = 'info') {
     console.log(`[NOTIFICATION] ${type.toUpperCase()}: ${message}`);
     const notification = document.getElementById('notification');
-    notification.textContent = message;
-    notification.className = `notification ${type} active`;
-    setTimeout(() => {
-        notification.classList.remove('active');
-    }, 4000);
+    if (notification) {
+        notification.textContent = message;
+        notification.className = `notification ${type} active`;
+        setTimeout(() => {
+            notification.classList.remove('active');
+        }, 4000);
+    }
 }
 
 function formatCurrency(amount) {
@@ -90,6 +94,8 @@ function formatDate(date) {
 
 function togglePassword(inputId) {
     const input = document.getElementById(inputId);
+    if (!input) return;
+    
     const button = input.nextElementSibling;
     if (input.type === 'password') {
         input.type = 'text';
@@ -203,79 +209,104 @@ async function apiCall(action, data = {}) {
 }
 
 // ===== LOGIN =====
-document.getElementById('loginForm').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    console.log('[LOGIN] Attempting login...');
-    const username = document.getElementById('username').value;
-    const password = document.getElementById('password').value;
+// document.getElementById('loginForm').addEventListener('submit', async (e) => {
+//     e.preventDefault();
+//     console.log('[LOGIN] Attempting login...');
+//     const username = document.getElementById('username').value;
+//     const password = document.getElementById('password').value;
 
-    try {
-        const user = await apiCall('login', { username, password });
-        currentUser = user;
-        sessionStorage.setItem('user', JSON.stringify(user));
-        showDashboard();
-        showNotification('Login berhasil', 'success');
-    } catch (error) {
-        showNotification('Username atau password salah', 'error');
-    }
-});
+//     try {
+//         const user = await apiCall('login', { username, password });
+//         currentUser = user;
+//         sessionStorage.setItem('user', JSON.stringify(user));
+//         showDashboard();
+//         showNotification('Login berhasil', 'success');
+//     } catch (error) {
+//         showNotification('Username atau password salah', 'error');
+//     }
+// });
+
+// ===== LOGIN =====
+const loginForm = document.getElementById('loginForm');
+if (loginForm) {
+    loginForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        console.log('[LOGIN] Attempting login...');
+        const username = document.getElementById('username').value;
+        const password = document.getElementById('password').value;
+
+        try {
+            const user = await apiCall('login', { username, password });
+            currentUser = user;
+            sessionStorage.setItem('user', JSON.stringify(user));
+            showDashboard();
+            showNotification('Login berhasil', 'success');
+        } catch (error) {
+            showNotification('Username atau password salah', 'error');
+        }
+    });
+}
 
 function logout() {
-    console.log('[LOGOUT] User logging out');
-    currentUser = null;
+    console.log('[LOGOUT] Default logout function');
     sessionStorage.removeItem('user');
-    document.getElementById('loginPage').style.display = 'flex';
-    document.getElementById('dashboard').classList.remove('active');
-    showNotification('Anda telah keluar', 'info');
+    window.location.href = 'login.html';
 }
 
 // ===== CHANGE PASSWORD =====
-document.addEventListener('DOMContentLoaded', function() {
-    const changePasswordForm = document.getElementById('changePasswordForm');
-    if (changePasswordForm) {
-        changePasswordForm.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            console.log('[CHANGE_PASSWORD] Attempting password change');
+// document.addEventListener('DOMContentLoaded', function() {
+//     const changePasswordForm = document.getElementById('changePasswordForm');
+//     if (changePasswordForm) {
+//         changePasswordForm.addEventListener('submit', async (e) => {
+//             e.preventDefault();
+//             console.log('[CHANGE_PASSWORD] Attempting password change');
             
-            const oldPassword = document.getElementById('oldPassword').value;
-            const newPassword = document.getElementById('newPassword').value;
-            const confirmPassword = document.getElementById('confirmPassword').value;
+//             const oldPassword = document.getElementById('oldPassword').value;
+//             const newPassword = document.getElementById('newPassword').value;
+//             const confirmPassword = document.getElementById('confirmPassword').value;
 
-            if (newPassword !== confirmPassword) {
-                showNotification('Password baru dan konfirmasi tidak sama', 'warning');
-                return;
-            }
+//             if (newPassword !== confirmPassword) {
+//                 showNotification('Password baru dan konfirmasi tidak sama', 'warning');
+//                 return;
+//             }
 
-            if (newPassword.length < 6) {
-                showNotification('Password baru minimal 6 karakter', 'warning');
-                return;
-            }
+//             if (newPassword.length < 6) {
+//                 showNotification('Password baru minimal 6 karakter', 'warning');
+//                 return;
+//             }
 
-            try {
-                await apiCall('changePassword', {
-                    userId: currentUser.id,
-                    username: currentUser.username,
-                    role: currentUser.role,
-                    oldPassword: oldPassword,
-                    newPassword: newPassword
-                });
+//             try {
+//                 await apiCall('changePassword', {
+//                     userId: currentUser.id,
+//                     username: currentUser.username,
+//                     role: currentUser.role,
+//                     oldPassword: oldPassword,
+//                     newPassword: newPassword
+//                 });
                 
-                showNotification('Password berhasil diubah', 'success');
-                document.getElementById('changePasswordForm').reset();
-            } catch (error) {
-                showNotification(error.message, 'error');
-            }
-        });
-    }
-});
+//                 showNotification('Password berhasil diubah', 'success');
+//                 document.getElementById('changePasswordForm').reset();
+//             } catch (error) {
+//                 showNotification(error.message, 'error');
+//             }
+//         });
+//     }
+// });
 
 // ===== DASHBOARD =====
 function showDashboard() {
     console.log('[DASHBOARD] Showing dashboard for:', currentUser);
-    document.getElementById('loginPage').style.display = 'none';
-    document.getElementById('dashboard').classList.add('active');
-    document.getElementById('userNameDisplay').textContent = currentUser.name;
-    document.getElementById('userRoleDisplay').textContent = currentUser.role;
+    
+    const dashboard = document.getElementById('dashboard');
+    if (dashboard) {
+        dashboard.classList.add('active');
+    }
+    
+    const userNameDisplay = document.getElementById('userNameDisplay');
+    const userRoleDisplay = document.getElementById('userRoleDisplay');
+    
+    if (userNameDisplay) userNameDisplay.textContent = currentUser.name;
+    if (userRoleDisplay) userRoleDisplay.textContent = currentUser.role;
     
     populateYearFilters();
     buildNavMenu();
@@ -288,6 +319,8 @@ function showDashboard() {
 function buildNavMenu() {
     console.log('[NAV] Building navigation menu');
     const navMenu = document.getElementById('navMenu');
+    if (!navMenu) return;
+    
     let menuItems = [];
 
     if (currentUser.role === 'Admin') {
@@ -295,7 +328,7 @@ function buildNavMenu() {
             { id: 'dashboardPage', label: 'Dashboard' },
             { id: 'budgetingPage', label: 'Budget' },
             { id: 'verifikasiPage', label: 'Verifikasi' },
-            // { id: 'reportsPage', label: 'Laporan' },
+            { id: 'reportsPage', label: 'Laporan' },
             { id: 'userManagementPage', label: 'Pengguna' },
             { id: 'rpdConfigPage', label: 'Konfigurasi RPD' }
         ];
@@ -320,7 +353,8 @@ function buildNavMenu() {
         </ul>
     `;
 
-    document.getElementById('nav-dashboardPage').classList.add('active');
+    const firstNavBtn = document.getElementById('nav-dashboardPage');
+    if (firstNavBtn) firstNavBtn.classList.add('active');
 }
 
 function showPage(pageId) {
@@ -333,7 +367,8 @@ function showPage(pageId) {
     document.querySelectorAll('.nav-menu button').forEach(btn => btn.classList.remove('active'));
     
     // Show selected page
-    document.getElementById(pageId).classList.add('active');
+    const selectedPage = document.getElementById(pageId);
+    if (selectedPage) selectedPage.classList.add('active');
     
     // Add active to selected nav button
     const navButton = document.getElementById('nav-' + pageId);
@@ -366,7 +401,7 @@ function showPage(pageId) {
         case 'verifikasiPage':
             loadVerifikasi();
             break;
-        case 'reportsPage':  // BARU
+        case 'reportsPage':
             initializeReportsPage();
             break;
     }
@@ -381,6 +416,7 @@ async function loadDashboardStats() {
         });
         
         const statsGrid = document.getElementById('statsGrid');
+        if (!statsGrid) return;
         
         if (currentUser.role === 'Admin') {
             statsGrid.innerHTML = `
@@ -2462,35 +2498,43 @@ async function downloadFile(url, filename) {
 
 function closeModal() {
     console.log('[MODAL] Closing modal');
-    document.getElementById('modal').classList.remove('active');
-    document.getElementById('modal').innerHTML = '';
+    const modal = document.getElementById('modal');
+    if (modal) {
+        modal.classList.remove('active');
+        modal.innerHTML = '';
+    }
 }
 
 // Click outside modal to close
-document.getElementById('modal').addEventListener('click', function(e) {
-    if (e.target === this) {
-        closeModal();
+window.addEventListener('load', function() {
+    const modal = document.getElementById('modal');
+    if (modal) {
+        modal.addEventListener('click', function(e) {
+            if (e.target === this) {
+                closeModal();
+            }
+        });
     }
 });
 
 // ===== INITIALIZATION =====
-window.addEventListener('DOMContentLoaded', function() {
-    console.log('[INIT] Application initializing...');
+// window.addEventListener('DOMContentLoaded', function() {
+//     console.log('[INIT] Application initializing...');
     
-    // Check if user is already logged in
-    const storedUser = sessionStorage.getItem('user');
-    if (storedUser) {
-        console.log('[INIT] Found stored user session');
-        currentUser = JSON.parse(storedUser);
-        showDashboard();
-    } else {
-        console.log('[INIT] No stored session, showing login page');
-    }
-});
+//     // Check if user is already logged in
+//     const storedUser = sessionStorage.getItem('user');
+//     if (storedUser) {
+//         console.log('[INIT] Found stored user session');
+//         currentUser = JSON.parse(storedUser);
+//         showDashboard();
+//     } else {
+//         console.log('[INIT] No stored session, showing login page');
+//     }
+// });
 
 // Prevent form submission on Enter key in number inputs
 document.addEventListener('keypress', function(e) {
-    if (e.target.type === 'number' && e.key === 'Enter') {
+    if (e.target && e.target.type === 'number' && e.key === 'Enter') {
         e.preventDefault();
     }
 });

@@ -4,8 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Sistem Pengelolaan BOP KUA - Kemenag Indramayu</title>
-    <link rel="icon" type="image/png" href="coin.png">
-    <link rel="stylesheet" href="styles.css">
+    <link rel="icon" type="image/png" href="../assets/coin.png">
+    <link rel="stylesheet" href="../style/styles.css">
 </head>
 <body>
     <!-- Loading Spinner -->
@@ -16,32 +16,8 @@
     <!-- Notification -->
     <div class="notification" id="notification"></div>
 
-    <!-- Login Page -->
-    <div class="login-container" id="loginPage">
-        <div class="login-box">
-            <div class="login-header">
-                <h1>Sistem Pengelolaan BOP KUA</h1>
-                <p>Kementerian Agama Kabupaten Indramayu</p>
-            </div>
-            <form id="loginForm">
-                <div class="form-group">
-                    <label>Username</label>
-                    <input type="text" id="username" required autocomplete="username">
-                </div>
-                <div class="form-group">
-                    <label>Password</label>
-                    <div class="password-input-group">
-                        <input type="password" id="password" required autocomplete="current-password">
-                        <button type="button" class="password-toggle" onclick="togglePassword('password')">👁️</button>
-                    </div>
-                </div>
-                <button type="submit" class="btn">Masuk</button>
-            </form>
-        </div>
-    </div>
-
     <!-- Dashboard -->
-    <div class="dashboard" id="dashboard">
+    <div class="dashboard active" id="dashboard">
         <div class="container">
             <div class="header">
                 <div class="header-left">
@@ -53,7 +29,8 @@
                         <strong id="userNameDisplay"></strong>
                         <small id="userRoleDisplay"></small>
                     </div>
-                    <button class="btn btn-secondary btn-sm" onclick="logout()">Keluar</button>
+                    <button class="btn btn-info btn-sm" onclick="backToMenu()">← Menu Utama</button>
+                    <button class="btn btn-secondary btn-sm" onclick="logoutBOP()">Keluar</button>
                 </div>
             </div>
 
@@ -361,6 +338,111 @@
     <!-- Modal Templates akan ditambahkan via JavaScript -->
     <div class="modal" id="modal"></div>
 
-<script src="script.js"></script>
+    <script src="../js/script.js"></script>
+    <script>
+        // IMPORTANT: Load script.js first, then initialize BOP Dashboard
+        
+        // Wait for script.js to load completely
+        if (typeof currentUser === 'undefined') {
+            window.currentUser = null;
+        }
+        
+        // Function to go back to main menu
+        function backToMenu() {
+            window.location.href = 'main-menu.html';
+        }
+
+        // Function for logout specific to BOP dashboard
+        function logoutBOP() {
+            console.log('[LOGOUT] User logging out from BOP dashboard');
+            if (confirm('Apakah Anda yakin ingin keluar?')) {
+                currentUser = null;
+                sessionStorage.removeItem('user');
+                window.location.href = 'login.html';
+            }
+        }
+
+        // Initialize BOP Dashboard on page load
+        window.addEventListener('DOMContentLoaded', function() {
+            console.log('[BOP DASHBOARD] Initializing...');
+            
+            const storedUser = sessionStorage.getItem('user');
+            
+            if (!storedUser) {
+                console.log('[BOP DASHBOARD] No session found, redirecting to login');
+                window.location.href = 'login.html';
+                return;
+            }
+
+            console.log('[BOP DASHBOARD] Session found, setting up dashboard');
+            currentUser = JSON.parse(storedUser);
+            
+            // Setup change password form
+            const changePasswordForm = document.getElementById('changePasswordForm');
+            if (changePasswordForm) {
+                // Remove any existing listeners
+                const newForm = changePasswordForm.cloneNode(true);
+                changePasswordForm.parentNode.replaceChild(newForm, changePasswordForm);
+                
+                // Add new listener
+                newForm.addEventListener('submit', async (e) => {
+                    e.preventDefault();
+                    console.log('[CHANGE_PASSWORD] Attempting password change');
+                    
+                    const oldPassword = document.getElementById('oldPassword').value;
+                    const newPassword = document.getElementById('newPassword').value;
+                    const confirmPassword = document.getElementById('confirmPassword').value;
+
+                    if (newPassword !== confirmPassword) {
+                        showNotification('Password baru dan konfirmasi tidak sama', 'warning');
+                        return;
+                    }
+
+                    if (newPassword.length < 6) {
+                        showNotification('Password baru minimal 6 karakter', 'warning');
+                        return;
+                    }
+
+                    try {
+                        await apiCall('changePassword', {
+                            userId: currentUser.id,
+                            username: currentUser.username,
+                            role: currentUser.role,
+                            oldPassword: oldPassword,
+                            newPassword: newPassword
+                        });
+                        
+                        showNotification('Password berhasil diubah', 'success');
+                        newForm.reset();
+                    } catch (error) {
+                        showNotification(error.message, 'error');
+                    }
+                });
+                
+                console.log('[BOP DASHBOARD] Change password form initialized');
+            }
+            
+            // Initialize dashboard
+            const dashboard = document.getElementById('dashboard');
+            if (dashboard) {
+                dashboard.classList.add('active');
+            }
+            
+            const userNameDisplay = document.getElementById('userNameDisplay');
+            const userRoleDisplay = document.getElementById('userRoleDisplay');
+            
+            if (userNameDisplay) userNameDisplay.textContent = currentUser.name;
+            if (userRoleDisplay) userRoleDisplay.textContent = currentUser.role;
+            
+            populateYearFilters();
+            buildNavMenu();
+            
+            // Reset to dashboard page
+            currentPage = 'dashboardPage';
+            showPage('dashboardPage');
+            
+            console.log('[BOP DASHBOARD] Initialization complete');
+        });
+    </script>
 </body>
 </html>

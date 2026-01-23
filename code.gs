@@ -265,7 +265,12 @@ function handleLogin(data) {
 }
 
 function changePassword(data) {
+  Logger.log(`[CHANGE_PASSWORD] ========== START ==========`);
   Logger.log(`[CHANGE_PASSWORD] User: ${data.userId}`);
+  Logger.log(`[CHANGE_PASSWORD] Username: ${data.username}`);
+  Logger.log(`[CHANGE_PASSWORD] Old Password: ${data.oldPassword}`);
+  Logger.log(`[CHANGE_PASSWORD] New Password: ${data.newPassword}`);
+  
   const lock = LockService.getScriptLock();
   lock.waitLock(30000);
   
@@ -273,17 +278,48 @@ function changePassword(data) {
     const sheet = getSheet(SHEETS.USERS);
     const values = sheet.getDataRange().getValues();
     
+    Logger.log(`[CHANGE_PASSWORD] Total users in sheet: ${values.length - 1}`);
+    
+    // Find user and verify old password
     for (let i = 1; i < values.length; i++) {
-      if (values[i][0] === data.userId && values[i][2] === data.oldPassword) {
-        sheet.getRange(i + 1, 3).setValue(data.newPassword);
-        logAction(data.userId, data.username, data.role, 'CHANGE_PASSWORD', { timestamp: new Date() });
-        Logger.log(`[CHANGE_PASSWORD] Success: ${data.username}`);
-        return successResponse({ message: 'Password berhasil diubah' });
+      Logger.log(`[CHANGE_PASSWORD] Checking row ${i}: ID=${values[i][0]}, Username=${values[i][1]}, CurrentPassword=${values[i][2]}`);
+      
+      if (values[i][0] === data.userId) {
+        Logger.log(`[CHANGE_PASSWORD] User found at row ${i + 1}`);
+        Logger.log(`[CHANGE_PASSWORD] Current password in sheet: ${values[i][2]}`);
+        Logger.log(`[CHANGE_PASSWORD] Old password from request: ${data.oldPassword}`);
+        
+        if (values[i][2] === data.oldPassword) {
+          Logger.log(`[CHANGE_PASSWORD] Old password matches, updating to: ${data.newPassword}`);
+          
+          // Update password (column 3 is password, index starts from 1)
+          sheet.getRange(i + 1, 3).setValue(data.newPassword);
+          
+          // Verify the update
+          const newValue = sheet.getRange(i + 1, 3).getValue();
+          Logger.log(`[CHANGE_PASSWORD] Password updated. Verification - New value in sheet: ${newValue}`);
+          
+          logAction(data.userId, data.username, data.role, 'CHANGE_PASSWORD', { timestamp: new Date() });
+          Logger.log(`[CHANGE_PASSWORD] Success: ${data.username}`);
+          Logger.log(`[CHANGE_PASSWORD] ========== END SUCCESS ==========`);
+          
+          return successResponse({ message: 'Password berhasil diubah' });
+        } else {
+          Logger.log(`[CHANGE_PASSWORD] Password mismatch!`);
+          Logger.log(`[CHANGE_PASSWORD] ========== END FAIL ==========`);
+          return errorResponse('Password lama tidak sesuai');
+        }
       }
     }
     
-    Logger.log(`[CHANGE_PASSWORD] Failed: Wrong old password`);
-    return errorResponse('Password lama tidak sesuai');
+    Logger.log(`[CHANGE_PASSWORD] User not found!`);
+    Logger.log(`[CHANGE_PASSWORD] ========== END FAIL ==========`);
+    return errorResponse('User tidak ditemukan');
+  } catch (error) {
+    Logger.log(`[CHANGE_PASSWORD ERROR] ${error.toString()}`);
+    Logger.log(`[CHANGE_PASSWORD ERROR] Stack: ${error.stack}`);
+    Logger.log(`[CHANGE_PASSWORD] ========== END ERROR ==========`);
+    return errorResponse('Gagal mengubah password: ' + error.toString());
   } finally {
     lock.releaseLock();
   }
