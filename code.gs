@@ -200,11 +200,11 @@ function initializeSheet(sheet, sheetName) {
       break;
     case SHEETS.CONFIG:
       headers = ['Key', 'Value', 'UpdatedAt'];
-      // Set default config
       sheet.appendRow(headers);
       sheet.appendRow(['RPD_STATUS', 'open', new Date()]);
-      sheet.appendRow(['MAX_FILE_SIZE', '5', new Date()]);
-      sheet.appendRow(['MAX_FILES', '10', new Date()]);
+      sheet.appendRow(['REALISASI_STATUS', 'open', new Date()]);
+      sheet.appendRow(['REALISASI_MAX_FILE_SIZE', '5', new Date()]);
+      sheet.appendRow(['REALISASI_MAX_FILES', '10', new Date()]);
       return;
   }
   
@@ -524,7 +524,7 @@ function getRPDConfig(data) {
 }
 
 function saveRPDConfig(data) {
-  Logger.log(`[SAVE_RPD_CONFIG] Status: ${data.status}`);
+  Logger.log(`[SAVE_RPD_CONFIG] RPD Status: ${data.rpdStatus}, Realisasi Status: ${data.realisasiStatus}`);
   const lock = LockService.getScriptLock();
   lock.waitLock(30000);
   
@@ -533,9 +533,10 @@ function saveRPDConfig(data) {
     const values = sheet.getDataRange().getValues();
     
     const updates = {
-      'RPD_STATUS': data.status,
-      'MAX_FILE_SIZE': data.maxFileSize,
-      'MAX_FILES': data.maxFiles
+      'RPD_STATUS': data.rpdStatus,
+      'REALISASI_STATUS': data.realisasiStatus,
+      'REALISASI_MAX_FILE_SIZE': data.realisasiMaxFileSize,
+      'REALISASI_MAX_FILES': data.realisasiMaxFiles
     };
     
     for (const [key, value] of Object.entries(updates)) {

@@ -126,8 +126,10 @@
 
                 <!-- RPD Config Page (Admin) -->
                 <div class="page" id="rpdConfigPage">
-                    <h2 style="margin-bottom: 20px;">Konfigurasi RPD</h2>
+                    <h2 style="margin-bottom: 20px;">Konfigurasi RPD & Realisasi</h2>
+                    
                     <div class="summary-box">
+                        <h3 style="margin-bottom: 15px; color: #667eea;">📋 Konfigurasi RPD</h3>
                         <div class="form-group">
                             <label>Status Pengisian RPD</label>
                             <select id="rpdStatus">
@@ -135,20 +137,33 @@
                                 <option value="closed">Tutup</option>
                             </select>
                         </div>
+                        <p style="color: #666; font-size: 13px; font-style: italic; margin-top: 10px;">
+                            ℹ️ RPD tidak memerlukan upload file
+                        </p>
+                    </div>
+                    
+                    <div class="summary-box" style="margin-top: 20px;">
+                        <h3 style="margin-bottom: 15px; color: #667eea;">✅ Konfigurasi Realisasi</h3>
                         <div class="form-group">
-                            <label>Format File yang Diizinkan</label>
-                            <input type="text" id="allowedFormats" value="PDF, JPG, PNG" readonly>
+                            <label>Status Pengisian Realisasi</label>
+                            <select id="realisasiStatus">
+                                <option value="open">Buka</option>
+                                <option value="closed">Tutup</option>
+                            </select>
                         </div>
                         <div class="form-group">
                             <label>Ukuran Maksimal File (MB)</label>
-                            <input type="number" id="maxFileSize" value="5" min="1" max="10">
+                            <input type="number" id="realisasiMaxFileSize" value="5" min="1" max="10">
+                            <small style="color: #666; display: block; margin-top: 5px;">Maksimal ukuran per file yang dapat diupload</small>
                         </div>
                         <div class="form-group">
                             <label>Jumlah File Maksimal</label>
-                            <input type="number" id="maxFiles" value="10" min="1" max="20">
+                            <input type="number" id="realisasiMaxFiles" value="10" min="1" max="20">
+                            <small style="color: #666; display: block; margin-top: 5px;">Maksimal jumlah file yang dapat diupload per realisasi</small>
                         </div>
-                        <button class="btn" onclick="saveRPDConfig()">Simpan Konfigurasi</button>
                     </div>
+                    
+                    <button class="btn" onclick="saveRPDConfig()" style="margin-top: 20px;">💾 Simpan Semua Konfigurasi</button>
                 </div>
 
                 <!-- RPD Page (Operator) -->

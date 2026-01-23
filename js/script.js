@@ -1,6 +1,6 @@
 // ===== KONFIGURASI =====
 const CONFIG = {
-    SCRIPT_URL: 'https://script.google.com/macros/s/AKfycbwObYzPRB_hauW95ZbI45XZIepERtdF2yBG0LxZF0srt-5urRK7n2-4QXtH5RTURgWq/exec',
+    SCRIPT_URL: 'https://script.google.com/macros/s/AKfycbwvGntD21YXxFxa7MedS2QAa8I2UlY-D8Bf6Us5nna_dmFSOPghIfyzLEU3T-qgsLq0/exec',
     KUA_LIST: [
         'KUA Anjatan', 'KUA Arahan', 'KUA Balongan', 'KUA Bangodua', 'KUA Bongas',
         'KUA Cantigi', 'KUA Cikedung', 'KUA Gantar', 'KUA Gabuswetan', 'KUA Haurgeulis',
@@ -714,25 +714,30 @@ async function deleteUserConfirm(userId) {
 
 // ===== RPD CONFIG =====
 async function loadRPDConfig() {
-    console.log('[CONFIG] Loading RPD config');
+    console.log('[CONFIG] Loading RPD & Realisasi config');
     try {
         const config = await apiCall('getRPDConfig');
         
+        // RPD Config
         document.getElementById('rpdStatus').value = config.RPD_STATUS || 'open';
-        document.getElementById('maxFileSize').value = config.MAX_FILE_SIZE || 5;
-        document.getElementById('maxFiles').value = config.MAX_FILES || 10;
+        
+        // Realisasi Config
+        document.getElementById('realisasiStatus').value = config.REALISASI_STATUS || 'open';
+        document.getElementById('realisasiMaxFileSize').value = config.REALISASI_MAX_FILE_SIZE || '5';
+        document.getElementById('realisasiMaxFiles').value = config.REALISASI_MAX_FILES || '10';
     } catch (error) {
         console.error('[CONFIG ERROR]', error);
     }
 }
 
 async function saveRPDConfig() {
-    console.log('[CONFIG] Saving RPD config');
+    console.log('[CONFIG] Saving RPD & Realisasi config');
     try {
         await apiCall('saveRPDConfig', {
-            status: document.getElementById('rpdStatus').value,
-            maxFileSize: document.getElementById('maxFileSize').value,
-            maxFiles: document.getElementById('maxFiles').value,
+            rpdStatus: document.getElementById('rpdStatus').value,
+            realisasiStatus: document.getElementById('realisasiStatus').value,
+            realisasiMaxFileSize: document.getElementById('realisasiMaxFileSize').value,
+            realisasiMaxFiles: document.getElementById('realisasiMaxFiles').value,
             userId: currentUser.id,
             username: currentUser.username
         });
@@ -1149,7 +1154,7 @@ async function showRealisasiModal(realisasi = null) {
                         <label>Upload Dokumen Pendukung (Opsional)</label>
                         <div class="file-upload" id="fileUploadArea">
                             <p>📎 Klik untuk upload file</p>
-                            <small>Format: PDF, JPG, PNG | Maksimal 10MB per file</small>
+                            <small>Format: PDF, JPG, PNG | ${maxFileInfo}</small>
                         </div>
                         <input type="file" id="fileInput" multiple accept=".pdf,.jpg,.jpeg,.png" style="display: none;">
                         <div class="file-list" id="fileList"></div>
@@ -1266,7 +1271,7 @@ async function showRealisasiEditForm(rpd, realisasi) {
                         <label>Upload Dokumen Pendukung (Opsional)</label>
                         <div class="file-upload" id="fileUploadArea">
                             <p>🔎 Klik untuk upload file</p>
-                            <small>Format: PDF, JPG, PNG | Maksimal 5MB per file</small>
+                            <small>Format: PDF, JPG, PNG | ${maxFileInfo}</small>
                         </div>
                         <input type="file" id="fileInput" multiple accept=".pdf,.jpg,.jpeg,.png" style="display: none;">
                         <div class="file-list" id="fileList"></div>
@@ -1460,6 +1465,16 @@ async function showRealisasiInputs(rpd, realisasi = null) {
                         // Upload new file
                         console.log(`[FILE] Uploading file ${i + 1}/${uploadedFiles.length}:`, file.fileName);
                         
+                        let maxFileInfo = '5MB per file, maksimal 10 file';
+                        try {
+                            const config = await apiCall('getRPDConfig');
+                            const maxSize = config.REALISASI_MAX_FILE_SIZE || '5';
+                            const maxFiles = config.REALISASI_MAX_FILES || '10';
+                            maxFileInfo = `${maxSize}MB per file, maksimal ${maxFiles} file`;
+                        } catch (error) {
+                            console.warn('[REALISASI] Failed to get config for file info');
+                        }
+
                         try {
                             const uploadResult = await apiCall('uploadFile', {
                                 fileName: file.fileName,
@@ -1665,8 +1680,6 @@ function calculateRealisasiTotal() {
 async function handleFileUpload(e) {
     console.log('[FILE] ========== FILE UPLOAD START ==========');
     console.log('[FILE] Event type:', e.type);
-    console.log('[FILE] Target:', e.target);
-    console.log('[FILE] Files:', e.target.files);
     console.log('[FILE] Files selected:', e.target.files.length);
     console.log('[FILE] Current uploadedFiles length BEFORE processing:', uploadedFiles.length);
     
@@ -1678,7 +1691,29 @@ async function handleFileUpload(e) {
         return;
     }
     
-    const maxSize = 5 * 1024 * 1024; // 5MB
+    // Get config for max file size
+    let maxSize = 5 * 1024 * 1024; // Default 5MB
+    let maxFiles = 10; // Default 10 files
+    
+    try {
+        const config = await apiCall('getRPDConfig');
+        if (config.REALISASI_MAX_FILE_SIZE) {
+            maxSize = parseInt(config.REALISASI_MAX_FILE_SIZE) * 1024 * 1024;
+        }
+        if (config.REALISASI_MAX_FILES) {
+            maxFiles = parseInt(config.REALISASI_MAX_FILES);
+        }
+    } catch (error) {
+        console.warn('[FILE] Failed to get config, using default values');
+    }
+    
+    // Check total files limit
+    if (uploadedFiles.length + files.length > maxFiles) {
+        showNotification(`Maksimal ${maxFiles} file yang dapat diupload`, 'warning');
+        console.log('[FILE] ========== FILE UPLOAD END (TOO MANY FILES) ==========');
+        return;
+    }
+    
     let processedCount = 0;
     
     // Process each file
@@ -1690,7 +1725,7 @@ async function handleFileUpload(e) {
         
         if (file.size > maxSize) {
             console.warn(`[FILE] File too large: ${file.name}`);
-            showNotification(`File ${file.name} terlalu besar (maksimal 5MB)`, 'warning');
+            showNotification(`File ${file.name} terlalu besar (maksimal ${maxSize / 1024 / 1024}MB)`, 'warning');
             continue;
         }
         
@@ -1719,11 +1754,6 @@ async function handleFileUpload(e) {
     
     console.log('[FILE] Total files processed:', processedCount);
     console.log('[FILE] Total uploadedFiles now:', uploadedFiles.length);
-    console.log('[FILE] uploadedFiles content:', uploadedFiles.map(f => ({
-        name: f.fileName,
-        size: f.size,
-        hasData: !!f.fileData
-    })));
     
     // Display files
     displayUploadedFilesWithPreview();
