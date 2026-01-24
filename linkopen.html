@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pembuka Link Multi Tab</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            padding: 40px;
+        }
+        
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 2em;
+        }
+        
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 1.1em;
+        }
+        
+        .input-section {
+            margin-bottom: 30px;
+        }
+        
+        textarea {
+            width: 100%;
+            min-height: 200px;
+            padding: 15px;
+            border: 2px solid #e9ecef;
+            border-radius: 8px;
+            font-size: 0.95em;
+            font-family: 'Courier New', monospace;
+            resize: vertical;
+            transition: border-color 0.3s;
+        }
+        
+        textarea:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        .instruction {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            color: #495057;
+            font-size: 0.9em;
+        }
+        
+        .btn-container {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 30px;
+        }
+        
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 15px 40px;
+            font-size: 1.1em;
+            border-radius: 50px;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+        }
+        
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
+        }
+        
+        .btn-clear {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            box-shadow: 0 4px 15px rgba(245, 87, 108, 0.4);
+        }
+        
+        .btn-clear:hover {
+            box-shadow: 0 6px 20px rgba(245, 87, 108, 0.6);
+        }
+        
+        .links-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+        
+        .link-item {
+            background: #f8f9fa;
+            border: 2px solid #e9ecef;
+            border-radius: 8px;
+            padding: 15px;
+            transition: all 0.3s;
+        }
+        
+        .link-item:hover {
+            border-color: #667eea;
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.2);
+            transform: translateY(-2px);
+        }
+        
+        .link-item a {
+            color: #495057;
+            text-decoration: none;
+            font-size: 0.9em;
+            display: block;
+            word-break: break-word;
+        }
+        
+        .link-item a:hover {
+            color: #667eea;
+        }
+        
+        .counter {
+            background: #e9ecef;
+            padding: 10px 20px;
+            border-radius: 20px;
+            display: inline-block;
+            margin-bottom: 20px;
+            color: #495057;
+            font-weight: bold;
+        }
+        
+        .warning {
+            background: #fff3cd;
+            border: 2px solid #ffc107;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 20px;
+            color: #856404;
+            display: none;
+        }
+        
+        .logger {
+            background: #f8f9fa;
+            border: 2px solid #dee2e6;
+            border-radius: 8px;
+            padding: 15px;
+            margin-top: 20px;
+            max-height: 300px;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 0.85em;
+        }
+        
+        .log-entry {
+            padding: 5px 0;
+            border-bottom: 1px solid #e9ecef;
+        }
+        
+        .log-success {
+            color: #28a745;
+        }
+        
+        .log-error {
+            color: #dc3545;
+        }
+        
+        .log-info {
+            color: #17a2b8;
+        }
+        
+        .log-warning {
+            color: #ffc107;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 Pembuka Link Multi Tab</h1>
+        <p class="subtitle">Masukkan link Anda, setiap baris = 1 link</p>
+        
+        <div class="input-section">
+            <div class="instruction">
+                💡 <strong>Cara Penggunaan:</strong> Paste semua link Anda di bawah ini. Setiap link harus di baris terpisah (tekan Enter untuk baris baru).
+            </div>
+            
+            <textarea id="linksInput" placeholder="Contoh:
+https://google.com
+https://youtube.com
+https://facebook.com
+
+Paste link Anda di sini..."></textarea>
+        </div>
+        
+        <div class="btn-container">
+            <button onclick="openAllLinks()">🚀 Buka Semua Link</button>
+            <button class="btn-clear" onclick="clearInput()">🗑️ Hapus Semua</button>
+        </div>
+        
+        <div class="counter">Total Link: <span id="linkCount">0</span></div>
+        
+        <div class="warning" id="warningMsg"></div>
+        
+        <div class="logger" id="logger">
+            <strong>📋 Log Aktivitas:</strong>
+            <div id="logEntries"></div>
+        </div>
+        
+        <div class="links-grid" id="linksContainer"></div>
+    </div>
+
+    <script>
+        const textarea = document.getElementById('linksInput');
+        const linksContainer = document.getElementById('linksContainer');
+        const linkCount = document.getElementById('linkCount');
+        const warningMsg = document.getElementById('warningMsg');
+        const logEntries = document.getElementById('logEntries');
+        
+        // Fungsi logger
+        function addLog(message, type = 'info') {
+            const timestamp = new Date().toLocaleTimeString('id-ID');
+            const logEntry = document.createElement('div');
+            logEntry.className = `log-entry log-${type}`;
+            logEntry.textContent = `[${timestamp}] ${message}`;
+            logEntries.appendChild(logEntry);
+            
+            // Auto scroll ke bawah
+            const logger = document.getElementById('logger');
+            logger.scrollTop = logger.scrollHeight;
+            
+            // Console log juga
+            console.log(`[${type.toUpperCase()}] ${message}`);
+        }
+        
+        // Update tampilan saat input berubah
+        textarea.addEventListener('input', updateDisplay);
+        
+        function updateDisplay() {
+            const links = getLinks();
+            linkCount.textContent = links.length;
+            
+            linksContainer.innerHTML = '';
+            
+            links.forEach((link, index) => {
+                const linkItem = document.createElement('div');
+                linkItem.className = 'link-item';
+                linkItem.innerHTML = `<a href="${link}" target="_blank">${index + 1}. ${link}</a>`;
+                linksContainer.appendChild(linkItem);
+            });
+            
+            if (links.length > 0) {
+                addLog(`Terdeteksi ${links.length} link valid`, 'info');
+            }
+        }
+        
+        function getLinks() {
+            const text = textarea.value;
+            const lines = text.split('\n');
+            const links = lines
+                .map(line => line.trim())
+                .filter(line => line.length > 0)
+                .filter(line => line.startsWith('http://') || line.startsWith('https://'));
+            
+            return links;
+        }
+        
+        function openAllLinks() {
+            const links = getLinks();
+            
+            addLog('=== MULAI MEMBUKA LINK ===', 'info');
+            addLog(`Total link yang akan dibuka: ${links.length}`, 'info');
+            
+            if (links.length === 0) {
+                warningMsg.textContent = '⚠️ Tidak ada link yang valid. Pastikan setiap link dimulai dengan http:// atau https://';
+                warningMsg.style.display = 'block';
+                addLog('ERROR: Tidak ada link valid', 'error');
+                setTimeout(() => {
+                    warningMsg.style.display = 'none';
+                }, 3000);
+                return;
+            }
+            
+            if (links.length > 20) {
+                addLog(`PERINGATAN: Akan membuka ${links.length} tab`, 'warning');
+                const confirmOpen = window.confirm(`Anda akan membuka ${links.length} tab. Browser mungkin memblokir popup. Lanjutkan?`);
+                if (!confirmOpen) {
+                    addLog('Dibatalkan oleh user', 'warning');
+                    return;
+                }
+            }
+            
+            // Buka link dengan delay kecil untuk menghindari popup blocker
+            let successCount = 0;
+            let failCount = 0;
+            
+            links.forEach((link, index) => {
+                setTimeout(() => {
+                    try {
+                        addLog(`[${index + 1}/${links.length}] Membuka: ${link.substring(0, 60)}...`, 'info');
+                        const newWindow = window.open(link, '_blank', 'noopener,noreferrer');
+                        
+                        if (newWindow) {
+                            successCount++;
+                            addLog(`[${index + 1}/${links.length}] ✓ Berhasil dibuka`, 'success');
+                        } else {
+                            failCount++;
+                            addLog(`[${index + 1}/${links.length}] ✗ GAGAL - Kemungkinan diblokir popup blocker`, 'error');
+                        }
+                        
+                        // Log summary di akhir
+                        if (index === links.length - 1) {
+                            setTimeout(() => {
+                                addLog('=== SELESAI ===', 'info');
+                                addLog(`Berhasil: ${successCount}, Gagal: ${failCount}`, successCount === links.length ? 'success' : 'warning');
+                                
+                                if (failCount > 0) {
+                                    addLog('SARAN: Klik ikon popup di address bar dan izinkan popup untuk situs ini', 'warning');
+                                }
+                            }, 200);
+                        }
+                    } catch (error) {
+                        failCount++;
+                        addLog(`[${index + 1}/${links.length}] ERROR: ${error.message}`, 'error');
+                    }
+                }, index * 100); // Delay 100ms per link
+            });
+            
+            warningMsg.textContent = `✅ Membuka ${links.length} link... Lihat log di bawah untuk detailnya`;
+            warningMsg.style.background = '#d4edda';
+            warningMsg.style.borderColor = '#28a745';
+            warningMsg.style.color = '#155724';
+            warningMsg.style.display = 'block';
+            
+            setTimeout(() => {
+                warningMsg.style.display = 'none';
+            }, 4000);
+        }
+        
+        function clearInput() {
+            textarea.value = '';
+            updateDisplay();
+            addLog('Input dibersihkan', 'info');
+        }
+        
+        // Inisialisasi tampilan
+        addLog('Aplikasi siap digunakan', 'success');
+        updateDisplay();
+    </script>
+</body>
+</html>

@@ -460,7 +460,7 @@ function saveUser(data) {
     const userData = [
       data.id || generateID(),
       data.username,
-      data.password || 'password123',
+      data.password,// || 'password123',
       data.name,
       data.role,
       data.kua || '',
@@ -593,12 +593,12 @@ function getRPDs(data) {
 }
 
 function saveRPD(data) {
-  Logger.log(`[SAVE_RPD] KUA: ${data.kua}, Month: ${data.month}, Year: ${data.year}`);
+  Logger.log(`[SAVE_RPD] KUA: ${data.kua}, Month: ${data.month}, Year: ${data.year}, ID: ${data.id || 'NEW'}`);
   const lock = LockService.getScriptLock();
   lock.waitLock(30000);
   
   try {
-    // Check if RPD is open
+    // Priority 1: Check if RPD config allows input
     const configSheet = getSheet(SHEETS.CONFIG);
     const configValues = configSheet.getDataRange().getValues();
     let rpdStatus = 'open';
@@ -609,20 +609,48 @@ function saveRPD(data) {
       }
     }
     
-    if (rpdStatus === 'closed' && !data.isAdmin) {
-      Logger.log(`[SAVE_RPD] Failed: RPD is closed`);
-      return errorResponse('Pengisian RPD sedang ditutup');
+    if (rpdStatus === 'closed' && data.role !== 'Admin') {
+      Logger.log(`[SAVE_RPD] Failed: RPD is closed by config`);
+      return errorResponse('Pengisian RPD sedang ditutup oleh admin');
     }
     
     const sheet = getSheet(SHEETS.RPD);
     const values = sheet.getDataRange().getValues();
     
-    // Check duplicate
+    // Get current date info
+    const currentDate = new Date();
+    const currentYear = currentDate.getFullYear();
+    const currentMonth = currentDate.getMonth(); // 0-11
+    const monthNames = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 
+                       'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+    
+    const rpdMonthIndex = monthNames.indexOf(data.month);
+    const rpdYear = parseInt(data.year);
+    
+    // Check for duplicate (different ID, same KUA-Month-Year)
     for (let i = 1; i < values.length; i++) {
       const row = values[i];
       if (row[1] === data.kua && row[3] === data.month && row[4] == data.year && row[0] !== data.id) {
-        Logger.log(`[SAVE_RPD] Failed: Duplicate RPD`);
+        Logger.log(`[SAVE_RPD] Failed: Duplicate RPD found`);
         return errorResponse('RPD untuk bulan ini sudah ada');
+      }
+    }
+    
+    // VALIDASI KHUSUS UNTUK OPERATOR
+    if (data.role === 'Operator KUA') {
+      // Jika EDIT (ada ID) - tidak boleh edit bulan ini dan bulan sebelumnya
+      if (data.id) {
+        if (rpdYear < currentYear || (rpdYear === currentYear && rpdMonthIndex <= currentMonth)) {
+          Logger.log(`[SAVE_RPD] Failed: Cannot edit current/past month RPD`);
+          return errorResponse('RPD untuk bulan ini dan bulan sebelumnya tidak dapat diubah');
+        }
+      } 
+      // Jika CREATE (tidak ada ID) - boleh create untuk bulan ini dan bulan depan
+      else {
+        if (rpdYear < currentYear || (rpdYear === currentYear && rpdMonthIndex < currentMonth)) {
+          Logger.log(`[SAVE_RPD] Failed: Cannot create past month RPD`);
+          return errorResponse('RPD hanya dapat dibuat untuk bulan ini atau bulan yang akan datang');
+        }
       }
     }
     
