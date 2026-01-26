@@ -209,24 +209,6 @@ async function apiCall(action, data = {}) {
 }
 
 // ===== LOGIN =====
-// document.getElementById('loginForm').addEventListener('submit', async (e) => {
-//     e.preventDefault();
-//     console.log('[LOGIN] Attempting login...');
-//     const username = document.getElementById('username').value;
-//     const password = document.getElementById('password').value;
-
-//     try {
-//         const user = await apiCall('login', { username, password });
-//         currentUser = user;
-//         sessionStorage.setItem('user', JSON.stringify(user));
-//         showDashboard();
-//         showNotification('Login berhasil', 'success');
-//     } catch (error) {
-//         showNotification('Username atau password salah', 'error');
-//     }
-// });
-
-// ===== LOGIN =====
 const loginForm = document.getElementById('loginForm');
 if (loginForm) {
     loginForm.addEventListener('submit', async (e) => {
@@ -252,46 +234,6 @@ function logout() {
     sessionStorage.removeItem('user');
     window.location.href = 'index.html';
 }
-
-// ===== CHANGE PASSWORD =====
-// document.addEventListener('DOMContentLoaded', function() {
-//     const changePasswordForm = document.getElementById('changePasswordForm');
-//     if (changePasswordForm) {
-//         changePasswordForm.addEventListener('submit', async (e) => {
-//             e.preventDefault();
-//             console.log('[CHANGE_PASSWORD] Attempting password change');
-            
-//             const oldPassword = document.getElementById('oldPassword').value;
-//             const newPassword = document.getElementById('newPassword').value;
-//             const confirmPassword = document.getElementById('confirmPassword').value;
-
-//             if (newPassword !== confirmPassword) {
-//                 showNotification('Password baru dan konfirmasi tidak sama', 'warning');
-//                 return;
-//             }
-
-//             if (newPassword.length < 6) {
-//                 showNotification('Password baru minimal 6 karakter', 'warning');
-//                 return;
-//             }
-
-//             try {
-//                 await apiCall('changePassword', {
-//                     userId: currentUser.id,
-//                     username: currentUser.username,
-//                     role: currentUser.role,
-//                     oldPassword: oldPassword,
-//                     newPassword: newPassword
-//                 });
-                
-//                 showNotification('Password berhasil diubah', 'success');
-//                 document.getElementById('changePasswordForm').reset();
-//             } catch (error) {
-//                 showNotification(error.message, 'error');
-//             }
-//         });
-//     }
-// });
 
 // ===== DASHBOARD =====
 function showDashboard() {
@@ -328,7 +270,7 @@ function buildNavMenu() {
             { id: 'dashboardPage', label: 'Dashboard' },
             { id: 'budgetingPage', label: 'Budget' },
             { id: 'verifikasiPage', label: 'Verifikasi' },
-            // { id: 'reportsPage', label: 'Laporan' },
+            { id: 'reportsPage', label: 'Laporan' },
             { id: 'userManagementPage', label: 'Pengguna' },
             { id: 'rpdConfigPage', label: 'Konfigurasi RPD' }
         ];
@@ -357,6 +299,74 @@ function buildNavMenu() {
     if (firstNavBtn) firstNavBtn.classList.add('active');
 }
 
+// ===== DATA CACHE MANAGEMENT =====
+const dataCache = {
+    budgets: { data: null, timestamp: null, ttl: 5 * 60 * 1000 }, // 5 menit
+    users: { data: null, timestamp: null, ttl: 10 * 60 * 1000 }, // 10 menit
+    rpds: { data: null, timestamp: null, ttl: 3 * 60 * 1000 }, // 3 menit
+    realisasis: { data: null, timestamp: null, ttl: 2 * 60 * 1000 }, // 2 menit (lebih sering update)
+    verifikasi: { data: null, timestamp: null, ttl: 1 * 60 * 1000 }, //1menit
+    config: { data: null, timestamp: null, ttl: 15 * 60 * 1000 }, // 15 menit
+    dashboardStats: { data: null, timestamp: null, ttl: 2 * 60 * 1000 } // 2 menit
+};
+
+function isCacheValid(cacheKey) {
+    const cache = dataCache[cacheKey];
+    if (!cache.data || !cache.timestamp) return false;
+    return (Date.now() - cache.timestamp) < cache.ttl;
+}
+
+function setCache(cacheKey, data) {
+    dataCache[cacheKey] = {
+        ...dataCache[cacheKey],
+        data: data,
+        timestamp: Date.now()
+    };
+    console.log(`[CACHE] Set cache for ${cacheKey}`);
+}
+
+function getCache(cacheKey) {
+    if (isCacheValid(cacheKey)) {
+        console.log(`[CACHE] Using cached data for ${cacheKey}`);
+        return dataCache[cacheKey].data;
+    }
+    return null;
+}
+
+function invalidateCache(cacheKey) {
+    if (cacheKey) {
+        dataCache[cacheKey].data = null;
+        dataCache[cacheKey].timestamp = null;
+        console.log(`[CACHE] Invalidated cache for ${cacheKey}`);
+    } else {
+        // Invalidate all cache
+        Object.keys(dataCache).forEach(key => {
+            dataCache[key].data = null;
+            dataCache[key].timestamp = null;
+        });
+        console.log(`[CACHE] Invalidated all cache`);
+    }
+}
+
+// Auto-refresh status realisasi setiap 30 detik jika ada yang pending
+let realisasiStatusPoller = null;
+
+function startRealisasiPolling() {
+    if (currentPage === 'realisasiPage') {
+        realisasiStatusPoller = setInterval(async () => {
+            console.log('[POLL] Checking realisasi status...');
+            await loadRealisasis(true); // Force refresh
+        }, 30000); // 30 detik
+    }
+}
+
+function stopRealisasiPolling() {
+    if (realisasiStatusPoller) {
+        clearInterval(realisasiStatusPoller);
+        realisasiStatusPoller = null;
+    }
+}
+
 function showPage(pageId) {
     console.log(`[PAGE] Navigating to: ${pageId}`);
     
@@ -378,28 +388,40 @@ function showPage(pageId) {
     
     currentPage = pageId;
     
+    // Stop polling
+    stopRealisasiPolling();
+
+    // Stop auto-refresh
+    stopVerifikasiAutoRefresh();
+    
     // Load data for specific pages
     switch(pageId) {
         case 'dashboardPage':
-            loadDashboardStats();
+            loadDashboardStats(); // ✅ Gunakan cache
             break;
         case 'budgetingPage':
-            loadBudgets();
+            loadBudgets(); // ✅ Gunakan cache
             break;
         case 'userManagementPage':
-            loadUsers();
+            loadUsers(); // ✅ Gunakan cache
             break;
         case 'rpdConfigPage':
-            loadRPDConfig();
+            loadRPDConfig(); // ✅ Gunakan cache
             break;
         case 'rpdPage':
-            loadRPDs();
+            loadRPDs(); // ✅ Gunakan cache
             break;
         case 'realisasiPage':
-            loadRealisasis();
+            loadRealisasis(); // ✅ Gunakan cache
+            if (currentUser.role === 'Operator KUA') {
+                startRealisasiPolling(); // Start polling untuk operator
+            }
             break;
         case 'verifikasiPage':
             loadVerifikasi();
+            if (currentUser.role === 'Admin') {
+                startVerifikasiAutoRefresh(); // ✅ Start auto-refresh untuk admin
+            }
             break;
         case 'reportsPage':
             initializeReportsPage();
@@ -407,94 +429,120 @@ function showPage(pageId) {
     }
 }
 
-async function loadDashboardStats() {
+async function loadDashboardStats(forceRefresh = false) {
     console.log('[DASHBOARD] Loading stats');
+    
+    if (!forceRefresh) {
+        const cachedData = getCache('dashboardStats');
+        if (cachedData) {
+            displayDashboardStats(cachedData);
+            return;
+        }
+    }
+    
     try {
         const stats = await apiCall('getDashboardStats', {
             role: currentUser.role,
             kua: currentUser.kua
         });
-        
-        const statsGrid = document.getElementById('statsGrid');
-        if (!statsGrid) return;
-        
-        if (currentUser.role === 'Admin') {
-            statsGrid.innerHTML = `
-                <div class="stat-card">
-                    <h3>Total Budget</h3>
-                    <div class="value">${formatCurrency(stats.totalBudget)}</div>
-                </div>
-                <div class="stat-card success">
-                    <h3>Total RPD</h3>
-                    <div class="value">${formatCurrency(stats.totalRPD)}</div>
-                </div>
-                <div class="stat-card warning">
-                    <h3>Total Realisasi</h3>
-                    <div class="value">${formatCurrency(stats.totalRealisasi)}</div>
-                </div>
-                <div class="stat-card danger">
-                    <h3>Sisa Budget</h3>
-                    <div class="value">${formatCurrency(stats.sisaBudget)}</div>
-                </div>
-                <div class="stat-card" style="background: linear-gradient(135deg, #17a2b8 0%, #138496 100%);">
-                    <h3>Menunggu Verifikasi</h3>
-                    <div class="value">${stats.pendingVerifikasi}</div>
-                </div>
-            `;
-        } else {
-            statsGrid.innerHTML = `
-                <div class="stat-card">
-                    <h3>Budget ${currentUser.kua}</h3>
-                    <div class="value">${formatCurrency(stats.budget)}</div>
-                </div>
-                <div class="stat-card success">
-                    <h3>Total RPD</h3>
-                    <div class="value">${formatCurrency(stats.totalRPD)}</div>
-                </div>
-                <div class="stat-card warning">
-                    <h3>Total Realisasi</h3>
-                    <div class="value">${formatCurrency(stats.totalRealisasi)}</div>
-                </div>
-                <div class="stat-card danger">
-                    <h3>Sisa Budget</h3>
-                    <div class="value">${formatCurrency(stats.sisaBudget)}</div>
-                </div>
-            `;
-        }
+        setCache('dashboardStats', stats);
+        displayDashboardStats(stats);
     } catch (error) {
         console.error('[DASHBOARD ERROR]', error);
     }
 }
 
+function displayDashboardStats(stats) {
+    const statsGrid = document.getElementById('statsGrid');
+    if (!statsGrid) return;
+    
+    if (currentUser.role === 'Admin') {
+        statsGrid.innerHTML = `
+            <div class="stat-card">
+                <h3>Total Budget</h3>
+                <div class="value">${formatCurrency(stats.totalBudget)}</div>
+            </div>
+            <div class="stat-card success">
+                <h3>Total RPD</h3>
+                <div class="value">${formatCurrency(stats.totalRPD)}</div>
+            </div>
+            <div class="stat-card warning">
+                <h3>Total Realisasi</h3>
+                <div class="value">${formatCurrency(stats.totalRealisasi)}</div>
+            </div>
+            <div class="stat-card danger">
+                <h3>Sisa Budget</h3>
+                <div class="value">${formatCurrency(stats.sisaBudget)}</div>
+            </div>
+            <div class="stat-card" style="background: linear-gradient(135deg, #17a2b8 0%, #138496 100%);">
+                <h3>Menunggu Verifikasi</h3>
+                <div class="value">${stats.pendingVerifikasi}</div>
+            </div>
+        `;
+    } else {
+        statsGrid.innerHTML = `
+            <div class="stat-card">
+                <h3>Budget ${currentUser.kua}</h3>
+                <div class="value">${formatCurrency(stats.budget)}</div>
+            </div>
+            <div class="stat-card success">
+                <h3>Total RPD</h3>
+                <div class="value">${formatCurrency(stats.totalRPD)}</div>
+            </div>
+            <div class="stat-card warning">
+                <h3>Total Realisasi</h3>
+                <div class="value">${formatCurrency(stats.totalRealisasi)}</div>
+            </div>
+            <div class="stat-card danger">
+                <h3>Sisa Budget</h3>
+                <div class="value">${formatCurrency(stats.sisaBudget)}</div>
+            </div>
+        `;
+    }
+}
+
 // ===== BUDGET MANAGEMENT =====
-async function loadBudgets() {
+async function loadBudgets(forceRefresh = false) {
     console.log('[BUDGET] Loading budgets');
+    
+    if (!forceRefresh) {
+        const cachedData = getCache('budgets');
+        if (cachedData) {
+            displayBudgets(cachedData);
+            return;
+        }
+    }
+    
     try {
         const yearFilter = document.getElementById('budgetYearFilter');
         const year = yearFilter ? yearFilter.value : new Date().getFullYear();
         
         const budgets = await apiCall('getBudgets', { year: year });
-        const tbody = document.querySelector('#budgetTable tbody');
-        
-        tbody.innerHTML = budgets.map((budget, index) => `
-            <tr>
-                <td>${index + 1}</td>
-                <td>${budget.kua}</td>
-                <td>${budget.year}</td>
-                <td>${formatCurrency(budget.budget)}</td>
-                <td>${formatCurrency(budget.totalRPD)}</td>
-                <td>${formatCurrency(budget.totalRealisasi)}</td>
-                <td>${formatCurrency(budget.sisaBudget)}</td>
-                <td>
-                    <div class="action-buttons">
-                        <button class="btn btn-sm" onclick='editBudget(${JSON.stringify(budget)})'>Edit</button>
-                    </div>
-                </td>
-            </tr>
-        `).join('');
+        setCache('budgets', budgets);
+        displayBudgets(budgets);
     } catch (error) {
         console.error('[BUDGET ERROR]', error);
     }
+}
+
+function displayBudgets(budgets) {
+    const tbody = document.querySelector('#budgetTable tbody');
+    tbody.innerHTML = budgets.map((budget, index) => `
+        <tr>
+            <td>${index + 1}</td>
+            <td>${budget.kua}</td>
+            <td>${budget.year}</td>
+            <td>${formatCurrency(budget.budget)}</td>
+            <td>${formatCurrency(budget.totalRPD)}</td>
+            <td>${formatCurrency(budget.totalRealisasi)}</td>
+            <td>${formatCurrency(budget.sisaBudget)}</td>
+            <td>
+                <div class="action-buttons">
+                    <button class="btn btn-sm" onclick='editBudget(${JSON.stringify(budget)})'>Edit</button>
+                </div>
+            </td>
+        </tr>
+    `).join('');
 }
 
 function showBudgetModal(budget = null) {
@@ -566,33 +614,44 @@ function editBudget(budget) {
 }
 
 // ===== USER MANAGEMENT =====
-async function loadUsers() {
+async function loadUsers(forceRefresh = false) {
     console.log('[USER] Loading users');
+    
+    if (!forceRefresh) {
+        const cachedData = getCache('users');
+        if (cachedData) {
+            displayUsers(cachedData);
+            return;
+        }
+    }
+    
     try {
         const users = await apiCall('getUsers');
-        const tbody = document.querySelector('#userTable tbody');
-        
-        tbody.innerHTML = users.map((user, index) => `
-            <tr>
-                <td>${index + 1}</td>
-                <td>${user.username}</td>
-                <td>${user.name}</td>
-                <td>${user.role}</td>
-                <td>${user.kua || '-'}</td>
-                <td><span class="badge badge-${user.status === 'Active' ? 'success' : 'danger'}">${user.status}</span></td>
-                <td>
-                    <div class="action-buttons">
-                        <button class="btn btn-sm" onclick='editUser(${JSON.stringify(user)})'>Edit</button>
-                        ${user.status === 'Active' ? `
-                            <button class="btn btn-danger btn-sm" onclick="deleteUserConfirm('${user.id}')">Nonaktifkan</button>
-                        ` : ''}
-                    </div>
-                </td>
-            </tr>
-        `).join('');
+        setCache('users', users);
+        displayUsers(users);
     } catch (error) {
         console.error('[USER ERROR]', error);
     }
+}
+
+function displayUsers(users) {
+    const tbody = document.querySelector('#userTable tbody');
+    tbody.innerHTML = users.map((user, index) => `
+        <tr>
+            <td>${index + 1}</td>
+            <td>${user.username}</td>
+            <td>${user.name}</td>
+            <td>${user.role}</td>
+            <td>${user.kua || '-'}</td>
+            <td><span class="badge badge-${user.status === 'Active' ? 'success' : 'danger'}">${user.status}</span></td>
+            <td>
+                <div class="action-buttons">
+                    <button class="btn btn-sm" onclick='editUser(${JSON.stringify(user)})'>Edit</button>
+                    ${user.status === 'Active' ? `<button class="btn btn-danger btn-sm" onclick="deleteUserConfirm('${user.id}')">Nonaktifkan</button>` : ''}
+                </div>
+            </td>
+        </tr>
+    `).join('');
 }
 
 function showUserModal(user = null) {
@@ -690,13 +749,95 @@ function showUserModal(user = null) {
     });
 }
 
+async function saveBudget(data) {
+    console.log('[SAVE_BUDGET] Starting save process');
+    
+    try {
+        // Panggil API untuk save budget
+        await apiCall('saveBudget', {
+            id: data.id || null,
+            kua: data.kua,
+            year: data.year,
+            budget: data.budget,
+            userId: currentUser.id,
+            username: currentUser.username
+        });
+        
+        // ✅ STEP 1: Hapus cache yang terkait dengan budget
+        console.log('[SAVE_BUDGET] Invalidating related cache');
+        invalidateCache('budgets');        // Hapus cache budgets
+        invalidateCache('dashboardStats'); // Hapus cache dashboard stats
+        
+        // ✅ STEP 2: Tutup modal
+        closeModal();
+        
+        // ✅ STEP 3: Reload data dengan FORCE REFRESH (bypass cache)
+        console.log('[SAVE_BUDGET] Reloading fresh data');
+        await loadBudgets(true);           // true = force refresh dari server
+        await loadDashboardStats(true);    // true = force refresh dari server
+        
+        // ✅ STEP 4: Tampilkan notifikasi sukses
+        showNotification('Budget berhasil disimpan', 'success');
+        
+    } catch (error) {
+        console.error('[SAVE_BUDGET ERROR]', error);
+        showNotification(error.message, 'error');
+    }
+}
+
+async function saveUser(data) {
+    console.log('[SAVE_USER] Starting save process');
+    
+    try {
+        const role = document.getElementById('userRole').value;
+        const kua = document.getElementById('userKUA').value;
+        
+        if (role === 'Operator KUA' && !kua) {
+            showNotification('Pilih KUA untuk Operator', 'warning');
+            return;
+        }
+        
+        // Panggil API untuk save user
+        await apiCall('saveUser', {
+            id: data ? data.id : null,
+            username: document.getElementById('userUsername').value,
+            password: data ? null : document.getElementById('userPassword').value,
+            name: document.getElementById('userName').value,
+            role: role,
+            kua: role === 'Operator KUA' ? kua : '',
+            status: document.getElementById('userStatus').value,
+            adminId: currentUser.id,
+            adminUsername: currentUser.username
+        });
+        
+        // ✅ STEP 1: Hapus cache users
+        console.log('[SAVE_USER] Invalidating users cache');
+        invalidateCache('users');
+        
+        // ✅ STEP 2: Tutup modal
+        closeModal();
+        
+        // ✅ STEP 3: Reload data dengan FORCE REFRESH
+        console.log('[SAVE_USER] Reloading fresh data');
+        await loadUsers(true); // true = force refresh
+        
+        // ✅ STEP 4: Notifikasi
+        showNotification('Pengguna berhasil disimpan', 'success');
+        
+    } catch (error) {
+        console.error('[SAVE_USER ERROR]', error);
+        showNotification(error.message, 'error');
+    }
+}
+
 function editUser(user) {
     showUserModal(user);
 }
 
 async function deleteUserConfirm(userId) {
     if (confirm('Yakin ingin menonaktifkan pengguna ini?')) {
-        console.log('[USER] Deleting user:', userId);
+        console.log('[DELETE_USER] Deleting user:', userId);
+        
         try {
             await apiCall('deleteUser', {
                 id: userId,
@@ -704,34 +845,49 @@ async function deleteUserConfirm(userId) {
                 adminUsername: currentUser.username
             });
             
+            // ✅ Hapus cache dan reload
+            invalidateCache('users');
+            await loadUsers(true);
+            
             showNotification('Pengguna berhasil dinonaktifkan', 'success');
-            loadUsers();
         } catch (error) {
+            console.error('[DELETE_USER ERROR]', error);
             showNotification(error.message, 'error');
         }
     }
 }
 
 // ===== RPD CONFIG =====
-async function loadRPDConfig() {
+async function loadRPDConfig(forceRefresh = false) {
     console.log('[CONFIG] Loading RPD & Realisasi config');
+    
+    if (!forceRefresh) {
+        const cachedData = getCache('config');
+        if (cachedData) {
+            displayRPDConfig(cachedData);
+            return;
+        }
+    }
+    
     try {
         const config = await apiCall('getRPDConfig');
-        
-        // RPD Config
-        document.getElementById('rpdStatus').value = config.RPD_STATUS || 'open';
-        
-        // Realisasi Config
-        document.getElementById('realisasiStatus').value = config.REALISASI_STATUS || 'open';
-        document.getElementById('realisasiMaxFileSize').value = config.REALISASI_MAX_FILE_SIZE || '5';
-        document.getElementById('realisasiMaxFiles').value = config.REALISASI_MAX_FILES || '10';
+        setCache('config', config);
+        displayRPDConfig(config);
     } catch (error) {
         console.error('[CONFIG ERROR]', error);
     }
 }
 
+function displayRPDConfig(config) {
+    document.getElementById('rpdStatus').value = config.RPD_STATUS || 'open';
+    document.getElementById('realisasiStatus').value = config.REALISASI_STATUS || 'open';
+    document.getElementById('realisasiMaxFileSize').value = config.REALISASI_MAX_FILE_SIZE || '5';
+    document.getElementById('realisasiMaxFiles').value = config.REALISASI_MAX_FILES || '10';
+}
+
 async function saveRPDConfig() {
-    console.log('[CONFIG] Saving RPD & Realisasi config');
+    console.log('[SAVE_CONFIG] Starting save process');
+    
     try {
         await apiCall('saveRPDConfig', {
             rpdStatus: document.getElementById('rpdStatus').value,
@@ -742,73 +898,87 @@ async function saveRPDConfig() {
             username: currentUser.username
         });
         
+        // ✅ Hapus cache config
+        console.log('[SAVE_CONFIG] Invalidating config cache');
+        invalidateCache('config');
+        
         showNotification('Konfigurasi berhasil disimpan', 'success');
+        
     } catch (error) {
+        console.error('[SAVE_CONFIG ERROR]', error);
         showNotification(error.message, 'error');
     }
 }
 
 // ===== RPD MANAGEMENT =====
-async function loadRPDs() {
+async function loadRPDs(forceRefresh = false) {
     console.log('[RPD] Loading RPDs');
+    
+    if (!forceRefresh) {
+        const cachedData = getCache('rpds');
+        if (cachedData) {
+            displayRPDs(cachedData);
+            return;
+        }
+    }
+    
     try {
         const yearFilter = document.getElementById('rpdYearFilter');
         const year = yearFilter ? yearFilter.value : new Date().getFullYear();
         
         let rpds = await apiCall('getRPDs', { kua: currentUser.kua, year: year });
         rpds = sortByMonth(rpds);
-        
-        const tbody = document.querySelector('#rpdTable tbody');
-        let totalNominal = 0;
-        
-        // Get current month info for validation
-        const currentDate = new Date();
-        const currentYear = currentDate.getFullYear();
-        const currentMonth = currentDate.getMonth();
-        const monthNames = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 
-                           'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
-        
-        const rows = rpds.map((rpd, index) => {
-            totalNominal += parseFloat(rpd.total || 0);
-            
-            // Check if can EDIT (future months only, NOT current or past)
-            const rpdMonthIndex = monthNames.indexOf(rpd.month);
-            const rpdYear = parseInt(rpd.year);
-            const canEdit = rpdYear > currentYear || (rpdYear === currentYear && rpdMonthIndex > currentMonth);
-            
-            return `
-            <tr>
-                <td>${index + 1}</td>
-                <td>${rpd.month}</td>
-                <td>${rpd.year}</td>
-                <td>${formatCurrency(rpd.total)}</td>
-                <td>${formatDate(rpd.createdAt)}</td>
-                <td>${formatDate(rpd.updatedAt)}</td>
-                <td><span class="badge badge-info">Tersimpan</span></td>
-                <td>
-                    <div class="action-buttons">
-                        <button class="btn btn-sm" onclick='viewRPD(${JSON.stringify(rpd)})'>Lihat</button>
-                        ${canEdit ? `
-                            <button class="btn btn-sm" onclick='editRPD(${JSON.stringify(rpd)})'>Edit</button>
-                        ` : ''}
-                    </div>
-                </td>
-            </tr>
-            `;
-        }).join('');
-        
-        const totalRow = `
-            <tr style="background: #f8f9fa; font-weight: bold;">
-                <td colspan="3" style="text-align: right;">TOTAL:</td>
-                <td>${formatCurrency(totalNominal)}</td>
-                <td colspan="4"></td>
-            </tr>
-        `;
-        
-        tbody.innerHTML = rows + totalRow;
+        setCache('rpds', rpds);
+        displayRPDs(rpds);
     } catch (error) {
         console.error('[RPD ERROR]', error);
     }
+}
+
+function displayRPDs(rpds) {
+    const tbody = document.querySelector('#rpdTable tbody');
+    const currentDate = new Date();
+    const currentYear = currentDate.getFullYear();
+    const currentMonth = currentDate.getMonth();
+    const monthNames = CONFIG.MONTHS;
+    
+    let totalNominal = 0;
+    
+    const rows = rpds.map((rpd, index) => {
+        totalNominal += parseFloat(rpd.total || 0);
+        
+        const rpdMonthIndex = monthNames.indexOf(rpd.month);
+        const rpdYear = parseInt(rpd.year);
+        const canEdit = rpdYear > currentYear || (rpdYear === currentYear && rpdMonthIndex > currentMonth);
+        
+        return `
+        <tr>
+            <td>${index + 1}</td>
+            <td>${rpd.month}</td>
+            <td>${rpd.year}</td>
+            <td>${formatCurrency(rpd.total)}</td>
+            <td>${formatDate(rpd.createdAt)}</td>
+            <td>${formatDate(rpd.updatedAt)}</td>
+            <td><span class="badge badge-info">Tersimpan</span></td>
+            <td>
+                <div class="action-buttons">
+                    <button class="btn btn-sm" onclick='viewRPD(${JSON.stringify(rpd)})'>Lihat</button>
+                    ${canEdit ? `<button class="btn btn-sm" onclick='editRPD(${JSON.stringify(rpd)})'>Edit</button>` : ''}
+                </div>
+            </td>
+        </tr>
+        `;
+    }).join('');
+    
+    const totalRow = `
+        <tr style="background: #f8f9fa; font-weight: bold;">
+            <td colspan="3" style="text-align: right;">TOTAL:</td>
+            <td>${formatCurrency(totalNominal)}</td>
+            <td colspan="4"></td>
+        </tr>
+    `;
+    
+    tbody.innerHTML = rows + totalRow;
 }
 
 async function showRPDModal(rpd = null) {
@@ -940,25 +1110,21 @@ async function showRPDModal(rpd = null) {
         const month = document.getElementById('rpdMonth').value;
         const year = document.getElementById('rpdYear').value;
         
-        // Validasi client-side untuk Operator
+        // Validasi untuk Operator
         if (currentUser.role === 'Operator KUA') {
             const currentDate = new Date();
             const currentYear = currentDate.getFullYear();
             const currentMonth = currentDate.getMonth();
-            const monthNames = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 
-                            'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+            const monthNames = CONFIG.MONTHS;
             const rpdMonthIndex = monthNames.indexOf(month);
             const rpdYear = parseInt(year);
             
-            // Jika EDIT - tidak boleh edit bulan ini dan sebelumnya
             if (rpd && rpd.id) {
                 if (rpdYear < currentYear || (rpdYear === currentYear && rpdMonthIndex <= currentMonth)) {
                     showNotification('RPD untuk bulan ini dan bulan sebelumnya tidak dapat diubah', 'warning');
                     return;
                 }
-            }
-            // Jika CREATE - boleh untuk bulan ini dan yang akan datang
-            else {
+            } else {
                 if (rpdYear < currentYear || (rpdYear === currentYear && rpdMonthIndex < currentMonth)) {
                     showNotification('RPD hanya dapat dibuat untuk bulan ini atau bulan yang akan datang', 'warning');
                     return;
@@ -966,6 +1132,7 @@ async function showRPDModal(rpd = null) {
             }
         }
         
+        // Kumpulkan data RPD
         const rpdData = {};
         let total = 0;
         
@@ -981,6 +1148,7 @@ async function showRPDModal(rpd = null) {
         });
         
         try {
+            // Panggil API save
             await apiCall('saveRPD', {
                 id: rpd ? rpd.id : null,
                 kua: currentUser.kua,
@@ -993,11 +1161,24 @@ async function showRPDModal(rpd = null) {
                 total: total
             });
             
-            showNotification('RPD berhasil disimpan', 'success');
+            // ✅ STEP 1: Hapus cache yang terkait
+            console.log('[SAVE_RPD] Invalidating related cache');
+            invalidateCache('rpds');           // Hapus cache RPD
+            invalidateCache('dashboardStats'); // Hapus cache dashboard
+            
+            // ✅ STEP 2: Tutup modal
             closeModal();
-            loadRPDs();
-            loadDashboardStats();
+            
+            // ✅ STEP 3: Reload dengan FORCE REFRESH
+            console.log('[SAVE_RPD] Reloading fresh data');
+            await loadRPDs(true);              // Force refresh RPD
+            await loadDashboardStats(true);    // Force refresh dashboard
+            
+            // ✅ STEP 4: Notifikasi
+            showNotification('RPD berhasil disimpan', 'success');
+            
         } catch (error) {
+            console.error('[SAVE_RPD ERROR]', error);
             showNotification(error.message, 'error');
         }
     });
@@ -1053,65 +1234,70 @@ function editRPD(rpd) {
 }
 
 // ===== REALISASI MANAGEMENT =====
-async function loadRealisasis() {
+async function loadRealisasis(forceRefresh = false) {
     console.log('[REALISASI] Loading realisasis');
+    
+    if (!forceRefresh) {
+        const cachedData = getCache('realisasis');
+        if (cachedData) {
+            displayRealisasis(cachedData);
+            return;
+        }
+    }
+    
     try {
         const yearFilter = document.getElementById('realisasiYearFilter');
         const year = yearFilter ? yearFilter.value : new Date().getFullYear();
         
         let realisasis = await apiCall('getRealisasis', { kua: currentUser.kua, year: year });
-        
-        // Sort by month
         realisasis = sortByMonth(realisasis);
-        
-        const tbody = document.querySelector('#realisasiTable tbody');
-        
-        // Calculate total
-        let totalNominal = 0;
-        
-        const rows = realisasis.map((real, index) => {
-            totalNominal += parseFloat(real.total || 0);
-            let statusClass = 'warning';
-            if (real.status === 'Diterima') statusClass = 'success';
-            if (real.status === 'Ditolak') statusClass = 'danger';
-            
-            // Escape quotes untuk JSON.stringify di onclick
-            const realEscaped = JSON.stringify(real).replace(/"/g, '&quot;');
-            
-            return `
-            <tr>
-                <td>${index + 1}</td>
-                <td>${real.month}</td>
-                <td>${real.year}</td>
-                <td>${formatCurrency(real.total)}</td>
-                <td>${formatDate(real.createdAt)}</td>
-                <td>${formatDate(real.updatedAt)}</td>
-                <td><span class="badge badge-${statusClass}">${real.status}</span></td>
-                <td>
-                    <div class="action-buttons">
-                        <button class="btn btn-sm" onclick='viewRealisasi(${realEscaped})'>Lihat</button>
-                        ${real.status !== 'Diterima' ? `
-                            <button class="btn btn-sm" onclick='editRealisasi(${realEscaped})'>Edit</button>
-                        ` : ''}
-                    </div>
-                </td>
-            </tr>
-            `;
-        }).join('');
-        
-        // Add total row
-        const totalRow = `
-            <tr style="background: #f8f9fa; font-weight: bold;">
-                <td colspan="3" style="text-align: right;">TOTAL:</td>
-                <td>${formatCurrency(totalNominal)}</td>
-                <td colspan="4"></td>
-            </tr>
-        `;
-        
-        tbody.innerHTML = rows + totalRow;
+        setCache('realisasis', realisasis);
+        displayRealisasis(realisasis);
     } catch (error) {
         console.error('[REALISASI ERROR]', error);
     }
+}
+
+function displayRealisasis(realisasis) {
+    const tbody = document.querySelector('#realisasiTable tbody');
+    let totalNominal = 0;
+    
+    const rows = realisasis.map((real, index) => {
+        totalNominal += parseFloat(real.total || 0);
+        let statusClass = 'warning';
+        if (real.status === 'Diterima') statusClass = 'success';
+        if (real.status === 'Ditolak') statusClass = 'danger';
+        
+        const realEscaped = JSON.stringify(real).replace(/"/g, '&quot;');
+        
+        return `
+        <tr>
+            <td>${index + 1}</td>
+            <td>${real.month}</td>
+            <td>${real.year}</td>
+            <td>${formatCurrency(real.total)}</td>
+            <td>${formatDate(real.createdAt)}</td>
+            <td>${formatDate(real.updatedAt)}</td>
+            <td><span class="badge badge-${statusClass}">${real.status}</span></td>
+            <td>
+                <div class="action-buttons">
+                    <button class="btn btn-sm" onclick='viewRealisasi(${realEscaped})'>Lihat</button>
+                    ${real.status !== 'Diterima' ? `<button class="btn btn-sm" onclick='editRealisasi(${realEscaped})'>Edit</button>` : ''}
+                </div>
+            </td>
+        </tr>
+        `;
+    }).join('');
+    
+    const totalRow = `
+        <tr style="background: #f8f9fa; font-weight: bold;">
+            <td colspan="3" style="text-align: right;">TOTAL:</td>
+            <td>${formatCurrency(totalNominal)}</td>
+            <td colspan="4"></td>
+        </tr>
+    `;
+    
+    tbody.innerHTML = rows + totalRow;
 }
 
 async function showRealisasiModal(realisasi = null) {
@@ -1529,7 +1715,7 @@ async function showRealisasiInputs(rpd, realisasi = null) {
                     for (let i = 0; i < uploadedFiles.length; i++) {
                         const file = uploadedFiles[i];
                         
-                        // Skip files that already have fileId (existing files)
+                        // Skip files yang sudah ada fileId
                         if (file.fileId) {
                             console.log(`[FILE] File ${i + 1} already uploaded:`, file.fileName);
                             uploadedFileIds.push({
@@ -1542,7 +1728,7 @@ async function showRealisasiInputs(rpd, realisasi = null) {
                             continue;
                         }
                         
-                        // Upload new file
+                        // Upload file baru
                         console.log(`[FILE] Uploading file ${i + 1}/${uploadedFiles.length}:`, file.fileName);
                         
                         try {
@@ -1596,12 +1782,25 @@ async function showRealisasiInputs(rpd, realisasi = null) {
                 await apiCall('saveRealisasi', payload);
                 
                 console.log('[REALISASI] Save successful');
+                
+                // ✅ STEP 1: Hapus cache yang terkait
+                console.log('[SAVE_REALISASI] Invalidating related cache');
+                invalidateCache('realisasis');     // Hapus cache realisasi
+                invalidateCache('dashboardStats'); // Hapus cache dashboard
+                
+                // ✅ STEP 2: Tutup modal
+                closeModal();
+                
+                // ✅ STEP 3: Reload dengan FORCE REFRESH
+                console.log('[SAVE_REALISASI] Reloading fresh data');
+                await loadRealisasis(true);        // Force refresh realisasi
+                await loadDashboardStats(true);    // Force refresh dashboard
+                
+                // ✅ STEP 4: Notifikasi
+                showNotification('Realisasi berhasil disimpan', 'success');
+                
                 console.log('[REALISASI] ========== FORM SUBMIT END ==========');
                 
-                showNotification('Realisasi berhasil disimpan', 'success');
-                closeModal();
-                loadRealisasis();
-                loadDashboardStats();
             } catch (error) {
                 console.error('[REALISASI ERROR] Save failed:', error);
                 console.log('[REALISASI] ========== FORM SUBMIT END (ERROR) ==========');
@@ -2068,58 +2267,140 @@ function editRealisasi(realisasi) {
     showRealisasiModal(realisasi);
 }
 
-// ===== VERIFIKASI MANAGEMENT (ADMIN) =====
-async function loadVerifikasi() {
+// ===== VERIFIKASI MANAGEMENT (UPDATED WITH CACHE) =====
+async function loadVerifikasi(forceRefresh = false) {
     console.log('[VERIFIKASI] Loading verifikasi');
+    
+    // ✅ Check cache first (kecuali force refresh)
+    if (!forceRefresh) {
+        const cachedData = getCache('verifikasi');
+        if (cachedData) {
+            console.log('[VERIFIKASI] Using cached data');
+            displayVerifikasi(cachedData.realisasis, cachedData.filters);
+            return;
+        }
+    }
+    
     try {
         const kuaFilter = document.getElementById('verifikasiKUAFilter');
         const statusFilter = document.getElementById('verifikasiStatusFilter');
         const yearFilter = document.getElementById('verifikasiYearFilter');
         
         const year = yearFilter ? yearFilter.value : new Date().getFullYear();
+        
+        // Get all realisasis for the year
         let realisasis = await apiCall('getRealisasis', { year: year });
-        const tbody = document.querySelector('#verifikasiTable tbody');
         
-        // Apply KUA filter
-        if (kuaFilter && kuaFilter.value) {
-            realisasis = realisasis.filter(r => r.kua === kuaFilter.value);
-        }
+        // Store filters yang sedang aktif
+        const currentFilters = {
+            kua: kuaFilter ? kuaFilter.value : '',
+            status: statusFilter ? statusFilter.value : '',
+            year: year
+        };
         
-        // Apply status filter
-        if (statusFilter && statusFilter.value) {
-            realisasis = realisasis.filter(r => r.status === statusFilter.value);
-        }
+        // ✅ Cache the data along with current filters
+        setCache('verifikasi', {
+            realisasis: realisasis,
+            filters: currentFilters
+        });
         
-        // Sort by month
-        realisasis = sortByMonth(realisasis);
+        displayVerifikasi(realisasis, currentFilters);
         
-        tbody.innerHTML = realisasis.map((real, index) => {
-            let statusClass = 'warning';
-            if (real.status === 'Diterima') statusClass = 'success';
-            if (real.status === 'Ditolak') statusClass = 'danger';
-            
-            return `
-            <tr>
-                <td>${index + 1}</td>
-                <td>${real.kua}</td>
-                <td>${real.month}</td>
-                <td>${real.year}</td>
-                <td>${formatCurrency(real.total)}</td>
-                <td>${formatDate(real.createdAt)}</td>
-                <td><span class="badge badge-${statusClass}">${real.status}</span></td>
-                <td>
-                    <div class="action-buttons">
-                        <button class="btn btn-sm" onclick='verifyRealisasi(${JSON.stringify(real)})'>Verifikasi</button>
-                    </div>
-                </td>
-            </tr>
-            `;
-        }).join('');
     } catch (error) {
         console.error('[VERIFIKASI ERROR]', error);
     }
 }
 
+// ✅ Fungsi baru untuk display verifikasi (separated from loading)
+function displayVerifikasi(realisasis, filters) {
+    console.log('[VERIFIKASI] Displaying data with filters:', filters);
+    
+    let filteredData = [...realisasis]; // Clone array
+    
+    // Apply KUA filter
+    if (filters.kua) {
+        filteredData = filteredData.filter(r => r.kua === filters.kua);
+    }
+    
+    // Apply status filter
+    if (filters.status) {
+        filteredData = filteredData.filter(r => r.status === filters.status);
+    }
+    
+    // Sort by month
+    filteredData = sortByMonth(filteredData);
+    
+    const tbody = document.querySelector('#verifikasiTable tbody');
+    
+    if (!tbody) {
+        console.error('[VERIFIKASI] Table body not found');
+        return;
+    }
+    
+    tbody.innerHTML = filteredData.map((real, index) => {
+        let statusClass = 'warning';
+        if (real.status === 'Diterima') statusClass = 'success';
+        if (real.status === 'Ditolak') statusClass = 'danger';
+        
+        return `
+        <tr>
+            <td>${index + 1}</td>
+            <td>${real.kua}</td>
+            <td>${real.month}</td>
+            <td>${real.year}</td>
+            <td>${formatCurrency(real.total)}</td>
+            <td>${formatDate(real.createdAt)}</td>
+            <td><span class="badge badge-${statusClass}">${real.status}</span></td>
+            <td>
+                <div class="action-buttons">
+                    <button class="btn btn-sm" onclick='verifyRealisasi(${JSON.stringify(real)})'>Verifikasi</button>
+                </div>
+            </td>
+        </tr>
+        `;
+    }).join('');
+    
+    console.log(`[VERIFIKASI] Displayed ${filteredData.length} records`);
+}
+
+// ✅ Handler untuk filter changes (gunakan cache, hanya re-display)
+function onVerifikasiFilterChange() {
+    console.log('[VERIFIKASI] Filter changed');
+    
+    const cachedData = getCache('verifikasi');
+    
+    if (cachedData) {
+        // Jika ada cache, update filters dan re-display
+        const kuaFilter = document.getElementById('verifikasiKUAFilter');
+        const statusFilter = document.getElementById('verifikasiStatusFilter');
+        const yearFilter = document.getElementById('verifikasiYearFilter');
+        
+        const newFilters = {
+            kua: kuaFilter ? kuaFilter.value : '',
+            status: statusFilter ? statusFilter.value : '',
+            year: yearFilter ? yearFilter.value : new Date().getFullYear()
+        };
+        
+        // Jika year berubah, perlu reload dari server
+        if (newFilters.year !== cachedData.filters.year) {
+            console.log('[VERIFIKASI] Year changed, force refresh');
+            loadVerifikasi(true);
+        } else {
+            // Jika hanya KUA atau Status yang berubah, cukup re-display
+            console.log('[VERIFIKASI] Only filter changed, using cache');
+            displayVerifikasi(cachedData.realisasis, newFilters);
+            
+            // Update cached filters
+            cachedData.filters = newFilters;
+        }
+    } else {
+        // Jika tidak ada cache, load dari server
+        console.log('[VERIFIKASI] No cache, loading from server');
+        loadVerifikasi(true);
+    }
+}
+
+// ===== VERIFIKASI REALISASI (UPDATED) =====
 function verifyRealisasi(realisasi) {
     console.log('[VERIFIKASI] Verifying realisasi:', realisasi);
     console.log('[VERIFIKASI] Files count:', realisasi.files ? realisasi.files.length : 0);
@@ -2262,7 +2543,7 @@ function verifyRealisasi(realisasi) {
                     <label>Catatan</label>
                     <textarea id="verifyNotes" rows="4" placeholder="Tambahkan catatan jika diperlukan">${realisasi.notes || ''}</textarea>
                 </div>
-                <button type="submit" class="btn">Simpan Verifikasi</button>
+                <button type="submit" class="btn">💾 Simpan Verifikasi</button>
             </form>
         </div>
     `;
@@ -2283,11 +2564,25 @@ function verifyRealisasi(realisasi) {
                 adminUsername: currentUser.username
             });
             
-            showNotification('Status realisasi berhasil diperbarui', 'success');
+            // ✅ STEP 1: Invalidate cache yang terkait
+            console.log('[VERIFY_REALISASI] Invalidating related cache');
+            invalidateCache('verifikasi');     // Hapus cache verifikasi
+            invalidateCache('realisasis');     // Hapus cache realisasi (untuk operator)
+            invalidateCache('dashboardStats'); // Hapus cache dashboard
+            
+            // ✅ STEP 2: Tutup modal
             closeModal();
-            loadVerifikasi();
-            loadDashboardStats();
+            
+            // ✅ STEP 3: Reload dengan FORCE REFRESH
+            console.log('[VERIFY_REALISASI] Reloading fresh data');
+            await loadVerifikasi(true);        // Force refresh verifikasi page
+            await loadDashboardStats(true);    // Force refresh dashboard
+            
+            // ✅ STEP 4: Notifikasi
+            showNotification('Status realisasi berhasil diperbarui', 'success');
+            
         } catch (error) {
+            console.error('[VERIFY_REALISASI ERROR]', error);
             showNotification(error.message, 'error');
         }
     });
@@ -2865,5 +3160,57 @@ async function downloadRealisasiDetailYear(format) {
         showNotification(`Laporan Realisasi Detail berhasil didownload`, 'success');
     } catch (error) {
         showNotification(`Gagal download: ${error.message}`, 'error');
+    }
+}
+
+// ===== AUTO-REFRESH FOR ADMIN VERIFIKASI =====
+let verifikasiAutoRefresh = null;
+
+function startVerifikasiAutoRefresh() {
+    // Auto refresh setiap 2 menit untuk halaman verifikasi admin
+    verifikasiAutoRefresh = setInterval(async () => {
+        console.log('[AUTO-REFRESH] Refreshing verifikasi data...');
+        
+        // Cek apakah ada realisasi "Menunggu" yang baru
+        const cachedData = getCache('verifikasi');
+        
+        if (cachedData) {
+            // Get fresh data
+            const yearFilter = document.getElementById('verifikasiYearFilter');
+            const year = yearFilter ? yearFilter.value : new Date().getFullYear();
+            
+            try {
+                const freshData = await apiCall('getRealisasis', { year: year });
+                
+                // Count pending verifications
+                const oldPending = cachedData.realisasis.filter(r => r.status === 'Menunggu').length;
+                const newPending = freshData.filter(r => r.status === 'Menunggu').length;
+                
+                // Jika ada yang baru, tampilkan notifikasi
+                if (newPending > oldPending) {
+                    const diff = newPending - oldPending;
+                    showNotification(`Ada ${diff} realisasi baru yang menunggu verifikasi! 🔔`, 'info');
+                }
+                
+                // Update cache
+                setCache('verifikasi', {
+                    realisasis: freshData,
+                    filters: cachedData.filters
+                });
+                
+                // Re-display dengan filter yang sama
+                displayVerifikasi(freshData, cachedData.filters);
+                
+            } catch (error) {
+                console.error('[AUTO-REFRESH ERROR]', error);
+            }
+        }
+    }, 2 * 60 * 1000); // 2 menit
+}
+
+function stopVerifikasiAutoRefresh() {
+    if (verifikasiAutoRefresh) {
+        clearInterval(verifikasiAutoRefresh);
+        verifikasiAutoRefresh = null;
     }
 }

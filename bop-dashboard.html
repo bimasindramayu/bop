@@ -226,17 +226,17 @@
                 <div class="page" id="verifikasiPage">
                     <h2 style="margin-bottom: 20px;">Verifikasi Realisasi</h2>
                     <div class="toolbar">
-                        <select id="verifikasiKUAFilter" onchange="loadVerifikasi()">
+                        <select id="verifikasiKUAFilter" onchange="onVerifikasiFilterChange()">
                             <option value="">Semua KUA</option>
                         </select>
-                        <select id="verifikasiStatusFilter" onchange="loadVerifikasi()">
+                        <select id="verifikasiStatusFilter" onchange="onVerifikasiFilterChange()">
                             <option value="">Semua Status</option>
                             <option value="Menunggu">Menunggu</option>
                             <option value="Diterima">Diterima</option>
                             <option value="Ditolak">Ditolak</option>
                         </select>
-                        <select id="verifikasiYearFilter" onchange="loadVerifikasi()">
-                    <!-- Years will be populated dynamically -->
+                        <select id="verifikasiYearFilter" onchange="onVerifikasiFilterChange()">
+                            <!-- Years will be populated dynamically -->
                         </select>
                     </div>
                     <div class="table-container">
