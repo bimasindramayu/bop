@@ -166,20 +166,24 @@
                     <button class="btn" onclick="saveRPDConfig()" style="margin-top: 20px;">💾 Simpan Semua Konfigurasi</button>
                 </div>
 
-                <!-- RPD Page (Operator) -->
+                <!-- RPD Page (Operator & Admin) -->
                 <div class="page" id="rpdPage">
                     <h2 style="margin-bottom: 20px;">RPD</h2>
                     <div class="toolbar">
-                        <button class="btn btn-success btn-sm" onclick="showRPDModal()">Buat RPD Baru</button>
-                        <select id="rpdYearFilter" onchange="loadRPDs()">
-                        <!-- Years will be populated dynamically -->
-                    </select>
+                        <button class="btn btn-success btn-sm" onclick="showRPDModal()" id="btnCreateRPD">Buat RPD Baru</button>
+                        <select id="rpdKUAFilter" onchange="onRPDKUAFilterChange()" style="display: none;">
+                            <option value="">Semua KUA</option>
+                        </select>
+                        <select id="rpdYearFilter" onchange="loadRPDs(true)">
+                            <!-- Years will be populated dynamically -->
+                        </select>
                     </div>
                     <div class="table-container">
                         <table id="rpdTable">
                             <thead>
                                 <tr>
                                     <th>No</th>
+                                    <th class="th-kua" style="display: none;">KUA</th>
                                     <th>Bulan</th>
                                     <th>Tahun</th>
                                     <th>Total Nominal</th>

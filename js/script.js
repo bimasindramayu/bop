@@ -269,6 +269,7 @@ function buildNavMenu() {
         menuItems = [
             { id: 'dashboardPage', label: 'Dashboard' },
             { id: 'budgetingPage', label: 'Budget' },
+            { id: 'rpdPage', label: 'Lihat RPD' },
             { id: 'verifikasiPage', label: 'Verifikasi' },
             { id: 'reportsPage', label: 'Laporan' },
             { id: 'userManagementPage', label: 'Pengguna' },
@@ -390,37 +391,59 @@ function showPage(pageId) {
     
     // Stop polling
     stopRealisasiPolling();
-
-    // Stop auto-refresh
     stopVerifikasiAutoRefresh();
+    
+    // ✅ Show/Hide elements based on role when entering RPD page
+    if (pageId === 'rpdPage') {
+        const kuaFilter = document.getElementById('rpdKUAFilter');
+        const btnCreateRPD = document.getElementById('btnCreateRPD');
+        const thKUA = document.querySelectorAll('.th-kua');
+        
+        if (currentUser.role === 'Admin') {
+            // Admin: Show KUA filter, hide create button, show KUA column
+            if (kuaFilter) {
+                kuaFilter.style.display = 'block';
+                // Populate KUA options
+                kuaFilter.innerHTML = '<option value="">Semua KUA</option>' + 
+                    CONFIG.KUA_LIST.map(kua => `<option value="${kua}">${kua}</option>`).join('');
+            }
+            if (btnCreateRPD) btnCreateRPD.style.display = 'none';
+            thKUA.forEach(th => th.style.display = 'table-cell');
+        } else {
+            // Operator: Hide KUA filter, show create button, hide KUA column
+            if (kuaFilter) kuaFilter.style.display = 'none';
+            if (btnCreateRPD) btnCreateRPD.style.display = 'inline-block';
+            thKUA.forEach(th => th.style.display = 'none');
+        }
+    }
     
     // Load data for specific pages
     switch(pageId) {
         case 'dashboardPage':
-            loadDashboardStats(); // ✅ Gunakan cache
+            loadDashboardStats();
             break;
         case 'budgetingPage':
-            loadBudgets(); // ✅ Gunakan cache
+            loadBudgets();
             break;
         case 'userManagementPage':
-            loadUsers(); // ✅ Gunakan cache
+            loadUsers();
             break;
         case 'rpdConfigPage':
-            loadRPDConfig(); // ✅ Gunakan cache
+            loadRPDConfig();
             break;
         case 'rpdPage':
-            loadRPDs(); // ✅ Gunakan cache
+            loadRPDs(); // ✅ Works for both Admin and Operator
             break;
         case 'realisasiPage':
-            loadRealisasis(); // ✅ Gunakan cache
+            loadRealisasis();
             if (currentUser.role === 'Operator KUA') {
-                startRealisasiPolling(); // Start polling untuk operator
+                startRealisasiPolling();
             }
             break;
         case 'verifikasiPage':
             loadVerifikasi();
             if (currentUser.role === 'Admin') {
-                startVerifikasiAutoRefresh(); // ✅ Start auto-refresh untuk admin
+                startVerifikasiAutoRefresh();
             }
             break;
         case 'reportsPage':
@@ -926,7 +949,23 @@ async function loadRPDs(forceRefresh = false) {
         const yearFilter = document.getElementById('rpdYearFilter');
         const year = yearFilter ? yearFilter.value : new Date().getFullYear();
         
-        let rpds = await apiCall('getRPDs', { kua: currentUser.kua, year: year });
+        let rpds;
+        
+        if (currentUser.role === 'Admin') {
+            // Admin - Get all KUA RPDs
+            const kuaFilter = document.getElementById('rpdKUAFilter');
+            const selectedKUA = kuaFilter ? kuaFilter.value : '';
+            
+            if (selectedKUA) {
+                rpds = await apiCall('getRPDs', { kua: selectedKUA, year: year });
+            } else {
+                rpds = await apiCall('getRPDs', { year: year }); // All KUAs
+            }
+        } else {
+            // Operator - Only their KUA
+            rpds = await apiCall('getRPDs', { kua: currentUser.kua, year: year });
+        }
+        
         rpds = sortByMonth(rpds);
         setCache('rpds', rpds);
         displayRPDs(rpds);
@@ -949,11 +988,17 @@ function displayRPDs(rpds) {
         
         const rpdMonthIndex = monthNames.indexOf(rpd.month);
         const rpdYear = parseInt(rpd.year);
-        const canEdit = rpdYear > currentYear || (rpdYear === currentYear && rpdMonthIndex > currentMonth);
+        
+        // Admin can always view, Operator can edit future months only
+        const canEdit = currentUser.role === 'Admin' || 
+                       (rpdYear > currentYear || (rpdYear === currentYear && rpdMonthIndex > currentMonth));
+        
+        const rpdEscaped = JSON.stringify(rpd).replace(/"/g, '&quot;');
         
         return `
         <tr>
             <td>${index + 1}</td>
+            ${currentUser.role === 'Admin' ? `<td>${rpd.kua}</td>` : ''}
             <td>${rpd.month}</td>
             <td>${rpd.year}</td>
             <td>${formatCurrency(rpd.total)}</td>
@@ -962,8 +1007,8 @@ function displayRPDs(rpds) {
             <td><span class="badge badge-info">Tersimpan</span></td>
             <td>
                 <div class="action-buttons">
-                    <button class="btn btn-sm" onclick='viewRPD(${JSON.stringify(rpd)})'>Lihat</button>
-                    ${canEdit ? `<button class="btn btn-sm" onclick='editRPD(${JSON.stringify(rpd)})'>Edit</button>` : ''}
+                    <button class="btn btn-sm" onclick='viewRPD(${rpdEscaped})'>Lihat</button>
+                    ${canEdit && currentUser.role !== 'Admin' ? `<button class="btn btn-sm" onclick='editRPD(${rpdEscaped})'>Edit</button>` : ''}
                 </div>
             </td>
         </tr>
@@ -972,13 +1017,30 @@ function displayRPDs(rpds) {
     
     const totalRow = `
         <tr style="background: #f8f9fa; font-weight: bold;">
-            <td colspan="3" style="text-align: right;">TOTAL:</td>
+            <td colspan="${currentUser.role === 'Admin' ? '4' : '3'}" style="text-align: right;">TOTAL:</td>
             <td>${formatCurrency(totalNominal)}</td>
-            <td colspan="4"></td>
+            <td colspan="${currentUser.role === 'Admin' ? '3' : '3'}"></td>
         </tr>
     `;
     
     tbody.innerHTML = rows + totalRow;
+}
+
+// Handler untuk filter KUA change (Admin only)
+function onRPDKUAFilterChange() {
+    console.log('[RPD] KUA filter changed');
+    
+    const cachedData = getCache('rpds');
+    const kuaFilter = document.getElementById('rpdKUAFilter');
+    const selectedKUA = kuaFilter ? kuaFilter.value : '';
+    
+    if (cachedData && selectedKUA === '') {
+        // If "All KUA" selected and we have cache, use it
+        displayRPDs(cachedData);
+    } else {
+        // Otherwise reload from server
+        loadRPDs(true);
+    }
 }
 
 async function showRPDModal(rpd = null) {
