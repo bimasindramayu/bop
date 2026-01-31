@@ -1,6 +1,6 @@
 // ===== KONFIGURASI =====
 const CONFIG = {
-    SCRIPT_URL: 'https://script.google.com/macros/s/AKfycbzW7DVOYI_FeOpoYJNhiQOhr5sRU-Z-9dVc6TJBmBlbdV0NzXURbnHAOy2yn8IFc-6y/exec',
+    SCRIPT_URL: 'https://script.google.com/macros/s/AKfycbxkODOYjlkk7mKSTU1d1uMynPog6TE6NHmZbF6m0jVV4RVXyC98ehHT4d8ndhbJhTLC/exec',
     KUA_LIST: [
         'KUA Anjatan', 'KUA Arahan', 'KUA Balongan', 'KUA Bangodua', 'KUA Bongas',
         'KUA Cantigi', 'KUA Cikedung', 'KUA Gantar', 'KUA Gabuswetan', 'KUA Haurgeulis',
