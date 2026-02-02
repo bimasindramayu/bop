@@ -99,6 +99,69 @@
             color: #333;
         }
 
+        /* CAPTCHA Styles */
+        .captcha-container {
+            margin-bottom: 20px;
+            display: none;
+        }
+
+        .captcha-container.active {
+            display: block;
+        }
+
+        .captcha-box {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+
+        .captcha-image {
+            flex: 1;
+            background: #f8f9fa;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            padding: 10px;
+            text-align: center;
+            font-family: 'Courier New', monospace;
+            font-size: 28px;
+            font-weight: bold;
+            letter-spacing: 8px;
+            color: #333;
+            user-select: none;
+            position: relative;
+            overflow: hidden;
+            height: 60px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .captcha-image canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+
+        .captcha-refresh {
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            width: 50px;
+            height: 50px;
+            cursor: pointer;
+            font-size: 20px;
+            transition: background 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .captcha-refresh:hover {
+            background: #5568d3;
+        }
+
         .btn {
             width: 100%;
             padding: 12px;
@@ -220,14 +283,42 @@
                     <button type="button" class="password-toggle" onclick="togglePassword()">👁️</button>
                 </div>
             </div>
+            
+            <!-- CAPTCHA Container -->
+            <div class="captcha-container" id="captchaContainer">
+                <label>Kode Keamanan</label>
+                <div class="captcha-box">
+                    <div class="captcha-image" id="captchaImage">
+                        <canvas id="captchaCanvas" width="200" height="60"></canvas>
+                    </div>
+                    <button type="button" class="captcha-refresh" onclick="generateCaptcha()" title="Refresh CAPTCHA">🔄</button>
+                </div>
+                <div class="form-group" style="margin-bottom: 0;">
+                    <input type="text" id="captchaInput" placeholder="Masukkan kode di atas" autocomplete="off">
+                </div>
+            </div>
+            
             <button type="submit" class="btn">Masuk</button>
         </form>
     </div>
 
     <script>
+        // ===== KONFIGURASI =====
         const CONFIG = {
-            SCRIPT_URL: 'https://script.google.com/macros/s/AKfycbzXXMwTW1wtWZE1Qh_STjsqMigwQFsht7gLTHe9kMKuNoFTN-1-yYuTv5P8bN43GvNs/exec'
+            SCRIPT_URL: 'https://script.google.com/macros/s/AKfycbzXXMwTW1wtWZE1Qh_STjsqMigwQFsht7gLTHe9kMKuNoFTN-1-yYuTv5P8bN43GvNs/exec',
+            ENABLE_CAPTCHA: true  // Set ke false untuk menonaktifkan CAPTCHA
         };
+
+        // Global variable untuk menyimpan CAPTCHA code
+        let captchaCode = '';
+
+        // Initialize CAPTCHA saat halaman dimuat
+        window.addEventListener('DOMContentLoaded', function() {
+            if (CONFIG.ENABLE_CAPTCHA) {
+                document.getElementById('captchaContainer').classList.add('active');
+                generateCaptcha();
+            }
+        });
 
         function showLoading() {
             document.getElementById('loading').classList.add('active');
@@ -258,6 +349,89 @@
             }
         }
 
+        // Generate CAPTCHA
+        function generateCaptcha() {
+            // Generate random alphanumeric code (6 karakter)
+            const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+            captchaCode = '';
+            for (let i = 0; i < 6; i++) {
+                captchaCode += chars.charAt(Math.floor(Math.random() * chars.length));
+            }
+
+            // Draw CAPTCHA di canvas
+            const canvas = document.getElementById('captchaCanvas');
+            const ctx = canvas.getContext('2d');
+            
+            // Clear canvas
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // Background dengan gradient
+            const gradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+            gradient.addColorStop(0, '#f8f9fa');
+            gradient.addColorStop(1, '#e9ecef');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // Add noise lines
+            for (let i = 0; i < 5; i++) {
+                ctx.strokeStyle = `rgba(102, 126, 234, ${Math.random() * 0.3})`;
+                ctx.beginPath();
+                ctx.moveTo(Math.random() * canvas.width, Math.random() * canvas.height);
+                ctx.lineTo(Math.random() * canvas.width, Math.random() * canvas.height);
+                ctx.stroke();
+            }
+            
+            // Draw CAPTCHA text
+            ctx.font = 'bold 32px Arial';
+            ctx.textBaseline = 'middle';
+            
+            // Draw each character with random rotation and color
+            let x = 20;
+            for (let i = 0; i < captchaCode.length; i++) {
+                ctx.save();
+                
+                // Random color (dark)
+                const r = Math.floor(Math.random() * 100);
+                const g = Math.floor(Math.random() * 100);
+                const b = Math.floor(Math.random() * 100);
+                ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
+                
+                // Random rotation
+                const angle = (Math.random() - 0.5) * 0.4;
+                const y = 30 + (Math.random() - 0.5) * 10;
+                
+                ctx.translate(x, y);
+                ctx.rotate(angle);
+                ctx.fillText(captchaCode[i], 0, 0);
+                ctx.restore();
+                
+                x += 28;
+            }
+            
+            // Add noise dots
+            for (let i = 0; i < 50; i++) {
+                ctx.fillStyle = `rgba(0, 0, 0, ${Math.random() * 0.3})`;
+                ctx.fillRect(
+                    Math.random() * canvas.width,
+                    Math.random() * canvas.height,
+                    2, 2
+                );
+            }
+            
+            // Clear input
+            document.getElementById('captchaInput').value = '';
+        }
+
+        // Validate CAPTCHA
+        function validateCaptcha() {
+            if (!CONFIG.ENABLE_CAPTCHA) {
+                return true;
+            }
+            
+            const userInput = document.getElementById('captchaInput').value;
+            return userInput === captchaCode;
+        }
+
         async function apiCall(action, data = {}) {
             showLoading();
             try {
@@ -282,6 +456,14 @@
 
         document.getElementById('loginForm').addEventListener('submit', async (e) => {
             e.preventDefault();
+            
+            // Validasi CAPTCHA terlebih dahulu
+            if (CONFIG.ENABLE_CAPTCHA && !validateCaptcha()) {
+                showNotification('Kode keamanan salah! Silakan coba lagi.', 'error');
+                generateCaptcha(); // Generate CAPTCHA baru
+                return;
+            }
+            
             const username = document.getElementById('username').value;
             const password = document.getElementById('password').value;
 
@@ -296,6 +478,10 @@
                 }, 1000);
             } catch (error) {
                 showNotification('Username atau password salah', 'error');
+                // Generate CAPTCHA baru setelah login gagal
+                if (CONFIG.ENABLE_CAPTCHA) {
+                    generateCaptcha();
+                }
             }
         });
     </script>
