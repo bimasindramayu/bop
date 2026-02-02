@@ -5,200 +5,51 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Menu Utama - Sistem Kemenag Indramayu</title>
     <link rel="icon" type="image/png" href="assets/coin.png">
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-        }
-
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 20px;
-        }
-
-        .header {
-            background: white;
-            padding: 20px 30px;
-            border-radius: 15px;
-            margin-bottom: 30px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            flex-wrap: wrap;
-            gap: 15px;
-        }
-
-        .header-left h1 {
-            color: #333;
-            font-size: 28px;
-            margin-bottom: 5px;
-        }
-
-        .header-left p {
-            color: #666;
-            font-size: 14px;
-        }
-
-        .header-right {
-            display: flex;
-            gap: 15px;
-            align-items: center;
-        }
-
-        .user-info {
-            text-align: right;
-        }
-
-        .user-info strong {
-            display: block;
-            color: #333;
-            font-size: 16px;
-        }
-
-        .user-info small {
-            color: #666;
-            font-size: 13px;
-        }
-
-        .btn-logout {
-            padding: 10px 20px;
-            background: #dc3545;
-            color: white;
-            border: none;
-            border-radius: 8px;
-            font-size: 14px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: background 0.3s;
-        }
-
-        .btn-logout:hover {
-            background: #c82333;
-        }
-
-        .menu-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-            gap: 25px;
-            margin-top: 20px;
-        }
-
-        .menu-card {
-            background: white;
-            padding: 35px;
-            border-radius: 15px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
-            cursor: pointer;
-            transition: all 0.3s;
-            text-align: center;
-            text-decoration: none;
-            color: inherit;
-            display: block;
-        }
-
-        .menu-card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 8px 25px rgba(0,0,0,0.15);
-        }
-
-        .menu-icon {
-            font-size: 60px;
-            margin-bottom: 20px;
-        }
-
-        .menu-card h3 {
-            color: #333;
-            font-size: 20px;
-            margin-bottom: 10px;
-        }
-
-        .menu-card p {
-            color: #666;
-            font-size: 14px;
-            line-height: 1.6;
-        }
-
-        .menu-card.bop {
-            border-top: 4px solid #667eea;
-        }
-
-        .menu-card.bop:hover {
-            border-top-color: #5568d3;
-        }
-
-        .menu-card.bmn {
-            border-top: 4px solid #28a745;
-        }
-
-        .menu-card.bmn:hover {
-            border-top-color: #218838;
-        }
-
-        .menu-card.arsip {
-            border-top: 4px solid #ffc107;
-        }
-
-        .menu-card.arsip:hover {
-            border-top-color: #e0a800;
-        }
-
-        .menu-card.lainnya {
-            border-top: 4px solid #17a2b8;
-        }
-
-        .menu-card.lainnya:hover {
-            border-top-color: #138496;
-        }
-
-        .menu-card.disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-            pointer-events: none;
-        }
-
-        .badge-coming-soon {
-            display: inline-block;
-            background: #ffc107;
-            color: #856404;
-            padding: 4px 12px;
-            border-radius: 20px;
-            font-size: 11px;
-            font-weight: 600;
-            margin-top: 10px;
-        }
-
-        @media (max-width: 768px) {
-            .header {
-                flex-direction: column;
-                text-align: center;
-            }
-
-            .header-left,
-            .header-right {
-                width: 100%;
-            }
-
-            .user-info {
-                text-align: center;
-                margin-bottom: 10px;
-            }
-
-            .menu-grid {
-                grid-template-columns: 1fr;
-            }
-        }
-    </style>
+    <link rel="stylesheet" href="style/main-styles.css">
 </head>
 <body>
+    <!-- Loading Spinner -->
+    <div class="loading" id="loading">
+        <div class="spinner"></div>
+    </div>
+
+    <!-- Notification -->
+    <div class="notification" id="notification"></div>
+
+    <!-- Modal Ubah Password -->
+    <div class="modal" id="changePasswordModal">
+        <div class="modal-content" style="max-width: 500px;">
+            <div class="modal-header">
+                <h3>Ubah Password</h3>
+                <button class="close-btn" onclick="closePasswordModal()">&times;</button>
+            </div>
+            <form id="changePasswordForm">
+                <div class="form-group">
+                    <label>Password Lama</label>
+                    <div class="password-input-group">
+                        <input type="password" id="oldPassword" required>
+                        <button type="button" class="password-toggle" onclick="togglePassword('oldPassword')">👁️</button>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Password Baru</label>
+                    <div class="password-input-group">
+                        <input type="password" id="newPassword" required minlength="6">
+                        <button type="button" class="password-toggle" onclick="togglePassword('newPassword')">👁️</button>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Konfirmasi Password Baru</label>
+                    <div class="password-input-group">
+                        <input type="password" id="confirmPassword" required minlength="6">
+                        <button type="button" class="password-toggle" onclick="togglePassword('confirmPassword')">👁️</button>
+                    </div>
+                </div>
+                <button type="submit" class="btn">Ubah Password</button>
+            </form>
+        </div>
+    </div>
+
     <div class="container">
         <div class="header">
             <div class="header-left">
@@ -210,7 +61,8 @@
                     <strong id="userName"></strong>
                     <small id="userRole"></small>
                 </div>
-                <button class="btn-logout" onclick="logout()">Keluar</button>
+                <button class="btn btn-info btn-sm" onclick="showPasswordModal()">🔒 Ubah Password</button>
+                <button class="btn btn-danger btn-sm" onclick="logout()">Keluar</button>
             </div>
         </div>
 
@@ -222,7 +74,7 @@
                 <p>Sistem pengelolaan Budget Operasional Perkantoran untuk KUA se-Kabupaten Indramayu</p>
             </a>
 
-            <!-- Menu BMN (Coming Soon) -->
+            <!-- Menu BMN -->
             <a href="bmn-dashboard.html" class="menu-card bmn">
                 <div class="menu-icon">🏛️</div>
                 <h3>Pendataan BMN</h3>
@@ -230,7 +82,7 @@
             </a>
 
             <!-- Menu Arsip (Coming Soon) -->
-            <div class="menu-card arsip disabled">
+            <div class="menu-card disabled" style="border-top: 4px solid #ffc107;">
                 <div class="menu-icon">📁</div>
                 <h3>Sistem Arsip Digital</h3>
                 <p>Pengelolaan dokumen dan arsip digital terintegrasi</p>
@@ -238,7 +90,7 @@
             </div>
 
             <!-- Menu Lainnya (Coming Soon) -->
-            <div class="menu-card lainnya disabled">
+            <div class="menu-card disabled" style="border-top: 4px solid #17a2b8;">
                 <div class="menu-icon">⚙️</div>
                 <h3>Sistem Lainnya</h3>
                 <p>Modul dan sistem pendukung lainnya</p>
@@ -247,27 +99,84 @@
         </div>
     </div>
 
+    <!-- Load Config & Scripts -->
+    <script src="js/config.js"></script>
+    <script src="js/main-script.js"></script>
     <script>
+        // Global state
+        let currentUser = null;
+
         // Check if user is logged in
         window.addEventListener('DOMContentLoaded', function() {
-            const user = JSON.parse(sessionStorage.getItem('user') || 'null');
+            currentUser = SessionManager.getCurrentUser();
             
-            if (!user) {
+            if (!currentUser) {
                 window.location.href = 'index.html';
                 return;
             }
 
             // Display user info
-            document.getElementById('userName').textContent = user.name;
-            document.getElementById('userRole').textContent = user.role + (user.kua ? ' - ' + user.kua : '');
+            document.getElementById('userName').textContent = currentUser.name;
+            document.getElementById('userRole').textContent = currentUser.role + (currentUser.kua ? ' - ' + currentUser.kua : '');
         });
 
         function logout() {
-            if (confirm('Apakah Anda yakin ingin keluar?')) {
-                sessionStorage.removeItem('user');
-                window.location.href = 'index.html';
-            }
+            commonLogout();
         }
+
+        // Password Modal Functions
+        function showPasswordModal() {
+            ModalManager.show('changePasswordModal');
+        }
+
+        function closePasswordModal() {
+            ModalManager.hide('changePasswordModal');
+            document.getElementById('changePasswordForm').reset();
+        }
+
+        // Handle Change Password Form
+        document.getElementById('changePasswordForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const oldPassword = document.getElementById('oldPassword').value;
+            const newPassword = document.getElementById('newPassword').value;
+            const confirmPassword = document.getElementById('confirmPassword').value;
+
+            // Validate
+            if (newPassword !== confirmPassword) {
+                showNotification('Password baru tidak cocok', 'error');
+                return;
+            }
+
+            if (newPassword.length < 6) {
+                showNotification('Password baru minimal 6 karakter', 'error');
+                return;
+            }
+
+            try {
+                await apiCall('changePassword', {
+                    userId: currentUser.id,
+                    username: currentUser.username,
+                    role: currentUser.role,
+                    oldPassword: oldPassword,
+                    newPassword: newPassword
+                });
+
+                showNotification('Password berhasil diubah', 'success');
+                closePasswordModal();
+                
+                // Logout after password change
+                setTimeout(() => {
+                    showNotification('Silakan login dengan password baru', 'info');
+                    setTimeout(() => {
+                        SessionManager.clearUser();
+                        window.location.href = 'index.html';
+                    }, 2000);
+                }, 1000);
+            } catch (error) {
+                showNotification(error.message || 'Gagal mengubah password', 'error');
+            }
+        });
     </script>
 </body>
 </html>
