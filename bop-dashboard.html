@@ -39,7 +39,15 @@
             <div class="content-area">
                 <!-- Dashboard Page -->
                 <div class="page active" id="dashboardPage">
-                    <h2 style="margin-bottom: 20px;">Dashboard</h2>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                        <h2 style="margin: 0;">Dashboard</h2>
+                        <select id="dashboardYearFilter" onchange="loadDashboardStats(true)" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px;">
+                            <option value="2024">2024</option>
+                            <option value="2025">2025</option>
+                            <option value="2026" selected>2026</option>
+                            <option value="2027">2027</option>
+                        </select>
+                    </div>
                     <div class="stats-grid" id="statsGrid"></div>
                 </div>
 
@@ -49,7 +57,10 @@
                     <div class="toolbar">
                         <button class="btn btn-success btn-sm" onclick="showBudgetModal()">Tambah/Edit Budget</button>
                         <select id="budgetYearFilter" onchange="loadBudgets()">
-                            <!-- Years will be populated dynamically -->
+                            <option value="2024">2024</option>
+                            <option value="2025">2025</option>
+                            <option value="2026" selected>2026</option>
+                            <option value="2027">2027</option>
                         </select>
                     </div>
                     <div class="table-container">
@@ -57,9 +68,9 @@
                             <thead>
                                 <tr>
                                     <th>No</th>
-                                    <th>Nama KUA</th>
+                                    <th>KUA</th>
                                     <th>Tahun</th>
-                                    <th>Budget Tahunan</th>
+                                    <th>Budget</th>
                                     <th>Total RPD</th>
                                     <th>Total Realisasi</th>
                                     <th>Sisa Budget</th>
@@ -71,78 +82,16 @@
                     </div>
                 </div>
 
-                <!-- User Management Page (Admin) -->
-                <div class="page" id="userManagementPage">
-                    <h2 style="margin-bottom: 20px;">Manajemen Pengguna</h2>
-                    <button class="btn btn-success btn-sm" onclick="showUserModal()" style="margin-bottom: 20px;">Tambah Pengguna</button>
-                    <div class="table-container">
-                        <table id="userTable">
-                            <thead>
-                                <tr>
-                                    <th>No</th>
-                                    <th>Username</th>
-                                    <th>Nama</th>
-                                    <th>Role</th>
-                                    <th>KUA</th>
-                                    <th>Status</th>
-                                    <th>Aksi</th>
-                                </tr>
-                            </thead>
-                            <tbody></tbody>
-                        </table>
-                    </div>
-                </div>
-
-                <!-- RPD Config Page (Admin) -->
-                <div class="page" id="rpdConfigPage">
-                    <h2 style="margin-bottom: 20px;">Konfigurasi RPD & Realisasi</h2>
-                    
-                    <div class="summary-box">
-                        <h3 style="margin-bottom: 15px; color: #667eea;">📋 Konfigurasi RPD</h3>
-                        <div class="form-group">
-                            <label>Status Pengisian RPD</label>
-                            <select id="rpdStatus">
-                                <option value="open">Buka</option>
-                                <option value="closed">Tutup</option>
-                            </select>
-                        </div>
-                        <p style="color: #666; font-size: 13px; font-style: italic; margin-top: 10px;">
-                            ℹ️ RPD tidak memerlukan upload file
-                        </p>
-                    </div>
-                    
-                    <div class="summary-box" style="margin-top: 20px;">
-                        <h3 style="margin-bottom: 15px; color: #667eea;">✅ Konfigurasi Realisasi</h3>
-                        <div class="form-group">
-                            <label>Status Pengisian Realisasi</label>
-                            <select id="realisasiStatus">
-                                <option value="open">Buka</option>
-                                <option value="closed">Tutup</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label>Maksimal Ukuran File (MB)</label>
-                            <input type="number" id="realisasiMaxFileSize" value="5" min="1" max="50">
-                        </div>
-                        <div class="form-group">
-                            <label>Maksimal Jumlah File</label>
-                            <input type="number" id="realisasiMaxFiles" value="10" min="1" max="20">
-                        </div>
-                    </div>
-                    
-                    <button class="btn" onclick="saveConfig()" style="margin-top: 20px;">Simpan Konfigurasi</button>
-                </div>
-
-                <!-- RPD Page (Operator & Admin) -->
+                <!-- RPD Page -->
                 <div class="page" id="rpdPage">
                     <h2 style="margin-bottom: 20px;">Rencana Penggunaan Dana (RPD)</h2>
                     <div class="toolbar">
                         <button class="btn btn-success btn-sm" onclick="showRPDModal()">Tambah RPD</button>
                         <select id="rpdYearFilter" onchange="loadRPDs()">
-                            <!-- Years will be populated dynamically -->
-                        </select>
-                        <select id="rpdKuaFilter" onchange="loadRPDs()" style="display: none;">
-                            <option value="">Semua KUA</option>
+                            <option value="2024">2024</option>
+                            <option value="2025">2025</option>
+                            <option value="2026" selected>2026</option>
+                            <option value="2027">2027</option>
                         </select>
                     </div>
                     <div class="table-container">
@@ -153,8 +102,8 @@
                                     <th class="th-kua" style="display: none;">KUA</th>
                                     <th>Bulan</th>
                                     <th>Tahun</th>
-                                    <th>Total RPD</th>
-                                    <th>Tanggal Dibuat</th>
+                                    <th>Total</th>
+                                    <th>Dibuat</th>
                                     <th>Aksi</th>
                                 </tr>
                             </thead>
@@ -163,16 +112,16 @@
                     </div>
                 </div>
 
-                <!-- Realisasi Page (Operator & Admin) -->
+                <!-- Realisasi Page -->
                 <div class="page" id="realisasiPage">
-                    <h2 style="margin-bottom: 20px;">Laporan Realisasi</h2>
+                    <h2 style="margin-bottom: 20px;">Realisasi BOP</h2>
                     <div class="toolbar">
                         <button class="btn btn-success btn-sm" onclick="showRealisasiModal()">Tambah Realisasi</button>
                         <select id="realisasiYearFilter" onchange="loadRealisasis()">
-                            <!-- Years will be populated dynamically -->
-                        </select>
-                        <select id="realisasiKuaFilter" onchange="loadRealisasis()" style="display: none;">
-                            <option value="">Semua KUA</option>
+                            <option value="2024">2024</option>
+                            <option value="2025">2025</option>
+                            <option value="2026" selected>2026</option>
+                            <option value="2027">2027</option>
                         </select>
                     </div>
                     <div class="table-container">
@@ -183,9 +132,9 @@
                                     <th class="th-kua" style="display: none;">KUA</th>
                                     <th>Bulan</th>
                                     <th>Tahun</th>
-                                    <th>Total Realisasi</th>
+                                    <th>Total</th>
                                     <th>Status</th>
-                                    <th>Tanggal</th>
+                                    <th>Dibuat</th>
                                     <th>Aksi</th>
                                 </tr>
                             </thead>
@@ -194,40 +143,150 @@
                     </div>
                 </div>
 
-                <!-- Laporan Page (Admin) -->
+                <!-- Verifikasi Page (Admin) -->
+                <div class="page" id="verifikasiPage">
+                    <h2 style="margin-bottom: 20px;">Verifikasi Realisasi</h2>
+                    <div class="toolbar">
+                        <select id="verifikasiYearFilter" onchange="loadVerifikasi()">
+                            <option value="2024">2024</option>
+                            <option value="2025">2025</option>
+                            <option value="2026" selected>2026</option>
+                            <option value="2027">2027</option>
+                        </select>
+                        <select id="verifikasiKUAFilter" onchange="loadVerifikasi()">
+                            <option value="">Semua KUA</option>
+                        </select>
+                        <select id="verifikasiStatusFilter" onchange="loadVerifikasi()">
+                            <option value="">Semua Status</option>
+                            <option value="Pending">Pending</option>
+                            <option value="Diterima">Diterima</option>
+                            <option value="Ditolak">Ditolak</option>
+                        </select>
+                    </div>
+                    <div class="table-container">
+                        <table id="verifikasiTable">
+                            <thead>
+                                <tr>
+                                    <th>No</th>
+                                    <th>KUA</th>
+                                    <th>Bulan</th>
+                                    <th>Tahun</th>
+                                    <th>Total</th>
+                                    <th>Status</th>
+                                    <th>Dibuat</th>
+                                    <th>Aksi</th>
+                                </tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- RPD Config Page (Admin) -->
+                <div class="page" id="rpdConfigPage">
+                    <h2 style="margin-bottom: 20px;">Konfigurasi RPD</h2>
+                    <div class="config-form">
+                        <div class="form-group">
+                            <label>Status Pengisian RPD</label>
+                            <select id="rpdStatus">
+                                <option value="open">Buka</option>
+                                <option value="closed">Tutup</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Status Pengisian Realisasi</label>
+                            <select id="realisasiStatus">
+                                <option value="open">Buka</option>
+                                <option value="closed">Tutup</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Maksimal Ukuran File (MB)</label>
+                            <input type="number" id="realisasiMaxFileSize" min="1" max="50" value="5">
+                        </div>
+                        <div class="form-group">
+                            <label>Maksimal Jumlah File</label>
+                            <input type="number" id="realisasiMaxFiles" min="1" max="20" value="10">
+                        </div>
+                        <button class="btn" onclick="saveConfig()">Simpan Konfigurasi</button>
+                    </div>
+                </div>
+
+                <!-- Laporan Page -->
                 <div class="page" id="laporanPage">
-                    <h2 style="margin-bottom: 20px;">Laporan & Ekspor</h2>
+                    <h2 style="margin-bottom: 20px;">Laporan BOP</h2>
                     
+                    <!-- 1. Download RPD per Tahun -->
                     <div class="summary-box">
-                        <h3 style="margin-bottom: 15px; color: #667eea;">📊 Ekspor Budget</h3>
-                        <select id="exportBudgetYear" style="margin-bottom: 10px;"></select>
+                        <h3 style="margin-bottom: 15px;">📊 RPD per Tahun</h3>
+                        <p style="font-size: 12px; color: #666; margin-bottom: 10px;">Menampilkan alokasi budget dan RPD per bulan untuk setiap KUA</p>
+                        <div style="display: flex; gap: 10px; margin-bottom: 10px;">
+                            <select id="exportRPDPerYearKua" style="flex: 1;">
+                                <option value="">Semua KUA</option>
+                            </select>
+                            <select id="exportRPDPerYearYear" style="flex: 1;">
+                                <option value="2024">2024</option>
+                                <option value="2025">2025</option>
+                                <option value="2026" selected>2026</option>
+                                <option value="2027">2027</option>
+                            </select>
+                        </div>
                         <div style="display: flex; gap: 10px;">
-                            <button class="btn btn-sm" onclick="exportBudgetData('excel')">📥 Excel</button>
-                            <button class="btn btn-sm" onclick="exportBudgetData('pdf')">📄 PDF</button>
+                            <button class="btn btn-sm" onclick="downloadRPDPerYear('excel')">📥 Excel</button>
+                            <button class="btn btn-sm" onclick="downloadRPDPerYear('pdf')">📄 PDF</button>
                         </div>
                     </div>
 
+                    <!-- 2. RPD Detail Semua KUA (Setahun) -->
                     <div class="summary-box" style="margin-top: 20px;">
-                        <h3 style="margin-bottom: 15px; color: #667eea;">📋 Ekspor RPD</h3>
-                        <select id="exportRPDYear" style="margin-bottom: 10px;"></select>
-                        <select id="exportRPDKua" style="margin-bottom: 10px;">
-                            <option value="">Semua KUA</option>
+                        <h3 style="margin-bottom: 15px;">📋 RPD Detail Semua KUA (Setahun)</h3>
+                        <p style="font-size: 12px; color: #666; margin-bottom: 10px;">Menampilkan detail per akun untuk semua KUA</p>
+                        <select id="exportRPDDetailYear" style="margin-bottom: 10px; width: 100%;">
+                            <option value="2024">2024</option>
+                            <option value="2025">2025</option>
+                            <option value="2026" selected>2026</option>
+                            <option value="2027">2027</option>
                         </select>
                         <div style="display: flex; gap: 10px;">
-                            <button class="btn btn-sm" onclick="exportRPDData('excel')">📥 Excel</button>
-                            <button class="btn btn-sm" onclick="exportRPDData('pdf')">📄 PDF</button>
+                            <button class="btn btn-sm" onclick="downloadRPDDetailYear('excel')">📥 Excel</button>
+                            <button class="btn btn-sm" onclick="downloadRPDDetailYear('pdf')">📄 PDF</button>
                         </div>
                     </div>
 
+                    <!-- 3. Realisasi per Tahun -->
                     <div class="summary-box" style="margin-top: 20px;">
-                        <h3 style="margin-bottom: 15px; color: #667eea;">✅ Ekspor Realisasi</h3>
-                        <select id="exportRealisasiYear" style="margin-bottom: 10px;"></select>
-                        <select id="exportRealisasiKua" style="margin-bottom: 10px;">
-                            <option value="">Semua KUA</option>
+                        <h3 style="margin-bottom: 15px;">💰 Realisasi per Tahun</h3>
+                        <p style="font-size: 12px; color: #666; margin-bottom: 10px;">Menampilkan alokasi budget dan Realisasi per bulan untuk setiap KUA</p>
+                        <div style="display: flex; gap: 10px; margin-bottom: 10px;">
+                            <select id="exportRealisasiPerYearKua" style="flex: 1;">
+                                <option value="">Semua KUA</option>
+                            </select>
+                            <select id="exportRealisasiPerYearYear" style="flex: 1;">
+                                <option value="2024">2024</option>
+                                <option value="2025">2025</option>
+                                <option value="2026" selected>2026</option>
+                                <option value="2027">2027</option>
+                            </select>
+                        </div>
+                        <div style="display: flex; gap: 10px;">
+                            <button class="btn btn-sm" onclick="downloadRealisasiPerYear('excel')">📥 Excel</button>
+                            <button class="btn btn-sm" onclick="downloadRealisasiPerYear('pdf')">📄 PDF</button>
+                        </div>
+                    </div>
+
+                    <!-- 4. Realisasi Detail Semua KUA (Setahun) -->
+                    <div class="summary-box" style="margin-top: 20px;">
+                        <h3 style="margin-bottom: 15px;">📑 Realisasi Detail Semua KUA (Setahun)</h3>
+                        <p style="font-size: 12px; color: #666; margin-bottom: 10px;">Menampilkan detail per akun untuk semua KUA</p>
+                        <select id="exportRealisasiDetailYear" style="margin-bottom: 10px; width: 100%;">
+                            <option value="2024">2024</option>
+                            <option value="2025">2025</option>
+                            <option value="2026" selected>2026</option>
+                            <option value="2027">2027</option>
                         </select>
                         <div style="display: flex; gap: 10px;">
-                            <button class="btn btn-sm" onclick="exportRealisasiData('excel')">📥 Excel</button>
-                            <button class="btn btn-sm" onclick="exportRealisasiData('pdf')">📄 PDF</button>
+                            <button class="btn btn-sm" onclick="downloadRealisasiDetailYear('excel')">📥 Excel</button>
+                            <button class="btn btn-sm" onclick="downloadRealisasiDetailYear('pdf')">📄 PDF</button>
                         </div>
                     </div>
                 </div>
@@ -235,7 +294,7 @@
         </div>
     </div>
 
-    <!-- Modals will be added by JavaScript -->
+    <!-- Modals will be created dynamically by JavaScript -->
     
     <!-- Load Config & Scripts -->
     <script src="js/config.js"></script>

@@ -47,6 +47,57 @@ function showDashboard() {
     showPage('dashboardPage');
 }
 
+function populateYearFilters() {
+    const currentYear = new Date().getFullYear();
+    const years = [];
+    for (let i = currentYear - 2; i <= currentYear + 1; i++) {
+        years.push(i);
+    }
+
+    // Budget Year Filter
+    const budgetYearFilter = document.getElementById('budgetYearFilter');
+    if (budgetYearFilter) {
+        budgetYearFilter.innerHTML = years.map(year => 
+            `<option value="${year}" ${year === currentYear ? 'selected' : ''}>${year}</option>`
+        ).join('');
+    }
+
+    // RPD Year Filter
+    const rpdYearFilter = document.getElementById('rpdYearFilter');
+    if (rpdYearFilter) {
+        rpdYearFilter.innerHTML = years.map(year => 
+            `<option value="${year}" ${year === currentYear ? 'selected' : ''}>${year}</option>`
+        ).join('');
+    }
+
+    // Realisasi Year Filter
+    const realisasiYearFilter = document.getElementById('realisasiYearFilter');
+    if (realisasiYearFilter) {
+        realisasiYearFilter.innerHTML = years.map(year => 
+            `<option value="${year}" ${year === currentYear ? 'selected' : ''}>${year}</option>`
+        ).join('');
+    }
+
+    // Verifikasi Year Filter
+    const verifikasiYearFilter = document.getElementById('verifikasiYearFilter');
+    if (verifikasiYearFilter) {
+        verifikasiYearFilter.innerHTML = years.map(year => 
+            `<option value="${year}" ${year === currentYear ? 'selected' : ''}>${year}</option>`
+        ).join('');
+    }
+
+    // Verifikasi KUA Filter
+    const verifikasiKUAFilter = document.getElementById('verifikasiKUAFilter');
+    if (verifikasiKUAFilter) {
+        verifikasiKUAFilter.innerHTML = '<option value="">Semua KUA</option>' + 
+            APP_CONFIG.KUA_LIST.map(kua => `<option value="${kua}">${kua}</option>`).join('');
+    }
+}
+
+function getMonthIndex(monthName) {
+    return APP_CONFIG.MONTHS.indexOf(monthName);
+}
+
 function buildNavMenu() {
     console.log('[NAV] Building navigation menu');
     const navMenu = document.getElementById('navMenu');
@@ -60,16 +111,14 @@ function buildNavMenu() {
             { id: 'budgetingPage', label: 'Budget' },
             { id: 'rpdPage', label: 'Lihat RPD' },
             { id: 'verifikasiPage', label: 'Verifikasi' },
-            { id: 'reportsPage', label: 'Laporan' },
-            { id: 'userManagementPage', label: 'Pengguna' },
-            { id: 'rpdConfigPage', label: 'Konfigurasi RPD' }
+            { id: 'laporanPage', label: 'Laporan' },
+            { id: 'rpdConfigPage', label: 'Konfigurasi' }
         ];
     } else {
         menuItems = [
             { id: 'dashboardPage', label: 'Dashboard' },
             { id: 'rpdPage', label: 'RPD' },
-            { id: 'realisasiPage', label: 'Realisasi' },
-            { id: 'changePasswordPage', label: 'Ubah Password' }
+            { id: 'realisasiPage', label: 'Realisasi' }
         ];
     }
 
@@ -214,9 +263,6 @@ function showPage(pageId) {
         case 'budgetingPage':
             loadBudgets();
             break;
-        case 'userManagementPage':
-            loadUsers();
-            break;
         case 'rpdConfigPage':
             loadRPDConfig();
             break;
@@ -234,9 +280,29 @@ function showPage(pageId) {
             if (currentUser.role === 'Admin') {
                 startVerifikasiAutoRefresh();
             }
+            // Populate verifikasi KUA filter
+            const verifikasiKUAFilter = document.getElementById('verifikasiKUAFilter');
+            if (verifikasiKUAFilter && verifikasiKUAFilter.children.length === 1) {
+                verifikasiKUAFilter.innerHTML = '<option value="">Semua KUA</option>' +
+                    APP_CONFIG.KUA_LIST.map(kua => `<option value="${kua}">${kua}</option>`).join('');
+            }
             break;
-        case 'reportsPage':
-            initializeReportsPage();
+        case 'laporanPage':
+            // Populate KUA selects for all export functions
+            const exportRPDPerYearKua = document.getElementById('exportRPDPerYearKua');
+            const exportRealisasiPerYearKua = document.getElementById('exportRealisasiPerYearKua');
+            
+            if (exportRPDPerYearKua && exportRPDPerYearKua.children.length === 1) {
+                exportRPDPerYearKua.innerHTML += APP_CONFIG.KUA_LIST.map(kua => 
+                    `<option value="${kua}">${kua}</option>`
+                ).join('');
+            }
+            
+            if (exportRealisasiPerYearKua && exportRealisasiPerYearKua.children.length === 1) {
+                exportRealisasiPerYearKua.innerHTML += APP_CONFIG.KUA_LIST.map(kua => 
+                    `<option value="${kua}">${kua}</option>`
+                ).join('');
+            }
             break;
     }
 }
@@ -252,10 +318,15 @@ async function loadDashboardStats(forceRefresh = false) {
         }
     }
     
+    // Get year from filter
+    const yearFilter = document.getElementById('dashboardYearFilter');
+    const year = yearFilter ? yearFilter.value : new Date().getFullYear();
+    
     try {
         const stats = await apiCall('getDashboardStats', {
             role: currentUser.role,
-            kua: currentUser.kua
+            kua: currentUser.kua,
+            year: parseInt(year)
         });
         setCache('dashboardStats', stats);
         displayDashboardStats(stats);
@@ -359,7 +430,16 @@ function displayBudgets(budgets) {
 
 function showBudgetModal(budget = null) {
     console.log('[BUDGET MODAL]', budget);
-    const modal = document.getElementById('modal');
+    
+    // Create modal if doesn't exist
+    let modal = document.getElementById('modal');
+    if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'modal';
+        modal.className = 'modal';
+        document.body.appendChild(modal);
+    }
+    
     const currentYear = new Date().getFullYear();
     
     modal.innerHTML = `
@@ -468,7 +548,19 @@ function displayUsers(users) {
 
 function showUserModal(user = null) {
     console.log('[USER MODAL]', user);
-    const modal = document.getElementById('modal');
+    let modal = document.getElementById('modal');
+
+    if (!modal) {
+
+        modal = document.createElement('div');
+
+        modal.id = 'modal';
+
+        modal.className = 'modal';
+
+        document.body.appendChild(modal);
+
+    }
     modal.innerHTML = `
         <div class="modal-content">
             <div class="modal-header">
@@ -792,8 +884,6 @@ function displayRPDs(rpds) {
             <td>${rpd.year}</td>
             <td>${formatCurrency(rpd.total)}</td>
             <td>${formatDate(rpd.createdAt)}</td>
-            <td>${formatDate(rpd.updatedAt)}</td>
-            <td><span class="badge badge-info">Tersimpan</span></td>
             <td>
                 <div class="action-buttons">
                     <button class="btn btn-sm" onclick='viewRPD(${rpdEscaped})'>Lihat</button>
@@ -808,7 +898,7 @@ function displayRPDs(rpds) {
         <tr style="background: #f8f9fa; font-weight: bold;">
             <td colspan="${currentUser.role === 'Admin' ? '4' : '3'}" style="text-align: right;">TOTAL:</td>
             <td>${formatCurrency(totalNominal)}</td>
-            <td colspan="${currentUser.role === 'Admin' ? '3' : '3'}"></td>
+            <td colspan="2"></td>
         </tr>
     `;
     
@@ -865,7 +955,15 @@ async function showRPDModal(rpd = null) {
         console.error('[RPD ERROR] Failed to get budget:', error);
     }
 
-    const modal = document.getElementById('modal');
+    // Create modal if doesn't exist
+    let modal = document.getElementById('modal');
+    if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'modal';
+        modal.className = 'modal';
+        document.body.appendChild(modal);
+    }
+    
     const rpdData = rpd ? rpd.data : {};
     const currentYear = new Date().getFullYear();
     
@@ -912,7 +1010,7 @@ async function showRPDModal(rpd = null) {
                 </div>
                 
                 <div id="rpdParameters">
-                    ${Object.entries(APP_CONFIG.RPD_PARAMETERS).map(([code, param]) => `
+                    ${Object.entries(APP_CONFIG.BOP.RPD_PARAMETERS).map(([code, param]) => `
                         <div class="rpd-item">
                             <h4>${code} - ${param.name}</h4>
                             ${param.items.map(item => `
@@ -987,7 +1085,7 @@ async function showRPDModal(rpd = null) {
         const rpdData = {};
         let total = 0;
         
-        Object.keys(APP_CONFIG.RPD_PARAMETERS).forEach(code => {
+        Object.keys(APP_CONFIG.BOP.RPD_PARAMETERS).forEach(code => {
             rpdData[code] = {};
             const items = document.querySelectorAll(`.rpd-input[data-code="${code}"]`);
             items.forEach(input => {
@@ -1045,11 +1143,19 @@ function calculateRPDTotal() {
 
 function viewRPD(rpd) {
     console.log('[RPD] Viewing RPD:', rpd);
-    const modal = document.getElementById('modal');
+    
+    // Create modal if doesn't exist
+    let modal = document.getElementById('modal');
+    if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'modal';
+        modal.className = 'modal';
+        document.body.appendChild(modal);
+    }
     
     let detailHTML = '';
     Object.entries(rpd.data).forEach(([code, items]) => {
-        const param = APP_CONFIG.RPD_PARAMETERS[code];
+        const param = APP_CONFIG.BOP.RPD_PARAMETERS[code];
         detailHTML += `<div class="rpd-item">
             <h4>${code} - ${param.name}</h4>`;
         Object.entries(items).forEach(([item, value]) => {
@@ -1124,16 +1230,16 @@ function displayRealisasis(realisasis) {
         return `
         <tr>
             <td>${index + 1}</td>
+            ${currentUser.role === 'Admin' ? `<td>${real.kua}</td>` : ''}
             <td>${real.month}</td>
             <td>${real.year}</td>
             <td>${formatCurrency(real.total)}</td>
-            <td>${formatDate(real.createdAt)}</td>
-            <td>${formatDate(real.updatedAt)}</td>
             <td><span class="badge badge-${statusClass}">${real.status}</span></td>
+            <td>${formatDate(real.createdAt)}</td>
             <td>
                 <div class="action-buttons">
                     <button class="btn btn-sm" onclick='viewRealisasi(${realEscaped})'>Lihat</button>
-                    ${real.status !== 'Diterima' ? `<button class="btn btn-sm" onclick='editRealisasi(${realEscaped})'>Edit</button>` : ''}
+                    ${real.status !== 'Diterima' && currentUser.role !== 'Admin' ? `<button class="btn btn-sm" onclick='editRealisasi(${realEscaped})'>Edit</button>` : ''}
                 </div>
             </td>
         </tr>
@@ -1142,9 +1248,9 @@ function displayRealisasis(realisasis) {
     
     const totalRow = `
         <tr style="background: #f8f9fa; font-weight: bold;">
-            <td colspan="3" style="text-align: right;">TOTAL:</td>
+            <td colspan="${currentUser.role === 'Admin' ? '4' : '3'}" style="text-align: right;">TOTAL:</td>
             <td>${formatCurrency(totalNominal)}</td>
-            <td colspan="4"></td>
+            <td colspan="3"></td>
         </tr>
     `;
     
@@ -1198,7 +1304,15 @@ async function showRealisasiModal(realisasi = null) {
         console.error('[REALISASI ERROR] Failed to check config', error);
     }
 
-    const modal = document.getElementById('modal');
+    // Create modal if doesn't exist
+    let modal = document.getElementById('modal');
+    if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'modal';
+        modal.className = 'modal';
+        document.body.appendChild(modal);
+    }
+    
     const currentYear = new Date().getFullYear();
     
     modal.innerHTML = `
@@ -1302,7 +1416,14 @@ async function showRealisasiForm(rpd, realisasi = null) {
         console.warn('[REALISASI] Failed to get config for file info');
     }
     
-    const modal = document.getElementById('modal');
+    // Create modal if doesn't exist
+    let modal = document.getElementById('modal');
+    if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'modal';
+        modal.className = 'modal';
+        document.body.appendChild(modal);
+    }
     
     modal.innerHTML = `
         <div class="modal-content" style="max-width: 900px;">
@@ -1420,7 +1541,7 @@ async function showRealisasiInputs(rpd, realisasi = null) {
     let parametersHTML = '';
     
     Object.entries(rpd.data).forEach(([code, items]) => {
-        const param = APP_CONFIG.RPD_PARAMETERS[code];
+        const param = APP_CONFIG.BOP.RPD_PARAMETERS[code];
         parametersHTML += `<div class="rpd-item">
             <h4>${code} - ${param.name}</h4>`;
         
@@ -1970,11 +2091,29 @@ function viewRealisasi(realisasi) {
     console.log('[REALISASI] Viewing realisasi:', realisasi);
     console.log('[REALISASI] Files count:', realisasi.files ? realisasi.files.length : 0);
     
-    const modal = document.getElementById('modal');
+    let modal = document.getElementById('modal');
+
+    
+    if (!modal) {
+
+    
+        modal = document.createElement('div');
+
+    
+        modal.id = 'modal';
+
+    
+        modal.className = 'modal';
+
+    
+        document.body.appendChild(modal);
+
+    
+    }
     
     let detailHTML = '';
     Object.entries(realisasi.data).forEach(([code, items]) => {
-        const param = APP_CONFIG.RPD_PARAMETERS[code];
+        const param = APP_CONFIG.BOP.RPD_PARAMETERS[code];
         detailHTML += `<div class="rpd-item">
             <h4>${code} - ${param.name}</h4>`;
         Object.entries(items).forEach(([item, value]) => {
@@ -2184,7 +2323,7 @@ function displayVerifikasi(realisasis, filters) {
     const tbody = document.querySelector('#verifikasiTable tbody');
     
     if (!tbody) {
-        console.error('[VERIFIKASI] Table body not found');
+        console.warn('[VERIFIKASI] Table body not found - verifikasi page may not be in HTML');
         return;
     }
     
@@ -2256,11 +2395,29 @@ function verifyRealisasi(realisasi) {
     console.log('[VERIFIKASI] Verifying realisasi:', realisasi);
     console.log('[VERIFIKASI] Files count:', realisasi.files ? realisasi.files.length : 0);
     
-    const modal = document.getElementById('modal');
+    let modal = document.getElementById('modal');
+
+    
+    if (!modal) {
+
+    
+        modal = document.createElement('div');
+
+    
+        modal.id = 'modal';
+
+    
+        modal.className = 'modal';
+
+    
+        document.body.appendChild(modal);
+
+    
+    }
     
     let detailHTML = '';
     Object.entries(realisasi.data).forEach(([code, items]) => {
-        const param = APP_CONFIG.RPD_PARAMETERS[code];
+        const param = APP_CONFIG.BOP.RPD_PARAMETERS[code];
         detailHTML += `<div class="rpd-item">
             <h4>${code} - ${param.name}</h4>`;
         Object.entries(items).forEach(([item, value]) => {
@@ -2589,7 +2746,25 @@ function downloadBase64File(base64Data, fileName, mimeType) {
 function showExportModal(type) {
     console.log(`[EXPORT MODAL] Type: ${type}`);
     
-    const modal = document.getElementById('modal');
+    let modal = document.getElementById('modal');
+
+    
+    if (!modal) {
+
+    
+        modal = document.createElement('div');
+
+    
+        modal.id = 'modal';
+
+    
+        modal.className = 'modal';
+
+    
+        document.body.appendChild(modal);
+
+    
+    }
     const currentYear = new Date().getFullYear();
     const years = [];
     for (let i = currentYear - 2; i <= currentYear + 1; i++) {
@@ -2717,25 +2892,21 @@ function downloadDriveFile(url, filename) {
     link.click();
 }
 
-async function downloadFile(url, filename) {
-    try {
-        const response = await fetch(url);
-        const blob = await response.blob();
-        const link = document.createElement('a');
-        link.href = window.URL.createObjectURL(blob);
-        link.download = filename;
-        link.click();
-        window.URL.revokeObjectURL(link.href);
-    } catch (error) {
-        console.error('[DOWNLOAD ERROR]', error);
-        // Fallback to opening in new tab
-        window.open(url, '_blank');
-    }
-}
-
 function closeModal() {
     console.log('[MODAL] Closing modal');
-    const modal = document.getElementById('modal');
+    let modal = document.getElementById('modal');
+
+    if (!modal) {
+
+        modal = document.createElement('div');
+
+        modal.id = 'modal';
+
+        modal.className = 'modal';
+
+        document.body.appendChild(modal);
+
+    }
     if (modal) {
         modal.classList.remove('active');
         modal.innerHTML = '';
@@ -2744,7 +2915,19 @@ function closeModal() {
 
 // Click outside modal to close
 window.addEventListener('load', function() {
-    const modal = document.getElementById('modal');
+    let modal = document.getElementById('modal');
+
+    if (!modal) {
+
+        modal = document.createElement('div');
+
+        modal.id = 'modal';
+
+        modal.className = 'modal';
+
+        document.body.appendChild(modal);
+
+    }
     if (modal) {
         modal.addEventListener('click', function(e) {
             if (e.target === this) {
@@ -2823,7 +3006,7 @@ async function downloadRPDDetailYear(format) {
     }
     
     try {
-        const result = await apiCall('exportRPDDetailAllYear', {
+        const result = await apiCall('exportRPDDetailYear', {
             year: year,
             format: format
         });
@@ -3002,7 +3185,7 @@ async function downloadRealisasiDetailYear(format) {
     }
     
     try {
-        const result = await apiCall('exportRealisasiDetailAllYear', {
+        const result = await apiCall('exportRealisasiDetailYear', {
             year: year,
             format: format
         });
@@ -3065,3 +3248,95 @@ function stopVerifikasiAutoRefresh() {
         verifikasiAutoRefresh = null;
     }
 }
+// ===== EXPORT FUNCTIONS =====
+
+// 1. Download RPD per Tahun
+async function downloadRPDPerYear(format) {
+    const kua = document.getElementById('exportRPDPerYearKua').value;
+    const year = document.getElementById('exportRPDPerYearYear').value;
+    
+    try {
+        showLoading();
+        const result = await apiCall('exportRPDPerYear', {
+            kua: kua,
+            year: parseInt(year),
+            format: format
+        });
+        
+        // Use downloadFile from config.js which handles base64
+        window.window.downloadFile(result.fileData, result.fileName, result.mimeType);
+        showNotification('File berhasil diunduh', 'success');
+    } catch (error) {
+        showNotification('Gagal mengunduh file: ' + error.message, 'error');
+    } finally {
+        hideLoading();
+    }
+}
+
+// 2. Download RPD Detail Year
+async function downloadRPDDetailYear(format) {
+    const year = document.getElementById('exportRPDDetailYear').value;
+    
+    try {
+        showLoading();
+        const result = await apiCall('exportRPDDetailYear', {
+            year: parseInt(year),
+            format: format
+        });
+        
+        window.downloadFile(result.fileData, result.fileName, result.mimeType);
+        showNotification('File berhasil diunduh', 'success');
+    } catch (error) {
+        showNotification('Gagal mengunduh file: ' + error.message, 'error');
+    } finally {
+        hideLoading();
+    }
+}
+
+// 3. Download Realisasi per Tahun
+async function downloadRealisasiPerYear(format) {
+    const kua = document.getElementById('exportRealisasiPerYearKua').value;
+    const year = document.getElementById('exportRealisasiPerYearYear').value;
+    
+    try {
+        showLoading();
+        const result = await apiCall('exportRealisasiPerYear', {
+            kua: kua,
+            year: parseInt(year),
+            format: format
+        });
+        
+        window.downloadFile(result.fileData, result.fileName, result.mimeType);
+        showNotification('File berhasil diunduh', 'success');
+    } catch (error) {
+        showNotification('Gagal mengunduh file: ' + error.message, 'error');
+    } finally {
+        hideLoading();
+    }
+}
+
+// 4. Download Realisasi Detail Year
+async function downloadRealisasiDetailYear(format) {
+    const year = document.getElementById('exportRealisasiDetailYear').value;
+    
+    try {
+        showLoading();
+        const result = await apiCall('exportRealisasiDetailYear', {
+            year: parseInt(year),
+            format: format
+        });
+        
+        window.downloadFile(result.fileData, result.fileName, result.mimeType);
+        showNotification('File berhasil diunduh', 'success');
+    } catch (error) {
+        showNotification('Gagal mengunduh file: ' + error.message, 'error');
+    } finally {
+        hideLoading();
+    }
+}
+
+// Expose to window
+window.downloadRPDPerYear = downloadRPDPerYear;
+window.downloadRPDDetailYear = downloadRPDDetailYear;
+window.downloadRealisasiPerYear = downloadRealisasiPerYear;
+window.downloadRealisasiDetailYear = downloadRealisasiDetailYear;

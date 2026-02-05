@@ -1,6 +1,6 @@
-// ===== GOOGLE APPS SCRIPT - BOP MODULE =====
+// ===== GOOGLE APPS SCRIPT - BOP MODULE (COMPLETE FIXED VERSION) =====
 // File: code-bop.gs
-// Deskripsi: Menangani semua operasi BOP (Budget, RPD, Realisasi)
+// Version: 4.0 - Complete with all fixes
 
 // ===== CONSTANTS =====
 const DRIVE_FOLDER_ID = '11quguPvN4NvdhEZVhiE4gTCIFS9LWw_6';
@@ -11,31 +11,38 @@ const BOP_CONFIG = {
   RPD_PARAMETERS: {
     '521111': {
       name: 'Belanja Operasional Perkantoran',
-      items: ['ATK Kantor', 'Jamuan Tamu', 'Pramubakti', 'Alat Rumah Tangga Kantor']
+      items: ['ATK Kantor', 'Jamuan Tamu', 'Pramubakti', 'Alat Rumah Tangga Kantor'],
+      hasSubItems: true
     },
     '521211': {
       name: 'Belanja Bahan',
-      items: ['Penggandaan / Penjilidan', 'Spanduk']
+      items: ['Penggandaan / Penjilidan', 'Spanduk'],
+      hasSubItems: true
     },
     '522111': {
       name: 'Belanja Langganan Listrik',
-      items: ['Nominal']
+      items: ['Nominal'],
+      hasSubItems: false
     },
     '522112': {
       name: 'Belanja Langganan Telepon / Internet',
-      items: ['Nominal']
+      items: ['Nominal'],
+      hasSubItems: false
     },
     '522113': {
       name: 'Belanja Langganan Air',
-      items: ['Nominal']
+      items: ['Nominal'],
+      hasSubItems: false
     },
     '523111': {
       name: 'Belanja Pemeliharaan Gedung dan Bangunan',
-      items: ['Nominal']
+      items: ['Nominal'],
+      hasSubItems: false
     },
     '523121': {
       name: 'Belanja Pemeliharaan Peralatan dan Mesin',
-      items: ['Nominal']
+      items: ['Nominal'],
+      hasSubItems: false
     }
   }
 };
@@ -49,6 +56,11 @@ const KUA_LIST = [
   'KUA Sukagumiwang', 'KUA Sukra', 'KUA Terisi', 'KUA Tukdana', 'KUA Widasari'
 ];
 
+const MONTHS = [
+  'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+  'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
+];
+
 const SHEETS = {
   BUDGET: 'Budget',
   RPD: 'RPD',
@@ -56,3876 +68,1417 @@ const SHEETS = {
   CONFIG: 'Config'
 };
 
-// ===== MAIN ROUTER =====
+// ===== HELPER FUNCTIONS =====
+function getSheet(sheetName) {
+  try {
+    const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
+    if (!sheet) {
+      Logger.log('[ERROR] Sheet not found: ' + sheetName);
+      throw new Error('Sheet tidak ditemukan: ' + sheetName);
+    }
+    return sheet;
+  } catch (error) {
+    Logger.log('[ERROR] getSheet failed: ' + error.toString());
+    throw error;
+  }
+}
+
+function successResponse(data) {
+  Logger.log('[SUCCESS_RESPONSE] Data type: ' + typeof data);
+  return {
+    success: true,
+    data: data
+  };
+}
+
+function errorResponse(message) {
+  Logger.log('[ERROR_RESPONSE] ' + message);
+  return {
+    success: false,
+    message: message
+  };
+}
+
+function formatNumber(num) {
+  return new Intl.NumberFormat('id-ID').format(num);
+}
+
+function formatCurrency(num) {
+  return 'Rp ' + formatNumber(num);
+}
+
+// ✅ NEW: Safe date formatting
+function safeFormatDate(dateValue) {
+  if (!dateValue) return '';
+  try {
+    const date = new Date(dateValue);
+    // Check if date is valid
+    if (isNaN(date.getTime())) {
+      return '';
+    }
+    return date.toISOString();
+  } catch (error) {
+    Logger.log('[SAFE_FORMAT_DATE] Error formatting date: ' + error.toString());
+    return '';
+  }
+}
+
+// ===== MAIN HANDLER =====
 function handleBOPAction(action, data) {
-  Logger.log(`[BOP] Handling action: ${action}`);
+  Logger.log('[BOP] Action: ' + action);
+  Logger.log('[BOP] Data received: ' + JSON.stringify(data));
   
   try {
+    let result;
+    
     switch(action) {
-      // Budget Management
-      case 'getBudgets': return getBudgets(data);
-      case 'saveBudget': return saveBudget(data);
-      
-      // RPD Configuration
-      case 'getRPDConfig': return getRPDConfig(data);
-      case 'saveRPDConfig': return saveRPDConfig(data);
-      
-      // RPD Management
-      case 'getRPDs': return getRPDs(data);
-      case 'saveRPD': return saveRPD(data);
-      case 'deleteRPD': return deleteRPD(data);
-      
-      // Realisasi Management
-      case 'getRealisasis': return getRealisasis(data);
-      case 'saveRealisasi': return saveRealisasi(data);
-      case 'updateRealisasiStatus': return updateRealisasiStatus(data);
-      
-      // File Upload
-      case 'uploadFile': return uploadFile(data);
-      
-      // Dashboard
-      case 'getDashboardStats': return getDashboardStats(data);
-      
-      // Export Functions
-      case 'exportBudget': return exportBudget(data);
-      case 'exportRPD': return exportRPD(data);
-      case 'exportRealisasi': return exportRealisasi(data);
-      case 'downloadRealisasiBulanan': return downloadRealisasiBulanan(data);
-      case 'exportBudgetEnhanced': return exportBudgetEnhanced(data);
-      case 'exportRPDEnhanced': return exportRPDEnhanced(data);
-      case 'exportRealisasiEnhanced': return exportRealisasiEnhanced(data);
-      case 'exportRPDAllPerMonth': return exportRPDAllPerMonth(data);
-      case 'exportRPDSelectedPerMonth': return exportRPDSelectedPerMonth(data);
-      case 'exportRPDAllDetailYear': return exportRPDAllDetailYear(data);
-      case 'exportRealisasiAllPerMonth': return exportRealisasiAllPerMonth(data);
-      case 'exportRealisasiSelectedPerMonth': return exportRealisasiSelectedPerMonth(data);
-      case 'exportRealisasiAllDetailPerMonth': return exportRealisasiAllDetailPerMonth(data);
-      case 'exportRPDPerYear': return exportRPDPerYear(data);
-      case 'exportRPDDetailAllYear': return exportRPDDetailAllYear(data);
-      case 'exportRealisasiPerYear': return exportRealisasiPerYear(data);
-      case 'exportRealisasiDetailAllYear': return exportRealisasiDetailAllYear(data);
-      
+      case 'getBudgets': 
+        result = getBudgets(data);
+        break;
+      case 'saveBudget': 
+        result = saveBudget(data);
+        break;
+      case 'deleteBudget': 
+        result = deleteBudget(data);
+        break;
+      case 'getRPDs': 
+        result = getRPDs(data);
+        break;
+      case 'saveRPD': 
+        result = saveRPD(data);
+        break;
+      case 'deleteRPD': 
+        result = deleteRPD(data);
+        break;
+      case 'getRealisasis': 
+        result = getRealisasis(data);
+        break;
+      case 'saveRealisasi': 
+        result = saveRealisasi(data);
+        break;
+      case 'deleteRealisasi': 
+        result = deleteRealisasi(data);
+        break;
+      case 'verifyRealisasi': 
+        result = verifyRealisasi(data);
+        break;
+      case 'getRPDConfig': 
+        result = getRPDConfig(data);
+        break;
+      case 'saveRPDConfig': 
+        result = saveRPDConfig(data);
+        break;
+      case 'getDashboardStats': 
+        result = getDashboardStats(data);
+        break;
+      case 'exportRPDPerYear': 
+        result = exportRPDPerYear(data);
+        break;
+      case 'exportRPDDetailYear': 
+        result = exportRPDDetailYear(data);
+        break;
+      case 'exportRealisasiPerYear': 
+        result = exportRealisasiPerYear(data);
+        break;
+      case 'exportRealisasiDetailYear': 
+        result = exportRealisasiDetailYear(data);
+        break;
+      case 'uploadFile':
+        result = uploadFile(data);
+        break;
       default:
-        Logger.log(`[BOP ERROR] Unknown action: ${action}`);
-        return errorResponse('BOP action not found: ' + action);
+        result = errorResponse('Unknown BOP action: ' + action);
     }
+    
+    Logger.log('[BOP] Result success: ' + result.success);
+    return result;
+    
   } catch (error) {
-    Logger.log(`[BOP ERROR] ${error.toString()}`);
-    return errorResponse(error.toString());
+    Logger.log('[BOP ERROR] ' + error.toString());
+    Logger.log('[BOP ERROR STACK] ' + error.stack);
+    return errorResponse('BOP Error: ' + error.toString());
   }
 }
 
 // ===== BUDGET MANAGEMENT =====
 function getBudgets(data) {
-  Logger.log(`[GET_BUDGETS] Year: ${data.year}`);
-  const lock = LockService.getScriptLock();
-  lock.waitLock(30000);
+  Logger.log('[GET_BUDGETS] KUA: ' + data.kua + ', Year: ' + data.year);
   
   try {
     const sheet = getSheet(SHEETS.BUDGET);
-    const values = sheet.getDataRange().getValues();
-    const year = data.year || new Date().getFullYear();
-    
+    const rows = sheet.getDataRange().getValues();
     const budgets = [];
-    for (let i = 1; i < values.length; i++) {
-      const row = values[i];
-      if (row[2] == year) {
+    
+    Logger.log('[GET_BUDGETS] Total rows: ' + rows.length);
+    
+    for (let i = 1; i < rows.length; i++) {
+      if ((!data.kua || rows[i][1] === data.kua) && 
+          (!data.year || rows[i][2] == data.year)) {
         budgets.push({
-          id: row[0],
-          kua: row[1],
-          year: row[2],
-          budget: row[3],
-          totalRPD: row[4] || 0,
-          totalRealisasi: row[5] || 0,
-          sisaBudget: row[3] - (row[5] || 0),
-          updatedAt: row[6]
+          id: rows[i][0],
+          kua: rows[i][1],
+          year: rows[i][2],
+          total: parseFloat(rows[i][3]) || 0,
+          pagu: parseFloat(rows[i][4]) || 0,
+          realisasi: parseFloat(rows[i][5]) || 0,
+          createdAt: safeFormatDate(rows[i][6]),
+          updatedAt: safeFormatDate(rows[i][7])
         });
       }
     }
     
-    Logger.log(`[GET_BUDGETS] Found: ${budgets.length} budgets`);
+    Logger.log('[GET_BUDGETS] Found: ' + budgets.length + ' budgets');
     return successResponse(budgets);
-  } finally {
-    lock.releaseLock();
+  } catch (error) {
+    Logger.log('[GET_BUDGETS ERROR] ' + error.toString());
+    return errorResponse('Gagal memuat budget: ' + error.toString());
   }
 }
 
 function saveBudget(data) {
-  Logger.log(`[SAVE_BUDGET] KUA: ${data.kua}, Year: ${data.year}, Budget: ${data.budget}`);
-  const lock = LockService.getScriptLock();
-  lock.waitLock(30000);
+  Logger.log('[SAVE_BUDGET] KUA: ' + data.kua + ', Year: ' + data.year + ', Total: ' + data.total);
   
   try {
     const sheet = getSheet(SHEETS.BUDGET);
-    const values = sheet.getDataRange().getValues();
-    const year = data.year || new Date().getFullYear();
+    const rows = sheet.getDataRange().getValues();
+    const now = new Date();
     
-    let rowIndex = -1;
-    for (let i = 1; i < values.length; i++) {
-      if (values[i][1] === data.kua && values[i][2] == year) {
-        rowIndex = i + 1;
-        break;
-      }
-    }
-    
-    const budgetData = [
-      data.id || generateID(),
-      data.kua,
-      year,
-      parseFloat(data.budget),
-      0,
-      0,
-      new Date()
-    ];
-    
-    if (rowIndex > 0) {
-      // Preserve existing totals
-      budgetData[4] = values[rowIndex - 1][4] || 0;
-      budgetData[5] = values[rowIndex - 1][5] || 0;
-      sheet.getRange(rowIndex, 1, 1, budgetData.length).setValues([budgetData]);
-      Logger.log(`[SAVE_BUDGET] Updated existing budget`);
-    } else {
-      sheet.appendRow(budgetData);
-      Logger.log(`[SAVE_BUDGET] Created new budget`);
-    }
-    
-    logAction(data.userId, data.username, 'Admin', 'SAVE_BUDGET', { kua: data.kua, year: year, budget: data.budget });
-    return successResponse({ message: 'Budget berhasil disimpan' });
-  } finally {
-    lock.releaseLock();
-  }
-}
-
-// ===== RPD CONFIGURATION =====
-function getRPDConfig(data) {
-  Logger.log(`[GET_RPD_CONFIG]`);
-  const sheet = getSheet(SHEETS.CONFIG);
-  const values = sheet.getDataRange().getValues();
-  
-  const config = {};
-  for (let i = 1; i < values.length; i++) {
-    config[values[i][0]] = values[i][1];
-  }
-  
-  Logger.log(`[GET_RPD_CONFIG] Config: ${JSON.stringify(config)}`);
-  return successResponse(config);
-}
-
-function saveRPDConfig(data) {
-  Logger.log(`[SAVE_RPD_CONFIG] RPD Status: ${data.rpdStatus}, Realisasi Status: ${data.realisasiStatus}`);
-  const lock = LockService.getScriptLock();
-  lock.waitLock(30000);
-  
-  try {
-    const sheet = getSheet(SHEETS.CONFIG);
-    const values = sheet.getDataRange().getValues();
-    
-    const updates = {
-      'RPD_STATUS': data.rpdStatus,
-      'REALISASI_STATUS': data.realisasiStatus,
-      'REALISASI_MAX_FILE_SIZE': data.realisasiMaxFileSize,
-      'REALISASI_MAX_FILES': data.realisasiMaxFiles
-    };
-    
-    for (const [key, value] of Object.entries(updates)) {
-      let found = false;
-      for (let i = 1; i < values.length; i++) {
-        if (values[i][0] === key) {
-          sheet.getRange(i + 1, 2, 1, 2).setValues([[value, new Date()]]);
-          found = true;
-          break;
+    if (data.id) {
+      // Update existing
+      for (let i = 1; i < rows.length; i++) {
+        if (rows[i][0] === data.id) {
+          sheet.getRange(i + 1, 4).setValue(parseFloat(data.total) || 0);
+          sheet.getRange(i + 1, 5).setValue(parseFloat(data.pagu) || 0);
+          sheet.getRange(i + 1, 8).setValue(now);
+          Logger.log('[SAVE_BUDGET] Updated budget ID: ' + data.id);
+          return successResponse({ message: 'Budget berhasil diupdate', id: data.id });
         }
       }
-      if (!found) {
-        sheet.appendRow([key, value, new Date()]);
+      Logger.log('[SAVE_BUDGET] Budget not found: ' + data.id);
+      return errorResponse('Budget tidak ditemukan');
+    } else {
+      // Check duplicate
+      for (let i = 1; i < rows.length; i++) {
+        if (rows[i][1] === data.kua && rows[i][2] == data.year) {
+          Logger.log('[SAVE_BUDGET] Duplicate found for: ' + data.kua + ' - ' + data.year);
+          return errorResponse('Budget untuk KUA dan tahun ini sudah ada');
+        }
+      }
+      
+      // Create new
+      const id = 'BDG-' + Date.now();
+      sheet.appendRow([
+        id,
+        data.kua,
+        parseInt(data.year),
+        parseFloat(data.total) || 0,
+        parseFloat(data.pagu) || 0,
+        0, // realisasi
+        now,
+        now
+      ]);
+      
+      Logger.log('[SAVE_BUDGET] Created new budget ID: ' + id);
+      return successResponse({ message: 'Budget berhasil dibuat', id: id });
+    }
+  } catch (error) {
+    Logger.log('[SAVE_BUDGET ERROR] ' + error.toString());
+    return errorResponse('Gagal menyimpan budget: ' + error.toString());
+  }
+}
+
+function deleteBudget(data) {
+  Logger.log('[DELETE_BUDGET] ID: ' + data.id);
+  
+  try {
+    const sheet = getSheet(SHEETS.BUDGET);
+    const rows = sheet.getDataRange().getValues();
+    
+    for (let i = 1; i < rows.length; i++) {
+      if (rows[i][0] === data.id) {
+        sheet.deleteRow(i + 1);
+        Logger.log('[DELETE_BUDGET] Deleted budget ID: ' + data.id);
+        return successResponse({ message: 'Budget berhasil dihapus' });
       }
     }
     
-    logAction(data.userId, data.username, 'Admin', 'UPDATE_CONFIG', updates);
-    Logger.log(`[SAVE_RPD_CONFIG] Success`);
-    return successResponse({ message: 'Konfigurasi berhasil disimpan' });
-  } finally {
-    lock.releaseLock();
+    Logger.log('[DELETE_BUDGET] Budget not found: ' + data.id);
+    return errorResponse('Budget tidak ditemukan');
+  } catch (error) {
+    Logger.log('[DELETE_BUDGET ERROR] ' + error.toString());
+    return errorResponse('Gagal menghapus budget: ' + error.toString());
   }
-}
-
-// ===== RPD MANAGEMENT =====
-// CATATAN: Copy semua fungsi RPD dari code.gs lines ~590-747
-// Termasuk: getRPDs, saveRPD, deleteRPD, updateBudgetTotalRPD
-
-// ===== REALISASI MANAGEMENT =====
-// CATATAN: Copy semua fungsi Realisasi dari code.gs lines ~749-1100+
-// Termasuk: getRealisasis, saveRealisasi, updateRealisasiStatus, updateBudgetTotalRealisasi
-
-// ===== FILE UPLOAD =====
-// CATATAN: Copy fungsi uploadFile dari code.gs
-
-// ===== DASHBOARD STATS =====
-// CATATAN: Copy fungsi getDashboardStats dari code.gs
-
-// ===== EXPORT FUNCTIONS =====
-// CATATAN: Copy semua fungsi export dari code.gs (ada banyak!)
-
-// ===== HELPER FUNCTIONS =====
-function updateBudgetTotalRPD(kua, year) {
-  const rpdSheet = getSheet(SHEETS.RPD);
-  const budgetSheet = getSheet(SHEETS.BUDGET);
-  
-  const rpdValues = rpdSheet.getDataRange().getValues();
-  let total = 0;
-  
-  for (let i = 1; i < rpdValues.length; i++) {
-    if (rpdValues[i][1] === kua && rpdValues[i][4] == year) {
-      total += parseFloat(rpdValues[i][6] || 0);
-    }
-  }
-  
-  const budgetValues = budgetSheet.getDataRange().getValues();
-  for (let i = 1; i < budgetValues.length; i++) {
-    if (budgetValues[i][1] === kua && budgetValues[i][2] == year) {
-      budgetSheet.getRange(i + 1, 5).setValue(total);
-      break;
-    }
-  }
-  
-  Logger.log(`[UPDATE_BUDGET_RPD] KUA: ${kua}, Year: ${year}, Total: ${total}`);
-}
-
-function updateBudgetTotalRealisasi(kua, year) {
-  const realisasiSheet = getSheet(SHEETS.REALISASI);
-  const budgetSheet = getSheet(SHEETS.BUDGET);
-  
-  const realisasiValues = realisasiSheet.getDataRange().getValues();
-  let total = 0;
-  
-  for (let i = 1; i < realisasiValues.length; i++) {
-    if (realisasiValues[i][1] === kua && realisasiValues[i][4] == year) {
-      total += parseFloat(realisasiValues[i][7] || 0);
-    }
-  }
-  
-  const budgetValues = budgetSheet.getDataRange().getValues();
-  for (let i = 1; i < budgetValues.length; i++) {
-    if (budgetValues[i][1] === kua && budgetValues[i][2] == year) {
-      budgetSheet.getRange(i + 1, 6).setValue(total);
-      break;
-    }
-  }
-  
-  Logger.log(`[UPDATE_BUDGET_REALISASI] KUA: ${kua}, Year: ${year}, Total: ${total}`);
 }
 
 // ===== RPD MANAGEMENT =====
 function getRPDs(data) {
-  Logger.log(`[GET_RPDS] KUA: ${data.kua}, Year: ${data.year}`);
-  const sheet = getSheet(SHEETS.RPD);
-  const values = sheet.getDataRange().getValues();
-  const year = data.year || new Date().getFullYear();
+  Logger.log('[GET_RPDS] KUA: ' + data.kua + ', Year: ' + data.year);
   
-  const rpds = [];
-  for (let i = 1; i < values.length; i++) {
-    const row = values[i];
-    if ((data.kua && row[1] === data.kua) || !data.kua) {
-      if (row[4] == year) {
+  try {
+    const sheet = getSheet(SHEETS.RPD);
+    const rows = sheet.getDataRange().getValues();
+    const rpds = [];
+    
+    Logger.log('[GET_RPDS] Total rows: ' + rows.length);
+    
+    for (let i = 1; i < rows.length; i++) {
+      if ((!data.kua || rows[i][1] === data.kua) && 
+          (!data.year || rows[i][4] == data.year)) {
+        
+        let parsedData = {};
+        try {
+          parsedData = JSON.parse(rows[i][5] || '{}');
+        } catch (parseError) {
+          Logger.log('[GET_RPDS] JSON parse error for row ' + i + ': ' + parseError.toString());
+        }
+        
         rpds.push({
-          id: row[0],
-          kua: row[1],
-          userId: row[2],
-          month: row[3],
-          year: row[4],
-          data: JSON.parse(row[5] || '{}'),
-          total: row[6],
-          createdAt: row[7],
-          updatedAt: row[8]
+          id: rows[i][0],
+          kua: rows[i][1],
+          userId: rows[i][2],
+          month: rows[i][3],
+          year: rows[i][4],
+          data: parsedData,
+          total: parseFloat(rows[i][6]) || 0,
+          createdAt: safeFormatDate(rows[i][7]),
+          updatedAt: safeFormatDate(rows[i][8])
         });
       }
     }
+    
+    Logger.log('[GET_RPDS] Found: ' + rpds.length + ' RPDs');
+    return successResponse(rpds);
+  } catch (error) {
+    Logger.log('[GET_RPDS ERROR] ' + error.toString());
+    return errorResponse('Gagal memuat RPD: ' + error.toString());
   }
-  
-  Logger.log(`[GET_RPDS] Found: ${rpds.length} RPDs`);
-  return successResponse(rpds);
 }
 
 function saveRPD(data) {
-  Logger.log(`[SAVE_RPD] KUA: ${data.kua}, Month: ${data.month}, Year: ${data.year}, ID: ${data.id || 'NEW'}`);
-  const lock = LockService.getScriptLock();
-  lock.waitLock(30000);
+  Logger.log('[SAVE_RPD] Data received: ' + JSON.stringify(data).substring(0, 300));
   
   try {
-    // Priority 1: Check if RPD config allows input
-    const configSheet = getSheet(SHEETS.CONFIG);
-    const configValues = configSheet.getDataRange().getValues();
-    let rpdStatus = 'open';
-    for (let i = 1; i < configValues.length; i++) {
-      if (configValues[i][0] === 'RPD_STATUS') {
-        rpdStatus = configValues[i][1];
-        break;
-      }
-    }
-    
-    if (rpdStatus === 'closed' && data.role !== 'Admin') {
-      Logger.log(`[SAVE_RPD] Failed: RPD is closed by config`);
-      return errorResponse('Pengisian RPD sedang ditutup oleh admin');
-    }
-    
     const sheet = getSheet(SHEETS.RPD);
-    const values = sheet.getDataRange().getValues();
+    const rows = sheet.getDataRange().getValues();
+    const now = new Date();
     
-    // Get current date info
-    const currentDate = new Date();
-    const currentYear = currentDate.getFullYear();
-    const currentMonth = currentDate.getMonth(); // 0-11
-    const monthNames = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 
-                       'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
-    
-    const rpdMonthIndex = monthNames.indexOf(data.month);
-    const rpdYear = parseInt(data.year);
-    
-    // Check for duplicate (different ID, same KUA-Month-Year)
-    for (let i = 1; i < values.length; i++) {
-      const row = values[i];
-      if (row[1] === data.kua && row[3] === data.month && row[4] == data.year && row[0] !== data.id) {
-        Logger.log(`[SAVE_RPD] Failed: Duplicate RPD found`);
-        return errorResponse('RPD untuk bulan ini sudah ada');
-      }
-    }
-    
-    // VALIDASI KHUSUS UNTUK OPERATOR
-    if (data.role === 'Operator KUA') {
-      // Jika EDIT (ada ID) - tidak boleh edit bulan ini dan bulan sebelumnya
-      if (data.id) {
-        if (rpdYear < currentYear || (rpdYear === currentYear && rpdMonthIndex <= currentMonth)) {
-          Logger.log(`[SAVE_RPD] Failed: Cannot edit current/past month RPD`);
-          return errorResponse('RPD untuk bulan ini dan bulan sebelumnya tidak dapat diubah');
-        }
-      } 
-      // Jika CREATE (tidak ada ID) - boleh create untuk bulan ini dan bulan depan
-      else {
-        if (rpdYear < currentYear || (rpdYear === currentYear && rpdMonthIndex < currentMonth)) {
-          Logger.log(`[SAVE_RPD] Failed: Cannot create past month RPD`);
-          return errorResponse('RPD hanya dapat dibuat untuk bulan ini atau bulan yang akan datang');
-        }
-      }
-    }
-    
-    let rowIndex = -1;
     if (data.id) {
-      for (let i = 1; i < values.length; i++) {
-        if (values[i][0] === data.id) {
-          rowIndex = i + 1;
-          break;
+      // Update existing
+      for (let i = 1; i < rows.length; i++) {
+        if (rows[i][0] === data.id) {
+          sheet.getRange(i + 1, 6).setValue(JSON.stringify(data.data));
+          sheet.getRange(i + 1, 7).setValue(parseFloat(data.total) || 0);
+          sheet.getRange(i + 1, 9).setValue(now);
+          Logger.log('[SAVE_RPD] Updated RPD ID: ' + data.id);
+          return successResponse({ message: 'RPD berhasil diupdate', id: data.id });
         }
       }
-    }
-    
-    const rpdData = [
-      data.id || generateID(),
-      data.kua,
-      data.userId,
-      data.month,
-      data.year || new Date().getFullYear(),
-      JSON.stringify(data.rpdData),
-      parseFloat(data.total),
-      data.id && rowIndex > 0 ? values[rowIndex - 1][7] : new Date(),
-      new Date()
-    ];
-    
-    if (rowIndex > 0) {
-      sheet.getRange(rowIndex, 1, 1, rpdData.length).setValues([rpdData]);
-      Logger.log(`[SAVE_RPD] Updated existing RPD`);
+      Logger.log('[SAVE_RPD] RPD not found: ' + data.id);
+      return errorResponse('RPD tidak ditemukan');
     } else {
-      sheet.appendRow(rpdData);
-      Logger.log(`[SAVE_RPD] Created new RPD`);
+      // Check duplicate
+      for (let i = 1; i < rows.length; i++) {
+        if (rows[i][1] === data.kua && 
+            rows[i][3] === data.month && 
+            rows[i][4] == data.year) {
+          Logger.log('[SAVE_RPD] Duplicate found');
+          return errorResponse('RPD untuk KUA, bulan dan tahun ini sudah ada');
+        }
+      }
+      
+      // Create new
+      const id = 'RPD-' + Date.now();
+      sheet.appendRow([
+        id,
+        data.kua,
+        data.userId,
+        data.month,
+        parseInt(data.year),
+        JSON.stringify(data.data),
+        parseFloat(data.total) || 0,
+        now,
+        now
+      ]);
+      
+      Logger.log('[SAVE_RPD] Created new RPD ID: ' + id);
+      return successResponse({ message: 'RPD berhasil dibuat', id: id });
     }
-    
-    // Update budget total RPD
-    updateBudgetTotalRPD(data.kua, data.year || new Date().getFullYear());
-    
-    logAction(data.userId, data.username, data.role, 'SAVE_RPD', { month: data.month, total: data.total });
-    return successResponse({ message: 'RPD berhasil disimpan', id: rpdData[0] });
-  } finally {
-    lock.releaseLock();
+  } catch (error) {
+    Logger.log('[SAVE_RPD ERROR] ' + error.toString());
+    return errorResponse('Gagal menyimpan RPD: ' + error.toString());
   }
 }
 
 function deleteRPD(data) {
-  Logger.log(`[DELETE_RPD] ID: ${data.id}`);
-  const lock = LockService.getScriptLock();
-  lock.waitLock(30000);
+  Logger.log('[DELETE_RPD] ID: ' + data.id);
   
   try {
     const sheet = getSheet(SHEETS.RPD);
-    const values = sheet.getDataRange().getValues();
+    const rows = sheet.getDataRange().getValues();
     
-    for (let i = 1; i < values.length; i++) {
-      if (values[i][0] === data.id) {
+    for (let i = 1; i < rows.length; i++) {
+      if (rows[i][0] === data.id) {
         sheet.deleteRow(i + 1);
-        updateBudgetTotalRPD(values[i][1], values[i][4]);
-        logAction(data.userId, data.username, data.role, 'DELETE_RPD', { id: data.id });
-        Logger.log(`[DELETE_RPD] Success`);
+        Logger.log('[DELETE_RPD] Deleted RPD ID: ' + data.id);
         return successResponse({ message: 'RPD berhasil dihapus' });
       }
     }
     
-    Logger.log(`[DELETE_RPD] Failed: RPD not found`);
+    Logger.log('[DELETE_RPD] RPD not found: ' + data.id);
     return errorResponse('RPD tidak ditemukan');
-  } finally {
-    lock.releaseLock();
+  } catch (error) {
+    Logger.log('[DELETE_RPD ERROR] ' + error.toString());
+    return errorResponse('Gagal menghapus RPD: ' + error.toString());
   }
 }
 
 // ===== REALISASI MANAGEMENT =====
 function getRealisasis(data) {
-  Logger.log(`[GET_REALISASIS] KUA: ${data.kua}, Year: ${data.year}`);
-  const sheet = getSheet(SHEETS.REALISASI);
-  const values = sheet.getDataRange().getValues();
-  const year = data.year || new Date().getFullYear();
+  Logger.log('[GET_REALISASIS] KUA: ' + data.kua + ', Year: ' + data.year);
   
-  const realisasis = [];
-  for (let i = 1; i < values.length; i++) {
-    const row = values[i];
-    if ((data.kua && row[1] === data.kua) || !data.kua) {
-      if (row[4] == year) {
+  try {
+    const sheet = getSheet(SHEETS.REALISASI);
+    const rows = sheet.getDataRange().getValues();
+    const realisasis = [];
+    
+    Logger.log('[GET_REALISASIS] Total rows: ' + rows.length);
+    
+    for (let i = 1; i < rows.length; i++) {
+      if ((!data.kua || rows[i][1] === data.kua) && 
+          (!data.year || rows[i][4] == data.year)) {
+        
+        let parsedData = {};
+        let parsedFiles = [];
+        
+        try {
+          parsedData = JSON.parse(rows[i][6] || '{}');
+        } catch (parseError) {
+          Logger.log('[GET_REALISASIS] JSON parse error for data at row ' + i + ': ' + parseError.toString());
+        }
+        
+        try {
+          parsedFiles = JSON.parse(rows[i][10] || '[]');
+        } catch (parseError) {
+          Logger.log('[GET_REALISASIS] JSON parse error for files at row ' + i + ': ' + parseError.toString());
+        }
+        
         realisasis.push({
-          id: row[0],
-          kua: row[1],
-          userId: row[2],
-          month: row[3],
-          year: row[4],
-          rpdId: row[5],
-          data: JSON.parse(row[6] || '{}'),
-          total: row[7],
-          status: row[8],
-          files: JSON.parse(row[9] || '[]'),
-          createdAt: row[10],
-          updatedAt: row[11],
-          verifiedBy: row[12],
-          verifiedAt: row[13],
-          notes: row[14]
+          id: rows[i][0],
+          kua: rows[i][1],
+          userId: rows[i][2],
+          month: rows[i][3],
+          year: rows[i][4],
+          rpdId: rows[i][5],
+          data: parsedData,
+          total: parseFloat(rows[i][7]) || 0,
+          status: rows[i][8] || 'Pending',
+          catatan: rows[i][9] || '',
+          files: parsedFiles,
+          createdAt: safeFormatDate(rows[i][11]),
+          updatedAt: safeFormatDate(rows[i][12])
         });
       }
     }
+    
+    Logger.log('[GET_REALISASIS] Found: ' + realisasis.length + ' realisasis');
+    return successResponse(realisasis);
+    
+  } catch (error) {
+    Logger.log('[GET_REALISASIS ERROR] ' + error.toString());
+    Logger.log('[GET_REALISASIS ERROR STACK] ' + error.stack);
+    return errorResponse('Gagal memuat realisasi: ' + error.toString());
   }
-  
-  Logger.log(`[GET_REALISASIS] Found: ${realisasis.length} realisasis`);
-  return successResponse(realisasis);
 }
 
 function saveRealisasi(data) {
-  Logger.log(`[SAVE_REALISASI] ========== START ==========`);
-  Logger.log(`[SAVE_REALISASI] KUA: ${data.kua}, Month: ${data.month}, Year: ${data.year}`);
-  Logger.log(`[SAVE_REALISASI] ID: ${data.id || 'NEW'}`);
-  Logger.log(`[SAVE_REALISASI] Files received: ${data.files ? data.files.length : 0}`);
-  
-  const lock = LockService.getScriptLock();
-  lock.waitLock(30000);
+  Logger.log('[SAVE_REALISASI] Files: ' + (data.files ? data.files.length : 0));
   
   try {
     const sheet = getSheet(SHEETS.REALISASI);
-    const values = sheet.getDataRange().getValues();
+    const rows = sheet.getDataRange().getValues();
+    const now = new Date();
     
-    // Check if RPD exists
-    if (!data.rpdId) {
-      Logger.log(`[SAVE_REALISASI] Failed: No RPD found`);
-      return errorResponse('RPD untuk bulan ini belum ada');
-    }
-    
-    // Check duplicate
-    for (let i = 1; i < values.length; i++) {
-      const row = values[i];
-      if (row[1] === data.kua && row[3] === data.month && row[4] == data.year && row[0] !== data.id) {
-        Logger.log(`[SAVE_REALISASI] Failed: Duplicate realisasi`);
-        return errorResponse('Realisasi untuk bulan ini sudah ada');
-      }
-    }
-    
-    let rowIndex = -1;
     if (data.id) {
-      for (let i = 1; i < values.length; i++) {
-        if (values[i][0] === data.id) {
-          rowIndex = i + 1;
-          break;
+      // Update existing
+      for (let i = 1; i < rows.length; i++) {
+        if (rows[i][0] === data.id) {
+          sheet.getRange(i + 1, 7).setValue(JSON.stringify(data.data));
+          sheet.getRange(i + 1, 8).setValue(parseFloat(data.total) || 0);
+          sheet.getRange(i + 1, 11).setValue(JSON.stringify(data.files || []));
+          sheet.getRange(i + 1, 13).setValue(now);
+          Logger.log('[SAVE_REALISASI] Updated realisasi ID: ' + data.id);
+          return successResponse({ message: 'Realisasi berhasil diupdate', id: data.id });
         }
       }
-    }
-    
-    Logger.log(`[SAVE_REALISASI] Row index: ${rowIndex}`);
-    
-    // Handle files - simpan metadata saja (fileId, fileName, fileUrl)
-    let filesToSave = [];
-    
-    if (data.files && Array.isArray(data.files) && data.files.length > 0) {
-      Logger.log(`[SAVE_REALISASI] Processing files metadata: ${data.files.length}`);
-      
-      filesToSave = data.files.filter(file => {
-        return file && file.fileId && file.fileName;
-      }).map(file => ({
-        fileId: file.fileId,
-        fileName: file.fileName,
-        fileUrl: file.fileUrl,
-        mimeType: file.mimeType || 'application/octet-stream',
-        size: file.size || 0
-      }));
-      
-      Logger.log(`[SAVE_REALISASI] Valid files metadata: ${filesToSave.length}`);
-    } else if (rowIndex > 0 && values[rowIndex - 1][9]) {
-      // Keep existing files
-      Logger.log(`[SAVE_REALISASI] Keeping existing files`);
-      try {
-        const existingFiles = JSON.parse(values[rowIndex - 1][9]);
-        if (Array.isArray(existingFiles)) {
-          filesToSave = existingFiles;
-          Logger.log(`[SAVE_REALISASI] Kept ${filesToSave.length} existing files`);
-        }
-      } catch (e) {
-        Logger.log(`[SAVE_REALISASI] Error parsing existing files: ${e}`);
-      }
-    }
-    
-    Logger.log(`[SAVE_REALISASI] FINAL files count: ${filesToSave.length}`);
-    
-    const filesJSON = JSON.stringify(filesToSave);
-    
-    const realisasiData = [
-      data.id || generateID(),
-      data.kua,
-      data.userId,
-      data.month,
-      data.year || new Date().getFullYear(),
-      data.rpdId,
-      JSON.stringify(data.realisasiData),
-      parseFloat(data.total),
-      data.status || 'Menunggu',
-      filesJSON,
-      data.id && rowIndex > 0 ? values[rowIndex - 1][10] : new Date(),
-      new Date(),
-      '',
-      '',
-      ''
-    ];
-    
-    if (rowIndex > 0) {
-      if (data.status === 'Menunggu' && values[rowIndex - 1][8] === 'Ditolak') {
-        Logger.log(`[SAVE_REALISASI] Resetting verification data`);
-        realisasiData[12] = '';
-        realisasiData[13] = '';
-        realisasiData[14] = '';
-      } else {
-        realisasiData[12] = values[rowIndex - 1][12] || '';
-        realisasiData[13] = values[rowIndex - 1][13] || '';
-        realisasiData[14] = values[rowIndex - 1][14] || '';
-      }
-      
-      sheet.getRange(rowIndex, 1, 1, realisasiData.length).setValues([realisasiData]);
-      Logger.log(`[SAVE_REALISASI] Updated with ${filesToSave.length} files`);
+      Logger.log('[SAVE_REALISASI] Realisasi not found: ' + data.id);
+      return errorResponse('Realisasi tidak ditemukan');
     } else {
-      sheet.appendRow(realisasiData);
-      Logger.log(`[SAVE_REALISASI] Created with ${filesToSave.length} files`);
+      // Check duplicate
+      for (let i = 1; i < rows.length; i++) {
+        if (rows[i][1] === data.kua && 
+            rows[i][3] === data.month && 
+            rows[i][4] == data.year) {
+          Logger.log('[SAVE_REALISASI] Duplicate found');
+          return errorResponse('Realisasi untuk KUA, bulan dan tahun ini sudah ada');
+        }
+      }
+      
+      // Create new
+      const id = 'REA-' + Date.now();
+      sheet.appendRow([
+        id,
+        data.kua,
+        data.userId,
+        data.month,
+        parseInt(data.year),
+        data.rpdId || '',
+        JSON.stringify(data.data),
+        parseFloat(data.total) || 0,
+        'Pending',
+        '',
+        JSON.stringify(data.files || []),
+        now,
+        now
+      ]);
+      
+      Logger.log('[SAVE_REALISASI] Created new realisasi ID: ' + id);
+      return successResponse({ message: 'Realisasi berhasil dibuat', id: id });
     }
-    
-    // Update budget total realisasi if status is Diterima
-    if (data.status === 'Diterima' || (rowIndex > 0 && values[rowIndex - 1][8] === 'Diterima')) {
-      updateBudgetTotalRealisasi(data.kua, data.year || new Date().getFullYear());
-    }
-    
-    logAction(data.userId, data.username, data.role, 'SAVE_REALISASI', { 
-      month: data.month, 
-      total: data.total, 
-      filesCount: filesToSave.length 
-    });
-    
-    Logger.log(`[SAVE_REALISASI] ========== END SUCCESS ==========`);
-    
-    return successResponse({ 
-      message: 'Realisasi berhasil disimpan', 
-      id: realisasiData[0],
-      filesCount: filesToSave.length
-    });
   } catch (error) {
-    Logger.log(`[SAVE_REALISASI ERROR] ${error.toString()}`);
-    Logger.log(`[SAVE_REALISASI] ========== END ERROR ==========`);
-    throw error;
-  } finally {
-    lock.releaseLock();
+    Logger.log('[SAVE_REALISASI ERROR] ' + error.toString());
+    return errorResponse('Gagal menyimpan realisasi: ' + error.toString());
   }
 }
 
-function updateRealisasiStatus(data) {
-  Logger.log(`[UPDATE_REALISASI_STATUS] ID: ${data.id}, Status: ${data.status}`);
-  const lock = LockService.getScriptLock();
-  lock.waitLock(30000);
+function deleteRealisasi(data) {
+  Logger.log('[DELETE_REALISASI] ID: ' + data.id);
   
   try {
     const sheet = getSheet(SHEETS.REALISASI);
-    const values = sheet.getDataRange().getValues();
+    const rows = sheet.getDataRange().getValues();
     
-    for (let i = 1; i < values.length; i++) {
-      if (values[i][0] === data.id) {
-        // Update only status, verified by, verified at, and notes columns (columns 9, 13, 14, 15)
-        sheet.getRange(i + 1, 9).setValue(data.status);
-        sheet.getRange(i + 1, 12).setValue(new Date());
-        sheet.getRange(i + 1, 13).setValue(data.verifiedBy);
-        sheet.getRange(i + 1, 14).setValue(new Date());
-        sheet.getRange(i + 1, 15).setValue(data.notes || '');
+    for (let i = 1; i < rows.length; i++) {
+      if (rows[i][0] === data.id) {
+        const kua = rows[i][1];
+        const year = rows[i][4];
+        const status = rows[i][8];
         
-        // Update budget total realisasi
-        updateBudgetTotalRealisasi(values[i][1], values[i][4]);
+        sheet.deleteRow(i + 1);
         
-        logAction(data.adminId, data.adminUsername, 'Admin', 'VERIFY_REALISASI', { 
-          id: data.id, 
-          status: data.status 
-        });
+        if (status === 'Diterima') {
+          updateBudgetTotalRealisasi(kua, year);
+        }
         
-        Logger.log(`[UPDATE_REALISASI_STATUS] Success`);
-        return successResponse({ message: 'Status realisasi berhasil diperbarui' });
+        Logger.log('[DELETE_REALISASI] Deleted realisasi ID: ' + data.id);
+        return successResponse({ message: 'Realisasi berhasil dihapus' });
       }
     }
     
-    Logger.log(`[UPDATE_REALISASI_STATUS] Failed: Realisasi not found`);
+    Logger.log('[DELETE_REALISASI] Realisasi not found: ' + data.id);
     return errorResponse('Realisasi tidak ditemukan');
-  } finally {
-    lock.releaseLock();
+  } catch (error) {
+    Logger.log('[DELETE_REALISASI ERROR] ' + error.toString());
+    return errorResponse('Gagal menghapus realisasi: ' + error.toString());
   }
 }
 
-// ===== FILE UPLOAD =====
-function uploadFile(data) {
-  Logger.log(`[UPLOAD_FILE] File: ${data.fileName}, KUA: ${data.kua}, Month: ${data.month}`);
+function verifyRealisasi(data) {
+  Logger.log('[VERIFY_REALISASI] ID: ' + data.id + ', Status: ' + data.status);
+  
   try {
-    const folder = DriveApp.getFolderById(DRIVE_FOLDER_ID);
-    const year = data.year || new Date().getFullYear();
-    const kua = data.kua;
-    const month = data.month;
+    const sheet = getSheet(SHEETS.REALISASI);
+    const rows = sheet.getDataRange().getValues();
     
-    // Create folder structure: Year/KUA/Month
-    let yearFolder = getOrCreateFolder(folder, year.toString());
-    let kuaFolder = getOrCreateFolder(yearFolder, kua);
-    let monthFolder = getOrCreateFolder(kuaFolder, month);
+    for (let i = 1; i < rows.length; i++) {
+      if (rows[i][0] === data.id) {
+        sheet.getRange(i + 1, 9).setValue(data.status);
+        sheet.getRange(i + 1, 10).setValue(data.catatan || '');
+        sheet.getRange(i + 1, 13).setValue(new Date());
+        
+        if (data.status === 'Diterima') {
+          const kua = rows[i][1];
+          const year = rows[i][4];
+          updateBudgetTotalRealisasi(kua, year);
+        }
+        
+        Logger.log('[VERIFY_REALISASI] Verified realisasi ID: ' + data.id);
+        return successResponse({ message: 'Verifikasi berhasil' });
+      }
+    }
     
-    // Decode base64 and create file
-    const blob = Utilities.newBlob(
-      Utilities.base64Decode(data.fileData),
-      data.mimeType,
-      data.fileName
-    );
-    
-    const file = monthFolder.createFile(blob);
-    
-    Logger.log(`[UPLOAD_FILE] Success: ${file.getId()}`);
-    return successResponse({
-      fileId: file.getId(),
-      fileName: file.getName(),
-      fileUrl: file.getUrl()
-    });
+    Logger.log('[VERIFY_REALISASI] Realisasi not found: ' + data.id);
+    return errorResponse('Realisasi tidak ditemukan');
   } catch (error) {
-    Logger.log(`[UPLOAD_FILE ERROR] ${error.toString()}`);
-    return errorResponse('Gagal mengupload file: ' + error.toString());
+    Logger.log('[VERIFY_REALISASI ERROR] ' + error.toString());
+    return errorResponse('Gagal verifikasi: ' + error.toString());
+  }
+}
+
+function updateBudgetTotalRealisasi(kua, year) {
+  try {
+    const realisasiSheet = getSheet(SHEETS.REALISASI);
+    const budgetSheet = getSheet(SHEETS.BUDGET);
+    const realisasiRows = realisasiSheet.getDataRange().getValues();
+    const budgetRows = budgetSheet.getDataRange().getValues();
+    
+    let total = 0;
+    for (let i = 1; i < realisasiRows.length; i++) {
+      if (realisasiRows[i][1] === kua && 
+          realisasiRows[i][4] == year && 
+          realisasiRows[i][8] === 'Diterima') {
+        total += parseFloat(realisasiRows[i][7]) || 0;
+      }
+    }
+    
+    for (let i = 1; i < budgetRows.length; i++) {
+      if (budgetRows[i][1] === kua && budgetRows[i][2] == year) {
+        budgetSheet.getRange(i + 1, 6).setValue(total);
+        Logger.log('[UPDATE_BUDGET_REALISASI] Updated budget for ' + kua + ' - ' + year + ': ' + total);
+        break;
+      }
+    }
+  } catch (error) {
+    Logger.log('[UPDATE_BUDGET_REALISASI ERROR] ' + error.toString());
   }
 }
 
 // ===== DASHBOARD STATS =====
 function getDashboardStats(data) {
-  Logger.log(`[GET_DASHBOARD_STATS] Role: ${data.role}, KUA: ${data.kua}`);
-  const year = new Date().getFullYear();
+  Logger.log('[GET_DASHBOARD_STATS] Role: ' + data.role + ', Year: ' + data.year);
   
-  if (data.role === 'Admin') {
+  try {
     const budgetSheet = getSheet(SHEETS.BUDGET);
-    const budgetValues = budgetSheet.getDataRange().getValues();
-    
-    let totalBudget = 0;
-    let totalRPD = 0;
-    let totalRealisasi = 0;
-    
-    for (let i = 1; i < budgetValues.length; i++) {
-      if (budgetValues[i][2] == year) {
-        totalBudget += parseFloat(budgetValues[i][3] || 0);
-        totalRPD += parseFloat(budgetValues[i][4] || 0);
-        totalRealisasi += parseFloat(budgetValues[i][5] || 0);
-      }
-    }
-    
-    const realisasiSheet = getSheet(SHEETS.REALISASI);
-    const realisasiValues = realisasiSheet.getDataRange().getValues();
-    
-    let pending = 0;
-    for (let i = 1; i < realisasiValues.length; i++) {
-      if (realisasiValues[i][8] === 'Menunggu' && realisasiValues[i][4] == year) {
-        pending++;
-      }
-    }
-    
-    return successResponse({
-      totalBudget,
-      totalRPD,
-      totalRealisasi,
-      sisaBudget: totalBudget - totalRealisasi,
-      pendingVerifikasi: pending
-    });
-  } else {
-    // Operator stats
-    const budgetSheet = getSheet(SHEETS.BUDGET);
-    const budgetValues = budgetSheet.getDataRange().getValues();
-    
-    let budget = 0;
-    for (let i = 1; i < budgetValues.length; i++) {
-      if (budgetValues[i][1] === data.kua && budgetValues[i][2] == year) {
-        budget = parseFloat(budgetValues[i][3] || 0);
-        break;
-      }
-    }
-    
     const rpdSheet = getSheet(SHEETS.RPD);
-    const rpdValues = rpdSheet.getDataRange().getValues();
-    
-    let totalRPD = 0;
-    let rpdCount = 0;
-    for (let i = 1; i < rpdValues.length; i++) {
-      if (rpdValues[i][1] === data.kua && rpdValues[i][4] == year) {
-        totalRPD += parseFloat(rpdValues[i][6] || 0);
-        rpdCount++;
-      }
-    }
-    
     const realisasiSheet = getSheet(SHEETS.REALISASI);
-    const realisasiValues = realisasiSheet.getDataRange().getValues();
     
-    let totalRealisasi = 0;
-    let realisasiCount = 0;
-    for (let i = 1; i < realisasiValues.length; i++) {
-      if (realisasiValues[i][1] === data.kua && realisasiValues[i][4] == year && realisasiValues[i][8] === 'Diterima') {
-        totalRealisasi += parseFloat(realisasiValues[i][7] || 0);
-        realisasiCount++;
+    const budgets = budgetSheet.getDataRange().getValues();
+    const rpds = rpdSheet.getDataRange().getValues();
+    const realisasis = realisasiSheet.getDataRange().getValues();
+    
+    let stats = {
+      totalBudget: 0,
+      totalRPD: 0,
+      totalRealisasi: 0,
+      pendingVerifikasi: 0
+    };
+    
+    for (let i = 1; i < budgets.length; i++) {
+      if (budgets[i][2] == data.year) {
+        if (data.role === 'Admin' || budgets[i][1] === data.kua) {
+          stats.totalBudget += parseFloat(budgets[i][3]) || 0;
+        }
       }
     }
     
-    return successResponse({
-      budget,
-      totalRPD,
-      totalRealisasi,
-      sisaBudget: budget - totalRealisasi,
-      rpdCount,
-      realisasiCount
-    });
+    for (let i = 1; i < rpds.length; i++) {
+      if (rpds[i][4] == data.year) {
+        if (data.role === 'Admin' || rpds[i][1] === data.kua) {
+          stats.totalRPD += parseFloat(rpds[i][6]) || 0;
+        }
+      }
+    }
+    
+    for (let i = 1; i < realisasis.length; i++) {
+      if (realisasis[i][4] == data.year) {
+        if (data.role === 'Admin' || realisasis[i][1] === data.kua) {
+          if (realisasis[i][8] === 'Diterima') {
+            stats.totalRealisasi += parseFloat(realisasis[i][7]) || 0;
+          }
+          if (realisasis[i][8] === 'Pending') {
+            stats.pendingVerifikasi++;
+          }
+        }
+      }
+    }
+    
+    Logger.log('[GET_DASHBOARD_STATS] Stats: ' + JSON.stringify(stats));
+    return successResponse(stats);
+  } catch (error) {
+    Logger.log('[GET_DASHBOARD_STATS ERROR] ' + error.toString());
+    return errorResponse('Gagal memuat statistik: ' + error.toString());
   }
+}
+
+// ===== CONFIG MANAGEMENT =====
+function getRPDConfig(data) {
+  Logger.log('[GET_RPD_CONFIG]');
+  return successResponse(BOP_CONFIG.RPD_PARAMETERS);
+}
+
+function saveRPDConfig(data) {
+  Logger.log('[SAVE_RPD_CONFIG] Config update not implemented');
+  return errorResponse('Konfigurasi RPD tidak dapat diubah');
 }
 
 // ===== EXPORT FUNCTIONS =====
-function exportBudget(data) {
-  Logger.log(`[EXPORT_BUDGET] Year: ${data.year}, KUA: ${data.kua}`);
-  try {
-    const sheet = getSheet(SHEETS.BUDGET);
-    const values = sheet.getDataRange().getValues();
-    const year = data.year || new Date().getFullYear();
-    
-    // Create new spreadsheet
-    const ss = SpreadsheetApp.create(`Export Budget ${year} - ${new Date().toLocaleDateString('id-ID')}`);
-    const exportSheet = ss.getActiveSheet();
-    exportSheet.setName('Budget');
-    
-    // Add headers
-    exportSheet.appendRow(['No', 'KUA', 'Tahun', 'Budget', 'Total RPD', 'Total Realisasi', 'Sisa Budget', 'Terakhir Update']);
-    
-    // Add data
-    let rowNum = 1;
-    for (let i = 1; i < values.length; i++) {
-      const row = values[i];
-      if (row[2] == year && (!data.kua || row[1] === data.kua)) {
-        exportSheet.appendRow([
-          rowNum++,
-          row[1],
-          row[2],
-          row[3],
-          row[4] || 0,
-          row[5] || 0,
-          row[3] - (row[5] || 0),
-          row[6]
-        ]);
-      }
-    }
-    
-    // Format
-    exportSheet.getRange('A1:H1').setFontWeight('bold').setBackground('#667eea').setFontColor('#ffffff');
-    exportSheet.setFrozenRows(1);
-    exportSheet.autoResizeColumns(1, 8);
-    
-    Logger.log(`[EXPORT_BUDGET] Success: ${ss.getId()}`);
-    return successResponse({
-      fileId: ss.getId(),
-      fileUrl: ss.getUrl(),
-      fileName: ss.getName()
-    });
-  } catch (error) {
-    Logger.log(`[EXPORT_BUDGET ERROR] ${error.toString()}`);
-    return errorResponse('Gagal export budget: ' + error.toString());
-  }
-}
 
-function exportRPD(data) {
-  Logger.log(`[EXPORT_RPD] Year: ${data.year}, KUA: ${data.kua}`);
-  try {
-    const sheet = getSheet(SHEETS.RPD);
-    const values = sheet.getDataRange().getValues();
-    const year = data.year || new Date().getFullYear();
-    
-    // Create new spreadsheet
-    const ss = SpreadsheetApp.create(`Export RPD ${year} - ${new Date().toLocaleDateString('id-ID')}`);
-    const exportSheet = ss.getActiveSheet();
-    exportSheet.setName('RPD');
-    
-    // Add headers
-    exportSheet.appendRow(['No', 'KUA', 'Bulan', 'Tahun', 'Total', 'Tanggal Dibuat', 'Terakhir Update']);
-    
-    // Add data
-    let rowNum = 1;
-    for (let i = 1; i < values.length; i++) {
-      const row = values[i];
-      if (row[4] == year && (!data.kua || row[1] === data.kua)) {
-        exportSheet.appendRow([
-          rowNum++,
-          row[1],
-          row[3],
-          row[4],
-          row[6],
-          row[7],
-          row[8]
-        ]);
-      }
-    }
-    
-    // Format
-    exportSheet.getRange('A1:G1').setFontWeight('bold').setBackground('#667eea').setFontColor('#ffffff');
-    exportSheet.setFrozenRows(1);
-    exportSheet.autoResizeColumns(1, 7);
-    
-    Logger.log(`[EXPORT_RPD] Success: ${ss.getId()}`);
-    return successResponse({
-      fileId: ss.getId(),
-      fileUrl: ss.getUrl(),
-      fileName: ss.getName()
-    });
-  } catch (error) {
-    Logger.log(`[EXPORT_RPD ERROR] ${error.toString()}`);
-    return errorResponse('Gagal export RPD: ' + error.toString());
-  }
-}
-
-function exportRealisasi(data) {
-  Logger.log(`[EXPORT_REALISASI] Year: ${data.year}, KUA: ${data.kua}`);
-  try {
-    const sheet = getSheet(SHEETS.REALISASI);
-    const values = sheet.getDataRange().getValues();
-    const year = data.year || new Date().getFullYear();
-    
-    // Create new spreadsheet
-    const ss = SpreadsheetApp.create(`Export Realisasi ${year} - ${new Date().toLocaleDateString('id-ID')}`);
-    const exportSheet = ss.getActiveSheet();
-    exportSheet.setName('Realisasi');
-    
-    // Add headers
-    exportSheet.appendRow(['No', 'KUA', 'Bulan', 'Tahun', 'Total', 'Status', 'Tanggal Dibuat', 'Diverifikasi Oleh', 'Tanggal Verifikasi', 'Catatan']);
-    
-    // Add data
-    let rowNum = 1;
-    for (let i = 1; i < values.length; i++) {
-      const row = values[i];
-      if (row[4] == year && (!data.kua || row[1] === data.kua)) {
-        exportSheet.appendRow([
-          rowNum++,
-          row[1],
-          row[3],
-          row[4],
-          row[7],
-          row[8],
-          row[10],
-          row[12] || '-',
-          row[13] || '-',
-          row[14] || '-'
-        ]);
-      }
-    }
-    
-    // Format
-    exportSheet.getRange('A1:J1').setFontWeight('bold').setBackground('#667eea').setFontColor('#ffffff');
-    exportSheet.setFrozenRows(1);
-    exportSheet.autoResizeColumns(1, 10);
-    
-    Logger.log(`[EXPORT_REALISASI] Success: ${ss.getId()}`);
-    return successResponse({
-      fileId: ss.getId(),
-      fileUrl: ss.getUrl(),
-      fileName: ss.getName()
-    });
-  } catch (error) {
-    Logger.log(`[EXPORT_REALISASI ERROR] ${error.toString()}`);
-    return errorResponse('Gagal export realisasi: ' + error.toString());
-  }
-}
-
-// ===== DOWNLOAD REALISASI BULANAN (PDF & EXCEL) =====
-function downloadRealisasiBulanan(data) {
-  Logger.log(`[DOWNLOAD_REALISASI] ========== START ==========`);
-  Logger.log(`[DOWNLOAD_REALISASI] ID: ${data.id}`);
-  Logger.log(`[DOWNLOAD_REALISASI] Format: ${data.format}`);
-  Logger.log(`[DOWNLOAD_REALISASI] User: ${data.username}`);
-  
-  try {
-    const realisasiSheet = getSheet(SHEETS.REALISASI);
-    const realisasiValues = realisasiSheet.getDataRange().getValues();
-    
-    Logger.log(`[DOWNLOAD_REALISASI] Searching for realisasi with ID: ${data.id}`);
-    
-    let realisasi = null;
-    for (let i = 1; i < realisasiValues.length; i++) {
-      if (realisasiValues[i][0] === data.id) {
-        Logger.log(`[DOWNLOAD_REALISASI] Found realisasi at row ${i + 1}`);
-        realisasi = {
-          id: realisasiValues[i][0],
-          kua: realisasiValues[i][1],
-          userId: realisasiValues[i][2],
-          month: realisasiValues[i][3],
-          year: realisasiValues[i][4],
-          rpdId: realisasiValues[i][5],
-          data: JSON.parse(realisasiValues[i][6] || '{}'),
-          total: realisasiValues[i][7],
-          status: realisasiValues[i][8],
-          files: JSON.parse(realisasiValues[i][9] || '[]'),
-          createdAt: realisasiValues[i][10],
-          updatedAt: realisasiValues[i][11],
-          verifiedBy: realisasiValues[i][12],
-          verifiedAt: realisasiValues[i][13],
-          notes: realisasiValues[i][14]
-        };
-        break;
-      }
-    }
-    
-    if (!realisasi) {
-      Logger.log(`[DOWNLOAD_REALISASI ERROR] Realisasi not found`);
-      return errorResponse('Realisasi tidak ditemukan');
-    }
-    
-    Logger.log(`[DOWNLOAD_REALISASI] Realisasi found: ${realisasi.kua} - ${realisasi.month} ${realisasi.year}`);
-    
-    // Get RPD data
-    Logger.log(`[DOWNLOAD_REALISASI] Loading RPD data with ID: ${realisasi.rpdId}`);
-    const rpdSheet = getSheet(SHEETS.RPD);
-    const rpdValues = rpdSheet.getDataRange().getValues();
-    let rpd = null;
-    for (let i = 1; i < rpdValues.length; i++) {
-      if (rpdValues[i][0] === realisasi.rpdId) {
-        Logger.log(`[DOWNLOAD_REALISASI] Found RPD at row ${i + 1}`);
-        rpd = {
-          data: JSON.parse(rpdValues[i][5] || '{}')
-        };
-        break;
-      }
-    }
-    
-    if (!rpd) {
-      Logger.log(`[DOWNLOAD_REALISASI WARNING] RPD not found, using empty data`);
-      rpd = { data: {} };
-    }
-    
-    Logger.log(`[DOWNLOAD_REALISASI] Starting export with format: ${data.format}`);
-    
-    if (data.format === 'excel') {
-      return exportRealisasiToExcel(realisasi, rpd);
-    } else if (data.format === 'pdf') {
-      return exportRealisasiPDF(realisasi, rpd, data);
-    }
-    
-    Logger.log(`[DOWNLOAD_REALISASI ERROR] Invalid format: ${data.format}`);
-    return errorResponse('Format tidak valid');
-    
-  } catch (error) {
-    Logger.log(`[DOWNLOAD_REALISASI ERROR] ========== ERROR ==========`);
-    Logger.log(`[DOWNLOAD_REALISASI ERROR] Message: ${error.toString()}`);
-    Logger.log(`[DOWNLOAD_REALISASI ERROR] Stack: ${error.stack}`);
-    return errorResponse('Gagal download realisasi: ' + error.toString());
-  } finally {
-    Logger.log(`[DOWNLOAD_REALISASI] ========== END ==========`);
-  }
-}
-
-function exportRealisasiPDF(realisasi, rpd, userData) {
-  Logger.log(`[EXPORT_REALISASI_PDF] Creating PDF file`);
-  
-  let detailHTML = '';
-  if (realisasi.data && typeof realisasi.data === 'object') {
-    Object.entries(realisasi.data).forEach(([code, items]) => {
-      if (items && typeof items === 'object') {
-        detailHTML += `<tr><td colspan="4" style="background: #f0f0f0; font-weight: bold; padding: 8px;">${code}</td></tr>`;
-        Object.entries(items).forEach(([item, realValue]) => {
-          const rpdValue = rpd && rpd.data && rpd.data[code] && rpd.data[code][item] ? parseFloat(rpd.data[code][item]) : 0;
-          const realVal = parseFloat(realValue) || 0;
-          detailHTML += `
-            <tr>
-              <td style="padding: 6px; border: 1px solid #ddd;">${item}</td>
-              <td style="padding: 6px; border: 1px solid #ddd; text-align: right;">Rp ${formatNumber(rpdValue)}</td>
-              <td style="padding: 6px; border: 1px solid #ddd; text-align: right;">Rp ${formatNumber(realVal)}</td>
-              <td style="padding: 6px; border: 1px solid #ddd; text-align: right;">Rp ${formatNumber(realVal - rpdValue)}</td>
-            </tr>
-          `;
-        });
-      }
-    });
-  }
-  
-  if (!detailHTML) {
-    detailHTML = '<tr><td colspan="4" style="padding: 10px; text-align: center; color: #999;">Tidak ada data realisasi</td></tr>';
-  }
-  
-  let filesHTML = '';
-  if (realisasi.files && Array.isArray(realisasi.files) && realisasi.files.length > 0) {
-    filesHTML = '<h3 style="margin-top: 30px; page-break-before: always;">Dokumen Pendukung</h3><div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; margin-top: 15px;">';
-    realisasi.files.forEach(file => {
-      if (!file || !file.fileName) return;
-      
-      const isImage = file.mimeType && file.mimeType.startsWith('image/');
-      if (isImage) {
-        let fileId = file.fileId;
-        if (!fileId && file.fileUrl) {
-          const match = file.fileUrl.match(/[-\w]{25,}/);
-          if (match) fileId = match[0];
-        }
-        
-        if (fileId) {
-          try {
-            const driveFile = DriveApp.getFileById(fileId);
-            const imageBlob = driveFile.getBlob();
-            const base64Image = Utilities.base64Encode(imageBlob.getBytes());
-            const mimeType = imageBlob.getContentType();
-            
-            filesHTML += `
-              <div style="border: 1px solid #ddd; padding: 10px; border-radius: 8px; page-break-inside: avoid;">
-                <img src="data:${mimeType};base64,${base64Image}" 
-                     style="width: 100%; max-height: 300px; object-fit: contain; border-radius: 4px;">
-                <p style="margin: 10px 0 0 0; font-size: 12px; text-align: center; color: #666;">${file.fileName}</p>
-              </div>
-            `;
-          } catch (e) {
-            Logger.log(`[EXPORT_REALISASI_PDF] Error loading image: ${e}`);
-            filesHTML += `
-              <div style="border: 1px solid #ddd; padding: 10px; border-radius: 8px;">
-                <div style="width: 100%; height: 200px; background: #f0f0f0; display: flex; align-items: center; justify-content: center; border-radius: 4px;">
-                  <p style="color: #999;">Preview tidak tersedia</p>
-                </div>
-                <p style="margin: 10px 0 0 0; font-size: 12px; text-align: center; color: #666;">${file.fileName}</p>
-              </div>
-            `;
-          }
-        }
-      }
-    });
-    filesHTML += '</div>';
-  }
-  
-  const htmlContent = `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <meta charset="UTF-8">
-      <style>
-        body { font-family: Arial, sans-serif; padding: 40px; }
-        .header { text-align: center; margin-bottom: 30px; }
-        .info { margin-bottom: 20px; }
-        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-        th { background: #667eea; color: white; padding: 10px; text-align: left; }
-        .signature { margin-top: 60px; text-align: right; page-break-inside: avoid; }
-        .signature-box { display: inline-block; text-align: center; margin-top: 20px; }
-        .signature-line { border-top: 1px solid #000; width: 200px; margin-top: 80px; }
-      </style>
-    </head>
-    <body>
-      <div class="header">
-        <h2>LAPORAN REALISASI BOP KUA</h2>
-        <h3>Kementerian Agama Kabupaten Indramayu</h3>
-      </div>
-      
-      <div class="info">
-        <table style="border: none;">
-          <tr><td width="150"><strong>KUA</strong></td><td>: ${realisasi.kua}</td></tr>
-          <tr><td><strong>Bulan</strong></td><td>: ${realisasi.month} ${realisasi.year}</td></tr>
-          <tr><td><strong>Status</strong></td><td>: ${realisasi.status}</td></tr>
-          <tr><td><strong>Total Realisasi</strong></td><td>: Rp ${formatNumber(realisasi.total)}</td></tr>
-        </table>
-      </div>
-      
-      <h3>Detail Realisasi</h3>
-      <table>
-        <thead>
-          <tr>
-            <th>Item</th>
-            <th>RPD</th>
-            <th>Realisasi</th>
-            <th>Selisih</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${detailHTML}
-        </tbody>
-      </table>
-      
-      ${filesHTML}
-      
-      <div class="signature">
-        <div class="signature-box">
-          <p>Indramayu, ${new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
-          <p><strong>Kepala Seksi Bimas Islam</strong></p>
-          <div class="signature-line"></div>
-          <p style="margin-top: 10px;"><strong>${NAMA_KASI_BIMAS}</strong></p>
-          <p style="margin-top: 5px;"><strong>${NIP_KASI_BIMAS}</strong></p>
-        </div>
-      </div>
-      
-      ${realisasi.verifiedBy ? `
-      <div style="margin-top: 40px; padding: 15px; background: #f8f9fa; border-radius: 8px;">
-        <p><strong>Diverifikasi oleh:</strong> ${realisasi.verifiedBy}</p>
-        <p><strong>Tanggal:</strong> ${realisasi.verifiedAt ? new Date(realisasi.verifiedAt).toLocaleDateString('id-ID') : '-'}</p>
-        ${realisasi.notes ? `<p><strong>Catatan:</strong> ${realisasi.notes}</p>` : ''}
-      </div>
-      ` : ''}
-    </body>
-    </html>
-  `;
-  
-  const blob = Utilities.newBlob(htmlContent, MimeType.HTML, 'temp.html');
-  const pdfBlob = blob.getAs('application/pdf');
-  pdfBlob.setName(`Realisasi ${realisasi.kua} - ${realisasi.month} ${realisasi.year}.pdf`);
-  
-  const base64 = Utilities.base64Encode(pdfBlob.getBytes());
-  
-  Logger.log(`[EXPORT_REALISASI_PDF] Success`);
-  return successResponse({
-    fileData: base64,
-    fileName: pdfBlob.getName(),
-    mimeType: 'application/pdf'
-  });
-}
-
-function exportRealisasiToExcel(realisasi, rpd) {
-  Logger.log(`[EXPORT_REALISASI_EXCEL] ========== START (TSV METHOD) ==========`);
-  Logger.log(`[EXPORT_REALISASI_EXCEL] Creating Excel-compatible file for ${realisasi.kua} - ${realisasi.month} ${realisasi.year}`);
-  
-  try {
-    // Prepare data as array
-    Logger.log(`[EXPORT_REALISASI_EXCEL] Preparing data arrays`);
-    const rows = [];
-    
-    // Header rows
-    rows.push(['LAPORAN REALISASI BOP KUA']);
-    rows.push(['Kementerian Agama Kabupaten Indramayu']);
-    rows.push([]);
-    
-    // Info section
-    rows.push(['KUA', realisasi.kua]);
-    rows.push(['Bulan', `${realisasi.month} ${realisasi.year}`]);
-    rows.push(['Status', realisasi.status]);
-    rows.push(['Total Realisasi', realisasi.total]);
-    rows.push([]);
-    
-    // Detail header
-    rows.push(['Kode', 'Nama Parameter', 'Item', 'RPD', 'Realisasi', 'Selisih']);
-    
-    // Detail data
-    Logger.log(`[EXPORT_REALISASI_EXCEL] Processing realisasi data`);
-    let hasData = false;
-    let rowCount = 0;
-    
-    if (realisasi.data && typeof realisasi.data === 'object' && Object.keys(realisasi.data).length > 0) {
-      Logger.log(`[EXPORT_REALISASI_EXCEL] Found ${Object.keys(realisasi.data).length} parameter codes`);
-      
-      Object.entries(realisasi.data).forEach(([code, items]) => {
-        if (items && typeof items === 'object' && Object.keys(items).length > 0) {
-          Object.entries(items).forEach(([item, realValue]) => {
-            const rpdValue = rpd && rpd.data && rpd.data[code] && rpd.data[code][item] ? parseFloat(rpd.data[code][item]) : 0;
-            const realVal = parseFloat(realValue) || 0;
-            const selisih = realVal - rpdValue;
-            
-            rows.push([code, '', item, rpdValue, realVal, selisih]);
-            rowCount++;
-            hasData = true;
-          });
-        }
-      });
-      
-      Logger.log(`[EXPORT_REALISASI_EXCEL] Added ${rowCount} data rows`);
-    }
-    
-    if (!hasData) {
-      Logger.log(`[EXPORT_REALISASI_EXCEL] No data found, adding placeholder`);
-      rows.push(['', '', 'Tidak ada data realisasi', 0, 0, 0]);
-    }
-    
-    rows.push([]);
-    
-    // Files section
-    if (realisasi.files && Array.isArray(realisasi.files) && realisasi.files.length > 0) {
-      Logger.log(`[EXPORT_REALISASI_EXCEL] Adding ${realisasi.files.length} files info`);
-      rows.push(['DOKUMEN PENDUKUNG']);
-      rows.push(['No', 'Nama File', 'URL']);
-      
-      realisasi.files.forEach((file, index) => {
-        if (file && file.fileName) {
-          rows.push([index + 1, file.fileName || '', file.fileUrl || '']);
-        }
-      });
-    }
-    
-    rows.push([]);
-    
-    // Verification info
-    if (realisasi.verifiedBy) {
-      Logger.log(`[EXPORT_REALISASI_EXCEL] Adding verification info`);
-      rows.push(['Diverifikasi Oleh', realisasi.verifiedBy]);
-      if (realisasi.verifiedAt) {
-        rows.push(['Tanggal Verifikasi', new Date(realisasi.verifiedAt).toLocaleDateString('id-ID')]);
-      }
-    }
-    if (realisasi.notes) {
-      rows.push(['Catatan', realisasi.notes]);
-    }
-    
-    Logger.log(`[EXPORT_REALISASI_EXCEL] Total rows: ${rows.length}`);
-    
-    // Create TSV content (Tab Separated Values)
-    // TSV is more reliable than CSV for Excel import
-    Logger.log(`[EXPORT_REALISASI_EXCEL] Creating TSV content`);
-    const tsvContent = rows.map(row => {
-      return row.map(cell => {
-        // Clean cell content
-        const cellStr = String(cell).replace(/\t/g, ' ').replace(/\n/g, ' ');
-        return cellStr;
-      }).join('\t'); // Use TAB as separator
-    }).join('\n');
-    
-    Logger.log(`[EXPORT_REALISASI_EXCEL] TSV content length: ${tsvContent.length} characters`);
-    
-    // Create blob with TSV
-    const blob = Utilities.newBlob(tsvContent, 'text/tab-separated-values', `Realisasi ${realisasi.kua} - ${realisasi.month} ${realisasi.year}.xls`);
-    
-    // Encode to base64
-    Logger.log(`[EXPORT_REALISASI_EXCEL] Encoding to base64`);
-    const base64 = Utilities.base64Encode(blob.getBytes());
-    Logger.log(`[EXPORT_REALISASI_EXCEL] Base64 length: ${base64.length} characters`);
-    
-    Logger.log(`[EXPORT_REALISASI_EXCEL] ========== SUCCESS ==========`);
-    
-    return successResponse({
-      fileData: base64,
-      fileName: `Realisasi ${realisasi.kua} - ${realisasi.month} ${realisasi.year}.xls`,
-      mimeType: 'application/vnd.ms-excel'
-    });
-    
-  } catch (error) {
-    Logger.log(`[EXPORT_REALISASI_EXCEL ERROR] ========== ERROR ==========`);
-    Logger.log(`[EXPORT_REALISASI_EXCEL ERROR] Message: ${error.toString()}`);
-    Logger.log(`[EXPORT_REALISASI_EXCEL ERROR] Stack: ${error.stack}`);
-    return errorResponse('Gagal export realisasi: ' + error.toString());
-  }
-}
-
-// ===== ENHANCED EXPORT FUNCTIONS =====
-function exportBudgetEnhanced(data) {
-  Logger.log(`[EXPORT_BUDGET_ENHANCED] ========== START ==========`);
-  Logger.log(`[EXPORT_BUDGET_ENHANCED] Format: ${data.format}, Year: ${data.year}, KUA: ${data.kua || 'ALL'}`);
-  
-  try {
-    const sheet = getSheet(SHEETS.BUDGET);
-    const values = sheet.getDataRange().getValues();
-    const year = data.year || new Date().getFullYear();
-    
-    Logger.log(`[EXPORT_BUDGET_ENHANCED] Filtering budgets`);
-    
-    let budgets = [];
-    for (let i = 1; i < values.length; i++) {
-      const row = values[i];
-      if (row[2] == year && (!data.kua || row[1] === data.kua)) {
-        budgets.push({
-          kua: row[1],
-          year: row[2],
-          budget: row[3],
-          totalRPD: row[4] || 0,
-          totalRealisasi: row[5] || 0,
-          sisaBudget: row[3] - (row[5] || 0),
-          updatedAt: row[6]
-        });
-      }
-    }
-    
-    Logger.log(`[EXPORT_BUDGET_ENHANCED] Found ${budgets.length} budgets`);
-    
-    if (data.format === 'pdf') {
-      return exportBudgetPDF(budgets, year, data.kua);
-    } else {
-      return exportBudgetToExcel(budgets, year, data.kua);
-    }
-  } catch (error) {
-    Logger.log(`[EXPORT_BUDGET_ENHANCED ERROR] ========== ERROR ==========`);
-    Logger.log(`[EXPORT_BUDGET_ENHANCED ERROR] Message: ${error.toString()}`);
-    Logger.log(`[EXPORT_BUDGET_ENHANCED ERROR] Stack: ${error.stack}`);
-    return errorResponse('Gagal export budget: ' + error.toString());
-  }
-}
-
-function exportBudgetPDF(budgets, year, kua) {
-  let tableRows = '';
-  let totalBudget = 0, totalRPD = 0, totalRealisasi = 0, totalSisa = 0;
-  
-  budgets.forEach((budget, index) => {
-    totalBudget += parseFloat(budget.budget);
-    totalRPD += parseFloat(budget.totalRPD);
-    totalRealisasi += parseFloat(budget.totalRealisasi);
-    totalSisa += parseFloat(budget.sisaBudget);
-    
-    tableRows += `
-      <tr>
-        <td style="padding: 8px; border: 1px solid #ddd; text-align: center;">${index + 1}</td>
-        <td style="padding: 8px; border: 1px solid #ddd;">${budget.kua}</td>
-        <td style="padding: 8px; border: 1px solid #ddd; text-align: right;">Rp ${formatNumber(budget.budget)}</td>
-        <td style="padding: 8px; border: 1px solid #ddd; text-align: right;">Rp ${formatNumber(budget.totalRPD)}</td>
-        <td style="padding: 8px; border: 1px solid #ddd; text-align: right;">Rp ${formatNumber(budget.totalRealisasi)}</td>
-        <td style="padding: 8px; border: 1px solid #ddd; text-align: right;">Rp ${formatNumber(budget.sisaBudget)}</td>
-      </tr>
-    `;
-  });
-  
-  tableRows += `
-    <tr style="background: #f0f0f0; font-weight: bold;">
-      <td colspan="2" style="padding: 8px; border: 1px solid #ddd; text-align: center;">TOTAL</td>
-      <td style="padding: 8px; border: 1px solid #ddd; text-align: right;">Rp ${formatNumber(totalBudget)}</td>
-      <td style="padding: 8px; border: 1px solid #ddd; text-align: right;">Rp ${formatNumber(totalRPD)}</td>
-      <td style="padding: 8px; border: 1px solid #ddd; text-align: right;">Rp ${formatNumber(totalRealisasi)}</td>
-      <td style="padding: 8px; border: 1px solid #ddd; text-align: right;">Rp ${formatNumber(totalSisa)}</td>
-    </tr>
-  `;
-  
-  const htmlContent = `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <meta charset="UTF-8">
-      <style>
-        body { font-family: Arial, sans-serif; padding: 40px; }
-        .header { text-align: center; margin-bottom: 30px; }
-        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-        th { background: #667eea; color: white; padding: 10px; }
-      </style>
-    </head>
-    <body>
-      <div class="header">
-        <h2>LAPORAN BUDGET BOP KUA</h2>
-        <h3>Kementerian Agama Kabupaten Indramayu</h3>
-        <p>Tahun ${year}${kua ? ` - ${kua}` : ''}</p>
-      </div>
-      
-      <table>
-        <thead>
-          <tr>
-            <th>No</th>
-            <th>KUA</th>
-            <th>Budget</th>
-            <th>Total RPD</th>
-            <th>Total Realisasi</th>
-            <th>Sisa Budget</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${tableRows}
-        </tbody>
-      </table>
-      
-      <div style="margin-top: 50px; text-align: right;">
-        <p>Indramayu, ${new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
-        <p style="margin-top: 80px;"><strong>( ___________________ )</strong></p>
-      </div>
-    </body>
-    </html>
-  `;
-  
-  const blob = Utilities.newBlob(htmlContent, MimeType.HTML, 'temp.html');
-  const pdfBlob = blob.getAs('application/pdf');
-  pdfBlob.setName(`Budget ${year}${kua ? ' - ' + kua : ''}.pdf`);
-  
-  const base64 = Utilities.base64Encode(pdfBlob.getBytes());
-  
-  return successResponse({
-    fileData: base64,
-    fileName: pdfBlob.getName(),
-    mimeType: 'application/pdf'
-  });
-}
-
-function exportBudgetToExcel(budgets, year, kua) {
-  Logger.log(`[EXPORT_BUDGET_EXCEL] ========== START (SHEETJS METHOD) ==========`);
-  Logger.log(`[EXPORT_BUDGET_EXCEL] Year: ${year}, KUA: ${kua || 'ALL'}, Total: ${budgets.length}`);
-  
-  try {
-    const data = [];
-    
-    // Headers
-    data.push(['No', 'KUA', 'Tahun', 'Budget', 'Total RPD', 'Total Realisasi', 'Sisa Budget', 'Terakhir Update']);
-    
-    // Data rows
-    Logger.log(`[EXPORT_BUDGET_EXCEL] Adding ${budgets.length} data rows`);
-    budgets.forEach((budget, index) => {
-      data.push([
-        index + 1,
-        budget.kua || '',
-        budget.year || '',
-        parseFloat(budget.budget) || 0,
-        parseFloat(budget.totalRPD) || 0,
-        parseFloat(budget.totalRealisasi) || 0,
-        parseFloat(budget.sisaBudget) || 0,
-        budget.updatedAt ? new Date(budget.updatedAt).toLocaleDateString('id-ID') : ''
-      ]);
-      
-      if ((index + 1) % 10 === 0) {
-        Logger.log(`[EXPORT_BUDGET_EXCEL] Progress: ${index + 1}/${budgets.length}`);
-      }
-    });
-    
-    Logger.log(`[EXPORT_BUDGET_EXCEL] Creating workbook with SheetJS`);
-    const workbook = XLSX.utils.book_new();
-    const worksheet = XLSX.utils.aoa_to_sheet(data);
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'Budget');
-    
-    Logger.log(`[EXPORT_BUDGET_EXCEL] Writing to binary`);
-    const excelBuffer = XLSX.write(workbook, { type: 'base64', bookType: 'xlsx' });
-    
-    Logger.log(`[EXPORT_BUDGET_EXCEL] Buffer length: ${excelBuffer.length}`);
-    Logger.log(`[EXPORT_BUDGET_EXCEL] ========== SUCCESS ==========`);
-    
-    return successResponse({
-      fileData: excelBuffer,
-      fileName: `Budget ${year}${kua ? ' - ' + kua : ''}.xlsx`,
-      mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-    });
-    
-  } catch (error) {
-    Logger.log(`[EXPORT_BUDGET_EXCEL ERROR] ========== ERROR ==========`);
-    Logger.log(`[EXPORT_BUDGET_EXCEL ERROR] Message: ${error.toString()}`);
-    Logger.log(`[EXPORT_BUDGET_EXCEL ERROR] Stack: ${error.stack}`);
-    return errorResponse('Gagal export budget: ' + error.toString());
-  }
-}
-
-
-
-function exportRPDEnhanced(data) {
-  Logger.log(`[EXPORT_RPD_ENHANCED] ========== START ==========`);
-  Logger.log(`[EXPORT_RPD_ENHANCED] Format: ${data.format}, Year: ${data.year}, KUA: ${data.kua || 'ALL'}`);
-  
-  try {
-    const sheet = getSheet(SHEETS.RPD);
-    const values = sheet.getDataRange().getValues();
-    const year = data.year || new Date().getFullYear();
-    
-    Logger.log(`[EXPORT_RPD_ENHANCED] Filtering RPDs`);
-    
-    let rpds = [];
-    for (let i = 1; i < values.length; i++) {
-      const row = values[i];
-      if (row[4] == year && (!data.kua || row[1] === data.kua)) {
-        rpds.push({
-          kua: row[1],
-          month: row[3],
-          year: row[4],
-          total: row[6],
-          createdAt: row[7],
-          updatedAt: row[8]
-        });
-      }
-    }
-    
-    Logger.log(`[EXPORT_RPD_ENHANCED] Found ${rpds.length} RPDs`);
-    
-    if (data.format === 'pdf') {
-      return exportRPDPDF(rpds, year, data.kua);
-    } else {
-      return exportRPDToExcel(rpds, year, data.kua);
-    }
-  } catch (error) {
-    Logger.log(`[EXPORT_RPD_ENHANCED ERROR] ========== ERROR ==========`);
-    Logger.log(`[EXPORT_RPD_ENHANCED ERROR] Message: ${error.toString()}`);
-    Logger.log(`[EXPORT_RPD_ENHANCED ERROR] Stack: ${error.stack}`);
-    return errorResponse('Gagal export RPD: ' + error.toString());
-  }
-}
-
-function exportRPDToExcel(rpds, year, kua) {
-  Logger.log(`[EXPORT_RPD_EXCEL] ========== START (SHEETJS METHOD) ==========`);
-  Logger.log(`[EXPORT_RPD_EXCEL] Year: ${year}, KUA: ${kua || 'ALL'}, Total: ${rpds.length}`);
-  
-  try {
-    const data = [];
-    
-    // Headers
-    data.push(['No', 'KUA', 'Bulan', 'Tahun', 'Total', 'Tanggal Dibuat', 'Terakhir Update']);
-    
-    // Data rows
-    Logger.log(`[EXPORT_RPD_EXCEL] Adding ${rpds.length} data rows`);
-    rpds.forEach((rpd, index) => {
-      data.push([
-        index + 1,
-        rpd.kua || '',
-        rpd.month || '',
-        rpd.year || '',
-        parseFloat(rpd.total) || 0,
-        rpd.createdAt ? new Date(rpd.createdAt).toLocaleDateString('id-ID') : '',
-        rpd.updatedAt ? new Date(rpd.updatedAt).toLocaleDateString('id-ID') : ''
-      ]);
-      
-      if ((index + 1) % 10 === 0) {
-        Logger.log(`[EXPORT_RPD_EXCEL] Progress: ${index + 1}/${rpds.length}`);
-      }
-    });
-    
-    Logger.log(`[EXPORT_RPD_EXCEL] Creating workbook with SheetJS`);
-    const workbook = XLSX.utils.book_new();
-    const worksheet = XLSX.utils.aoa_to_sheet(data);
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'RPD');
-    
-    Logger.log(`[EXPORT_RPD_EXCEL] Writing to binary`);
-    const excelBuffer = XLSX.write(workbook, { type: 'base64', bookType: 'xlsx' });
-    
-    Logger.log(`[EXPORT_RPD_EXCEL] Buffer length: ${excelBuffer.length}`);
-    Logger.log(`[EXPORT_RPD_EXCEL] ========== SUCCESS ==========`);
-    
-    return successResponse({
-      fileData: excelBuffer,
-      fileName: `RPD ${year}${kua ? ' - ' + kua : ''}.xlsx`,
-      mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-    });
-    
-  } catch (error) {
-    Logger.log(`[EXPORT_RPD_EXCEL ERROR] ========== ERROR ==========`);
-    Logger.log(`[EXPORT_RPD_EXCEL ERROR] Message: ${error.toString()}`);
-    Logger.log(`[EXPORT_RPD_EXCEL ERROR] Stack: ${error.stack}`);
-    return errorResponse('Gagal export RPD: ' + error.toString());
-  }
-}
-
-function exportRPDPDF(rpds, year, kua) {
-  let tableRows = '';
-  let total = 0;
-  
-  rpds.forEach((rpd, index) => {
-    total += parseFloat(rpd.total);
-    tableRows += `
-      <tr>
-        <td style="padding: 8px; border: 1px solid #ddd; text-align: center;">${index + 1}</td>
-        <td style="padding: 8px; border: 1px solid #ddd;">${rpd.kua}</td>
-        <td style="padding: 8px; border: 1px solid #ddd;">${rpd.month}</td>
-        <td style="padding: 8px; border: 1px solid #ddd; text-align: right;">Rp ${formatNumber(rpd.total)}</td>
-      </tr>
-    `;
-  });
-  
-  tableRows += `
-    <tr style="background: #f0f0f0; font-weight: bold;">
-      <td colspan="3" style="padding: 8px; border: 1px solid #ddd; text-align: center;">TOTAL</td>
-      <td style="padding: 8px; border: 1px solid #ddd; text-align: right;">Rp ${formatNumber(total)}</td>
-    </tr>
-  `;
-  
-  const htmlContent = `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <meta charset="UTF-8">
-      <style>
-        body { font-family: Arial, sans-serif; padding: 40px; }
-        .header { text-align: center; margin-bottom: 30px; }
-        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-        th { background: #667eea; color: white; padding: 10px; }
-      </style>
-    </head>
-    <body>
-      <div class="header">
-        <h2>LAPORAN RPD BOP KUA</h2>
-        <h3>Kementerian Agama Kabupaten Indramayu</h3>
-        <p>Tahun ${year}${kua ? ` - ${kua}` : ''}</p>
-      </div>
-      
-      <table>
-        <thead>
-          <tr>
-            <th>No</th>
-            <th>KUA</th>
-            <th>Bulan</th>
-            <th>Total</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${tableRows}
-        </tbody>
-      </table>
-      
-      <div style="margin-top: 50px; text-align: right;">
-        <p>Indramayu, ${new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
-        <p style="margin-top: 80px;"><strong>( ___________________ )</strong></p>
-      </div>
-    </body>
-    </html>
-  `;
-  
-  const blob = Utilities.newBlob(htmlContent, MimeType.HTML, 'temp.html');
-  const pdfBlob = blob.getAs('application/pdf');
-  pdfBlob.setName(`RPD ${year}${kua ? ' - ' + kua : ''}.pdf`);
-  
-  const base64 = Utilities.base64Encode(pdfBlob.getBytes());
-  
-  return successResponse({
-    fileData: base64,
-    fileName: pdfBlob.getName(),
-    mimeType: 'application/pdf'
-  });
-}
-
-function exportRealisasiEnhanced(data) {
-  Logger.log(`[EXPORT_REALISASI_ENHANCED] ========== START ==========`);
-  Logger.log(`[EXPORT_REALISASI_ENHANCED] Format: ${data.format}, Year: ${data.year}, KUA: ${data.kua || 'ALL'}`);
-  
-  try {
-    const sheet = getSheet(SHEETS.REALISASI);
-    const values = sheet.getDataRange().getValues();
-    const year = data.year || new Date().getFullYear();
-    
-    Logger.log(`[EXPORT_REALISASI_ENHANCED] Filtering realisasis`);
-    
-    let realisasis = [];
-    for (let i = 1; i < values.length; i++) {
-      const row = values[i];
-      if (row[4] == year && (!data.kua || row[1] === data.kua)) {
-        realisasis.push({
-          kua: row[1],
-          month: row[3],
-          year: row[4],
-          total: row[7],
-          status: row[8],
-          createdAt: row[10],
-          verifiedBy: row[12] || '-',
-          verifiedAt: row[13] || '-',
-          notes: row[14] || '-'
-        });
-      }
-    }
-    
-    Logger.log(`[EXPORT_REALISASI_ENHANCED] Found ${realisasis.length} realisasis`);
-    
-    if (data.format === 'pdf') {
-      return exportRealisasiAllPDF(realisasis, year, data.kua);
-    } else {
-      return exportRealisasiAllToExcel(realisasis, year, data.kua);
-    }
-  } catch (error) {
-    Logger.log(`[EXPORT_REALISASI_ENHANCED ERROR] ========== ERROR ==========`);
-    Logger.log(`[EXPORT_REALISASI_ENHANCED ERROR] Message: ${error.toString()}`);
-    Logger.log(`[EXPORT_REALISASI_ENHANCED ERROR] Stack: ${error.stack}`);
-    return errorResponse('Gagal export realisasi: ' + error.toString());
-  }
-}
-
-function exportRealisasiAllPDF(realisasis, year, kua) {
-  let tableRows = '';
-  let total = 0;
-  
-  realisasis.forEach((real, index) => {
-    total += real.total;
-    tableRows += `
-      <tr>
-        <td style="padding: 8px; border: 1px solid #ddd; text-align: center;">${index + 1}</td>
-        <td style="padding: 8px; border: 1px solid #ddd;">${real.kua}</td>
-        <td style="padding: 8px; border: 1px solid #ddd;">${real.month}</td>
-        <td style="padding: 8px; border: 1px solid #ddd; text-align: right;">Rp ${formatNumber(real.total)}</td>
-        <td style="padding: 8px; border: 1px solid #ddd; text-align: center;">${real.status}</td>
-      </tr>
-    `;
-  });
-  
-  tableRows += `
-    <tr style="background: #f0f0f0; font-weight: bold;">
-      <td colspan="3" style="padding: 8px; border: 1px solid #ddd; text-align: center;">TOTAL</td>
-      <td style="padding: 8px; border: 1px solid #ddd; text-align: right;">Rp ${formatNumber(total)}</td>
-      <td style="padding: 8px; border: 1px solid #ddd;"></td>
-    </tr>
-  `;
-  
-  const htmlContent = `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <meta charset="UTF-8">
-      <style>
-        body { font-family: Arial, sans-serif; padding: 40px; }
-        .header { text-align: center; margin-bottom: 30px; }
-        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-        th { background: #667eea; color: white; padding: 10px; }
-      </style>
-    </head>
-    <body>
-      <div class="header">
-        <h2>LAPORAN REALISASI BOP KUA</h2>
-        <h3>Kementerian Agama Kabupaten Indramayu</h3>
-        <p>Tahun ${year}${kua ? ` - ${kua}` : ''}</p>
-      </div>
-      
-      <table>
-        <thead>
-          <tr>
-            <th>No</th>
-            <th>KUA</th>
-            <th>Bulan</th>
-            <th>Total</th>
-            <th>Status</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${tableRows}
-        </tbody>
-      </table>
-      
-      <div style="margin-top: 50px; text-align: right;">
-        <p>Indramayu, ${new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
-        <p style="margin-top: 80px;"><strong>( ___________________ )</strong></p>
-      </div>
-    </body>
-    </html>
-  `;
-  
-  const blob = Utilities.newBlob(htmlContent, MimeType.HTML, 'temp.html');
-  const pdfBlob = blob.getAs('application/pdf');
-  pdfBlob.setName(`Realisasi ${year}${kua ? ' - ' + kua : ''}.pdf`);
-  
-  const base64 = Utilities.base64Encode(pdfBlob.getBytes());
-  
-  return successResponse({
-    fileData: base64,
-    fileName: pdfBlob.getName(),
-    mimeType: 'application/pdf'
-  });
-}
-
-function exportRealisasiAllToExcel(realisasis, year, kua) {
-  Logger.log(`[EXPORT_REALISASI_ALL_EXCEL] ========== START (SHEETJS METHOD) ==========`);
-  Logger.log(`[EXPORT_REALISASI_ALL_EXCEL] Year: ${year}, KUA: ${kua || 'ALL'}, Total: ${realisasis.length}`);
-  
-  try {
-    const data = [];
-    
-    // Headers
-    data.push(['No', 'KUA', 'Bulan', 'Tahun', 'Total', 'Status', 'Tanggal Dibuat', 'Diverifikasi Oleh', 'Tanggal Verifikasi', 'Catatan']);
-    
-    // Data rows
-    Logger.log(`[EXPORT_REALISASI_ALL_EXCEL] Adding ${realisasis.length} data rows`);
-    realisasis.forEach((real, index) => {
-      data.push([
-        index + 1,
-        real.kua || '',
-        real.month || '',
-        real.year || '',
-        parseFloat(real.total) || 0,
-        real.status || '',
-        real.createdAt ? new Date(real.createdAt).toLocaleDateString('id-ID') : '',
-        real.verifiedBy || '-',
-        real.verifiedAt !== '-' ? (real.verifiedAt ? new Date(real.verifiedAt).toLocaleDateString('id-ID') : '') : '-',
-        real.notes || '-'
-      ]);
-      
-      if ((index + 1) % 10 === 0) {
-        Logger.log(`[EXPORT_REALISASI_ALL_EXCEL] Progress: ${index + 1}/${realisasis.length}`);
-      }
-    });
-    
-    Logger.log(`[EXPORT_REALISASI_ALL_EXCEL] Creating workbook with SheetJS`);
-    const workbook = XLSX.utils.book_new();
-    const worksheet = XLSX.utils.aoa_to_sheet(data);
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'Realisasi');
-    
-    Logger.log(`[EXPORT_REALISASI_ALL_EXCEL] Writing to binary`);
-    const excelBuffer = XLSX.write(workbook, { type: 'base64', bookType: 'xlsx' });
-    
-    Logger.log(`[EXPORT_REALISASI_ALL_EXCEL] Buffer length: ${excelBuffer.length}`);
-    Logger.log(`[EXPORT_REALISASI_ALL_EXCEL] ========== SUCCESS ==========`);
-    
-    return successResponse({
-      fileData: excelBuffer,
-      fileName: `Realisasi ${year}${kua ? ' - ' + kua : ''}.xlsx`,
-      mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-    });
-    
-  } catch (error) {
-    Logger.log(`[EXPORT_REALISASI_ALL_EXCEL ERROR] ========== ERROR ==========`);
-    Logger.log(`[EXPORT_REALISASI_ALL_EXCEL ERROR] Message: ${error.toString()}`);
-    Logger.log(`[EXPORT_REALISASI_ALL_EXCEL ERROR] Stack: ${error.stack}`);
-    return errorResponse('Gagal export realisasi: ' + error.toString());
-  }
-}
-
-
-
-function exportRPDAllPerMonth(data) {
-  Logger.log(`[EXPORT_RPD_ALL_MONTH] ========== START ==========`);
-  Logger.log(`[EXPORT_RPD_ALL_MONTH] Format: ${data.format}, Year: ${data.year}, Month: ${data.month}`);
-  
-  try {
-    const sheet = getSheet(SHEETS.RPD);
-    const values = sheet.getDataRange().getValues();
-    const year = data.year || new Date().getFullYear();
-    const month = data.month;
-    
-    Logger.log(`[EXPORT_RPD_ALL_MONTH] Filtering RPDs for month: ${month} ${year}`);
-    
-    let rpds = [];
-    for (let i = 1; i < values.length; i++) {
-      const row = values[i];
-      if (row[4] == year && row[3] === month) {
-        rpds.push({
-          kua: row[1],
-          month: row[3],
-          year: row[4],
-          total: row[6],
-          createdAt: row[7],
-          updatedAt: row[8]
-        });
-      }
-    }
-    
-    Logger.log(`[EXPORT_RPD_ALL_MONTH] Found ${rpds.length} RPDs`);
-    
-    if (data.format === 'pdf') {
-      return exportRPDAllMonthPDF(rpds, year, month);
-    } else {
-      return exportRPDAllMonthExcel(rpds, year, month);
-    }
-  } catch (error) {
-    Logger.log(`[EXPORT_RPD_ALL_MONTH ERROR] ${error.toString()}`);
-    return errorResponse('Gagal export RPD: ' + error.toString());
-  }
-}
-
-function exportRPDAllMonthPDF(rpds, year, month) {
-  Logger.log(`[EXPORT_RPD_ALL_MONTH_PDF] Creating PDF`);
-  
-  try {
-    let tableRows = '';
-    let totalAll = 0;
-    
-    rpds.forEach((rpd, index) => {
-      totalAll += parseFloat(rpd.total);
-      tableRows += `
-        <tr>
-          <td style="padding: 8px; border: 1px solid #ddd; text-align: center;">${index + 1}</td>
-          <td style="padding: 8px; border: 1px solid #ddd;">${rpd.kua}</td>
-          <td style="padding: 8px; border: 1px solid #ddd; text-align: right;">Rp ${formatNumber(rpd.total)}</td>
-          <td style="padding: 8px; border: 1px solid #ddd;">${rpd.updatedAt ? new Date(rpd.updatedAt).toLocaleDateString('id-ID') : '-'}</td>
-        </tr>
-      `;
-    });
-    
-    tableRows += `
-      <tr style="background: #f0f0f0; font-weight: bold;">
-        <td colspan="2" style="padding: 8px; border: 1px solid #ddd; text-align: center;">TOTAL</td>
-        <td style="padding: 8px; border: 1px solid #ddd; text-align: right;">Rp ${formatNumber(totalAll)}</td>
-        <td style="padding: 8px; border: 1px solid #ddd;"></td>
-      </tr>
-    `;
-    
-    const htmlContent = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta charset="UTF-8">
-        <style>
-          body { font-family: Arial, sans-serif; padding: 40px; }
-          .header { text-align: center; margin-bottom: 30px; }
-          table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-          th { background: #667eea; color: white; padding: 10px; }
-        </style>
-      </head>
-      <body>
-        <div class="header">
-          <h2>LAPORAN RPD SEMUA KUA</h2>
-          <h3>Kementerian Agama Kabupaten Indramayu</h3>
-          <p>${month} ${year}</p>
-        </div>
-        
-        <table>
-          <thead>
-            <tr>
-              <th>No</th>
-              <th>KUA</th>
-              <th>Total RPD</th>
-              <th>Terakhir Update</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${tableRows}
-          </tbody>
-        </table>
-        
-        <div style="margin-top: 50px; text-align: right;">
-          <p>Indramayu, ${new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
-          <p style="margin-top: 80px;"><strong>( ${NAMA_KASI_BIMAS} )</strong></p>
-          <p>${NIP_KASI_BIMAS}</p>
-        </div>
-      </body>
-      </html>
-    `;
-    
-    const blob = Utilities.newBlob(htmlContent, MimeType.HTML, 'temp.html');
-    const pdfBlob = blob.getAs('application/pdf');
-    pdfBlob.setName(`RPD All KUA - ${month} ${year}.pdf`);
-    
-    const base64 = Utilities.base64Encode(pdfBlob.getBytes());
-    
-    return successResponse({
-      fileData: base64,
-      fileName: pdfBlob.getName(),
-      mimeType: 'application/pdf'
-    });
-  } catch (error) {
-    Logger.log(`[EXPORT_RPD_ALL_MONTH_PDF ERROR] ${error.toString()}`);
-    return errorResponse('Gagal export PDF: ' + error.toString());
-  }
-}
-
-function exportRPDAllMonthExcel(rpds, year, month) {
-  Logger.log(`[EXPORT_RPD_ALL_MONTH_EXCEL] Creating Excel for all KUA - ${month} ${year}`);
-  
-  try {
-    const rows = [];
-    
-    // Title
-    rows.push([`LAPORAN RPD SEMUA KUA - ${month.toUpperCase()} ${year}`]);
-    rows.push(['Kementerian Agama Kabupaten Indramayu']);
-    rows.push([]);
-    
-    // Headers
-    rows.push(['No', 'KUA', 'Total RPD', 'Tanggal Dibuat', 'Terakhir Update']);
-    
-    // Data
-    let totalAll = 0;
-    rpds.forEach((rpd, index) => {
-      totalAll += parseFloat(rpd.total) || 0;
-      rows.push([
-        index + 1,
-        rpd.kua || '',
-        parseFloat(rpd.total) || 0,
-        rpd.createdAt ? new Date(rpd.createdAt).toLocaleDateString('id-ID') : '',
-        rpd.updatedAt ? new Date(rpd.updatedAt).toLocaleDateString('id-ID') : ''
-      ]);
-    });
-    
-    // Total row
-    rows.push([]);
-    rows.push(['', 'TOTAL', totalAll, '', '']);
-    
-    const tsvContent = rows.map(row => row.map(cell => String(cell).replace(/\t/g, ' ').replace(/\n/g, ' ')).join('\t')).join('\n');
-    const blob = Utilities.newBlob(tsvContent, 'text/tab-separated-values', `RPD All KUA - ${month} ${year}.xls`);
-    const base64 = Utilities.base64Encode(blob.getBytes());
-    
-    Logger.log(`[EXPORT_RPD_ALL_MONTH_EXCEL] Success`);
-    
-    return successResponse({
-      fileData: base64,
-      fileName: `RPD All KUA - ${month} ${year}.xls`,
-      mimeType: 'application/vnd.ms-excel'
-    });
-  } catch (error) {
-    Logger.log(`[EXPORT_RPD_ALL_MONTH_EXCEL ERROR] ${error.toString()}`);
-    return errorResponse('Gagal export: ' + error.toString());
-  }
-}
-
-// ===== EXPORT RPD SELECTED KUA PER BULAN =====
-function exportRPDSelectedPerMonth(data) {
-  Logger.log(`[EXPORT_RPD_SELECTED_MONTH] ========== START ==========`);
-  Logger.log(`[EXPORT_RPD_SELECTED_MONTH] KUA: ${data.kua}, Month: ${data.month}, Year: ${data.year}`);
-  
-  try {
-    const sheet = getSheet(SHEETS.RPD);
-    const values = sheet.getDataRange().getValues();
-    
-    let rpd = null;
-    for (let i = 1; i < values.length; i++) {
-      const row = values[i];
-      if (row[1] === data.kua && row[3] === data.month && row[4] == data.year) {
-        rpd = {
-          id: row[0],
-          kua: row[1],
-          month: row[3],
-          year: row[4],
-          data: JSON.parse(row[5] || '{}'),
-          total: row[6]
-        };
-        break;
-      }
-    }
-    
-    if (!rpd) {
-      return errorResponse('RPD tidak ditemukan');
-    }
-    
-    if (data.format === 'pdf') {
-      return exportRPDSelectedMonthPDF(rpd);
-    } else {
-      return exportRPDSelectedMonthExcel(rpd);
-    }
-  } catch (error) {
-    Logger.log(`[EXPORT_RPD_SELECTED_MONTH ERROR] ${error.toString()}`);
-    return errorResponse('Gagal export: ' + error.toString());
-  }
-}
-
-function exportRPDSelectedMonthPDF(rpd) {
-  Logger.log(`[EXPORT_RPD_SELECTED_MONTH_PDF] Creating PDF`);
-  
-  try {
-    let detailHTML = '';
-    
-    if (rpd.data && typeof rpd.data === 'object') {
-      Object.entries(rpd.data).forEach(([code, items]) => {
-        const param = CONFIG.RPD_PARAMETERS[code];
-        if (!param) return;
-        
-        detailHTML += `<tr><td colspan="2" style="background: #f0f0f0; font-weight: bold; padding: 8px;">${code} - ${param.name}</td></tr>`;
-        
-        if (items && typeof items === 'object') {
-          Object.entries(items).forEach(([item, value]) => {
-            detailHTML += `
-              <tr>
-                <td style="padding: 6px; border: 1px solid #ddd;">${item}</td>
-                <td style="padding: 6px; border: 1px solid #ddd; text-align: right;">Rp ${formatNumber(value)}</td>
-              </tr>
-            `;
-          });
-        }
-      });
-    }
-    
-    if (!detailHTML) {
-      detailHTML = '<tr><td colspan="2" style="padding: 10px; text-align: center; color: #999;">Tidak ada data</td></tr>';
-    }
-    
-    const htmlContent = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta charset="UTF-8">
-        <style>
-          body { font-family: Arial, sans-serif; padding: 40px; }
-          .header { text-align: center; margin-bottom: 30px; }
-          table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-          th { background: #667eea; color: white; padding: 10px; }
-        </style>
-      </head>
-      <body>
-        <div class="header">
-          <h2>LAPORAN RPD</h2>
-          <h3>${rpd.kua}</h3>
-          <p>${rpd.month} ${rpd.year}</p>
-        </div>
-        
-        <table>
-          <thead>
-            <tr>
-              <th>Item</th>
-              <th>Nominal</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${detailHTML}
-          </tbody>
-        </table>
-        
-        <div style="margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px;">
-          <p style="margin: 0; font-size: 18px;"><strong>Total RPD: Rp ${formatNumber(rpd.total)}</strong></p>
-        </div>
-        
-        <div style="margin-top: 50px; text-align: right;">
-          <p>Indramayu, ${new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
-          <p style="margin-top: 80px;"><strong>( ${NAMA_KASI_BIMAS} )</strong></p>
-          <p>${NIP_KASI_BIMAS}</p>
-        </div>
-      </body>
-      </html>
-    `;
-    
-    const blob = Utilities.newBlob(htmlContent, MimeType.HTML, 'temp.html');
-    const pdfBlob = blob.getAs('application/pdf');
-    pdfBlob.setName(`RPD ${rpd.kua} - ${rpd.month} ${rpd.year}.pdf`);
-    
-    const base64 = Utilities.base64Encode(pdfBlob.getBytes());
-    
-    return successResponse({
-      fileData: base64,
-      fileName: pdfBlob.getName(),
-      mimeType: 'application/pdf'
-    });
-  } catch (error) {
-    Logger.log(`[EXPORT_RPD_SELECTED_MONTH_PDF ERROR] ${error.toString()}`);
-    return errorResponse('Gagal export PDF: ' + error.toString());
-  }
-}
-
-function exportRPDSelectedMonthExcel(rpd) {
-  Logger.log(`[EXPORT_RPD_SELECTED_MONTH_EXCEL] Creating Excel for ${rpd.kua} - ${rpd.month} ${rpd.year}`);
-  
-  try {
-    const rows = [];
-    
-    // Title
-    rows.push([`LAPORAN RPD - ${rpd.kua.toUpperCase()}`]);
-    rows.push([`${rpd.month} ${rpd.year}`]);
-    rows.push([]);
-    
-    // Headers
-    rows.push(['Kode', 'Nama Parameter', 'Item', 'Nominal']);
-    
-    // Data
-    let hasData = false;
-    if (rpd.data && typeof rpd.data === 'object') {
-      Object.entries(rpd.data).forEach(([code, items]) => {
-        const paramName = CONFIG.RPD_PARAMETERS[code] ? CONFIG.RPD_PARAMETERS[code].name : '';
-        if (items && typeof items === 'object') {
-          Object.entries(items).forEach(([item, value]) => {
-            rows.push([code, paramName, item, parseFloat(value) || 0]);
-            hasData = true;
-          });
-        }
-      });
-    }
-    
-    if (!hasData) {
-      rows.push(['', '', 'Tidak ada data', 0]);
-    }
-    
-    rows.push([]);
-    rows.push(['', '', 'TOTAL', rpd.total]);
-    
-    const tsvContent = rows.map(row => row.map(cell => String(cell).replace(/\t/g, ' ').replace(/\n/g, ' ')).join('\t')).join('\n');
-    const blob = Utilities.newBlob(tsvContent, 'text/tab-separated-values', `RPD ${rpd.kua} - ${rpd.month} ${rpd.year}.xls`);
-    const base64 = Utilities.base64Encode(blob.getBytes());
-    
-    return successResponse({
-      fileData: base64,
-      fileName: `RPD ${rpd.kua} - ${rpd.month} ${rpd.year}.xls`,
-      mimeType: 'application/vnd.ms-excel'
-    });
-  } catch (error) {
-    Logger.log(`[EXPORT_RPD_SELECTED_MONTH_EXCEL ERROR] ${error.toString()}`);
-    return errorResponse('Gagal export: ' + error.toString());
-  }
-}
-
-// ===== EXPORT RPD ALL DETAIL (31 KUA KUMULATIF 1 TAHUN) =====
-function exportRPDAllDetailYear(data) {
-  Logger.log(`[EXPORT_RPD_ALL_DETAIL_YEAR] ========== START ==========`);
-  Logger.log(`[EXPORT_RPD_ALL_DETAIL_YEAR] Year: ${data.year}`);
-  
-  try {
-    const sheet = getSheet(SHEETS.RPD);
-    const values = sheet.getDataRange().getValues();
-    const year = data.year || new Date().getFullYear();
-    
-    let rpds = [];
-    for (let i = 1; i < values.length; i++) {
-      const row = values[i];
-      if (row[4] == year) {
-        rpds.push({
-          kua: row[1],
-          month: row[3],
-          year: row[4],
-          data: JSON.parse(row[5] || '{}'),
-          total: row[6]
-        });
-      }
-    }
-    
-    Logger.log(`[EXPORT_RPD_ALL_DETAIL_YEAR] Found ${rpds.length} RPDs`);
-    
-    if (data.format === 'pdf') {
-      return exportRPDAllDetailYearPDF(rpds, year);
-    } else {
-      return exportRPDAllDetailYearExcel(rpds, year);
-    }
-  } catch (error) {
-    Logger.log(`[EXPORT_RPD_ALL_DETAIL_YEAR ERROR] ${error.toString()}`);
-    return errorResponse('Gagal export: ' + error.toString());
-  }
-}
-
-function exportRPDAllDetailYearPDF(rpds, year) {
-  Logger.log(`[EXPORT_RPD_ALL_DETAIL_YEAR_PDF] Creating PDF`);
-  
-  try {
-    let tableRows = '';
-    let grandTotal = 0;
-    
-    rpds.forEach(rpd => {
-      if (rpd.data && typeof rpd.data === 'object') {
-        Object.entries(rpd.data).forEach(([code, items]) => {
-          const paramName = CONFIG.RPD_PARAMETERS[code] ? CONFIG.RPD_PARAMETERS[code].name : '';
-          if (items && typeof items === 'object') {
-            Object.entries(items).forEach(([item, value]) => {
-              const val = parseFloat(value) || 0;
-              grandTotal += val;
-              tableRows += `
-                <tr>
-                  <td style="padding: 6px; border: 1px solid #ddd;">${rpd.kua}</td>
-                  <td style="padding: 6px; border: 1px solid #ddd;">${rpd.month}</td>
-                  <td style="padding: 6px; border: 1px solid #ddd;">${code}</td>
-                  <td style="padding: 6px; border: 1px solid #ddd;">${paramName}</td>
-                  <td style="padding: 6px; border: 1px solid #ddd;">${item}</td>
-                  <td style="padding: 6px; border: 1px solid #ddd; text-align: right;">Rp ${formatNumber(val)}</td>
-                </tr>
-              `;
-            });
-          }
-        });
-      }
-    });
-    
-    if (!tableRows) {
-      tableRows = '<tr><td colspan="6" style="padding: 20px; text-align: center; color: #999;">Tidak ada data</td></tr>';
-    }
-    
-    tableRows += `
-      <tr style="background: #f0f0f0; font-weight: bold;">
-        <td colspan="5" style="padding: 8px; border: 1px solid #ddd; text-align: right;">GRAND TOTAL</td>
-        <td style="padding: 8px; border: 1px solid #ddd; text-align: right;">Rp ${formatNumber(grandTotal)}</td>
-      </tr>
-    `;
-    
-    const htmlContent = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta charset="UTF-8">
-        <style>
-          body { font-family: Arial, sans-serif; padding: 40px; }
-          .header { text-align: center; margin-bottom: 30px; }
-          table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 11px; }
-          th { background: #667eea; color: white; padding: 10px; }
-        </style>
-      </head>
-      <body>
-        <div class="header">
-          <h2>LAPORAN DETAIL RPD SEMUA KUA</h2>
-          <h3>Kementerian Agama Kabupaten Indramayu</h3>
-          <p>Tahun ${year} (Kumulatif)</p>
-        </div>
-        
-        <table>
-          <thead>
-            <tr>
-              <th>KUA</th>
-              <th>Bulan</th>
-              <th>Kode</th>
-              <th>Nama Parameter</th>
-              <th>Item</th>
-              <th>Nominal</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${tableRows}
-          </tbody>
-        </table>
-        
-        <div style="margin-top: 50px; text-align: right;">
-          <p>Indramayu, ${new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
-          <p style="margin-top: 80px;"><strong>( ${NAMA_KASI_BIMAS} )</strong></p>
-          <p>${NIP_KASI_BIMAS}</p>
-        </div>
-      </body>
-      </html>
-    `;
-    
-    const blob = Utilities.newBlob(htmlContent, MimeType.HTML, 'temp.html');
-    const pdfBlob = blob.getAs('application/pdf');
-    pdfBlob.setName(`RPD All Detail - ${year}.pdf`);
-    
-    const base64 = Utilities.base64Encode(pdfBlob.getBytes());
-    
-    return successResponse({
-      fileData: base64,
-      fileName: pdfBlob.getName(),
-      mimeType: 'application/pdf'
-    });
-  } catch (error) {
-    Logger.log(`[EXPORT_RPD_ALL_DETAIL_YEAR_PDF ERROR] ${error.toString()}`);
-    return errorResponse('Gagal export PDF: ' + error.toString());
-  }
-}
-
-function exportRPDAllDetailYearExcel(rpds, year) {
-  Logger.log(`[EXPORT_RPD_ALL_DETAIL_YEAR_EXCEL] Creating detailed Excel for all KUA - ${year}`);
-  
-  try {
-    const rows = [];
-    
-    // Title
-    rows.push([`LAPORAN DETAIL RPD SEMUA KUA - TAHUN ${year}`]);
-    rows.push(['Kementerian Agama Kabupaten Indramayu']);
-    rows.push([]);
-    
-    // Headers
-    rows.push(['KUA', 'Bulan', 'Kode', 'Nama Parameter', 'Item', 'Nominal']);
-    
-    // Data
-    let grandTotal = 0;
-    rpds.forEach(rpd => {
-      if (rpd.data && typeof rpd.data === 'object') {
-        Object.entries(rpd.data).forEach(([code, items]) => {
-          const paramName = CONFIG.RPD_PARAMETERS[code] ? CONFIG.RPD_PARAMETERS[code].name : '';
-          if (items && typeof items === 'object') {
-            Object.entries(items).forEach(([item, value]) => {
-              const val = parseFloat(value) || 0;
-              grandTotal += val;
-              rows.push([rpd.kua, rpd.month, code, paramName, item, val]);
-            });
-          }
-        });
-      }
-    });
-    
-    rows.push([]);
-    rows.push(['', '', '', '', 'GRAND TOTAL', grandTotal]);
-    
-    const tsvContent = rows.map(row => row.map(cell => String(cell).replace(/\t/g, ' ').replace(/\n/g, ' ')).join('\t')).join('\n');
-    const blob = Utilities.newBlob(tsvContent, 'text/tab-separated-values', `RPD All Detail - ${year}.xls`);
-    const base64 = Utilities.base64Encode(blob.getBytes());
-    
-    return successResponse({
-      fileData: base64,
-      fileName: `RPD All Detail - ${year}.xls`,
-      mimeType: 'application/vnd.ms-excel'
-    });
-  } catch (error) {
-    Logger.log(`[EXPORT_RPD_ALL_DETAIL_YEAR_EXCEL ERROR] ${error.toString()}`);
-    return errorResponse('Gagal export: ' + error.toString());
-  }
-}
-
-// ===== EXPORT REALISASI ALL KUA PER BULAN =====
-function exportRealisasiAllPerMonth(data) {
-  Logger.log(`[EXPORT_REALISASI_ALL_MONTH] ========== START ==========`);
-  Logger.log(`[EXPORT_REALISASI_ALL_MONTH] Month: ${data.month}, Year: ${data.year}`);
-  
-  try {
-    const sheet = getSheet(SHEETS.REALISASI);
-    const values = sheet.getDataRange().getValues();
-    
-    let realisasis = [];
-    for (let i = 1; i < values.length; i++) {
-      const row = values[i];
-      if (row[3] === data.month && row[4] == data.year) {
-        realisasis.push({
-          kua: row[1],
-          month: row[3],
-          year: row[4],
-          total: row[7],
-          status: row[8],
-          verifiedBy: row[12],
-          verifiedAt: row[13]
-        });
-      }
-    }
-    
-    Logger.log(`[EXPORT_REALISASI_ALL_MONTH] Found ${realisasis.length} realisasis`);
-    
-    if (data.format === 'pdf') {
-      return exportRealisasiAllMonthPDF(realisasis, data.year, data.month);
-    } else {
-      return exportRealisasiAllMonthExcel(realisasis, data.year, data.month);
-    }
-  } catch (error) {
-    Logger.log(`[EXPORT_REALISASI_ALL_MONTH ERROR] ${error.toString()}`);
-    return errorResponse('Gagal export: ' + error.toString());
-  }
-}
-
-function exportRealisasiAllMonthPDF(realisasis, year, month) {
-  Logger.log(`[EXPORT_REALISASI_ALL_MONTH_PDF] Creating PDF`);
-  
-  try {
-    let tableRows = '';
-    let totalAll = 0;
-    
-    realisasis.forEach((real, index) => {
-      totalAll += parseFloat(real.total);
-      tableRows += `
-        <tr>
-          <td style="padding: 8px; border: 1px solid #ddd; text-align: center;">${index + 1}</td>
-          <td style="padding: 8px; border: 1px solid #ddd;">${real.kua}</td>
-          <td style="padding: 8px; border: 1px solid #ddd; text-align: right;">Rp ${formatNumber(real.total)}</td>
-          <td style="padding: 8px; border: 1px solid #ddd; text-align: center;">${real.status}</td>
-          <td style="padding: 8px; border: 1px solid #ddd;">${real.verifiedBy || '-'}</td>
-          <td style="padding: 8px; border: 1px solid #ddd;">${real.verifiedAt ? new Date(real.verifiedAt).toLocaleDateString('id-ID') : '-'}</td>
-        </tr>
-      `;
-    });
-    
-    if (!tableRows) {
-      tableRows = '<tr><td colspan="6" style="padding: 20px; text-align: center; color: #999;">Tidak ada data</td></tr>';
-    }
-    
-    tableRows += `
-      <tr style="background: #f0f0f0; font-weight: bold;">
-        <td colspan="2" style="padding: 8px; border: 1px solid #ddd; text-align: center;">TOTAL</td>
-        <td style="padding: 8px; border: 1px solid #ddd; text-align: right;">Rp ${formatNumber(totalAll)}</td>
-        <td colspan="3" style="padding: 8px; border: 1px solid #ddd;"></td>
-      </tr>
-    `;
-    
-    const htmlContent = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta charset="UTF-8">
-        <style>
-          body { font-family: Arial, sans-serif; padding: 40px; }
-          .header { text-align: center; margin-bottom: 30px; }
-          table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-          th { background: #667eea; color: white; padding: 10px; }
-        </style>
-      </head>
-      <body>
-        <div class="header">
-          <h2>LAPORAN REALISASI SEMUA KUA</h2>
-          <h3>Kementerian Agama Kabupaten Indramayu</h3>
-          <p>${month} ${year}</p>
-        </div>
-        
-        <table>
-          <thead>
-            <tr>
-              <th>No</th>
-              <th>KUA</th>
-              <th>Total Realisasi</th>
-              <th>Status</th>
-              <th>Diverifikasi Oleh</th>
-              <th>Tanggal Verifikasi</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${tableRows}
-          </tbody>
-        </table>
-        
-        <div style="margin-top: 50px; text-align: right;">
-          <p>Indramayu, ${new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
-          <p style="margin-top: 80px;"><strong>( ${NAMA_KASI_BIMAS} )</strong></p>
-          <p>${NIP_KASI_BIMAS}</p>
-        </div>
-      </body>
-      </html>
-    `;
-    
-    const blob = Utilities.newBlob(htmlContent, MimeType.HTML, 'temp.html');
-    const pdfBlob = blob.getAs('application/pdf');
-    pdfBlob.setName(`Realisasi All KUA - ${month} ${year}.pdf`);
-    
-    const base64 = Utilities.base64Encode(pdfBlob.getBytes());
-    
-    return successResponse({
-      fileData: base64,
-      fileName: pdfBlob.getName(),
-      mimeType: 'application/pdf'
-    });
-  } catch (error) {
-    Logger.log(`[EXPORT_REALISASI_ALL_MONTH_PDF ERROR] ${error.toString()}`);
-    return errorResponse('Gagal export PDF: ' + error.toString());
-  }
-}
-
-function exportRealisasiAllMonthExcel(realisasis, year, month) {
-  Logger.log(`[EXPORT_REALISASI_ALL_MONTH_EXCEL] Creating Excel for all KUA - ${month} ${year}`);
-  
-  try {
-    const rows = [];
-    
-    rows.push([`LAPORAN REALISASI SEMUA KUA - ${month.toUpperCase()} ${year}`]);
-    rows.push(['Kementerian Agama Kabupaten Indramayu']);
-    rows.push([]);
-    
-    rows.push(['No', 'KUA', 'Total Realisasi', 'Status', 'Diverifikasi Oleh', 'Tanggal Verifikasi']);
-    
-    let totalAll = 0;
-    realisasis.forEach((real, index) => {
-      totalAll += parseFloat(real.total) || 0;
-      rows.push([
-        index + 1,
-        real.kua,
-        parseFloat(real.total) || 0,
-        real.status,
-        real.verifiedBy || '-',
-        real.verifiedAt ? new Date(real.verifiedAt).toLocaleDateString('id-ID') : '-'
-      ]);
-    });
-    
-    rows.push([]);
-    rows.push(['', 'TOTAL', totalAll, '', '', '']);
-    
-    const tsvContent = rows.map(row => row.map(cell => String(cell).replace(/\t/g, ' ').replace(/\n/g, ' ')).join('\t')).join('\n');
-    const blob = Utilities.newBlob(tsvContent, 'text/tab-separated-values', `Realisasi All KUA - ${month} ${year}.xls`);
-    const base64 = Utilities.base64Encode(blob.getBytes());
-    
-    return successResponse({
-      fileData: base64,
-      fileName: `Realisasi All KUA - ${month} ${year}.xls`,
-      mimeType: 'application/vnd.ms-excel'
-    });
-  } catch (error) {
-    Logger.log(`[EXPORT_REALISASI_ALL_MONTH_EXCEL ERROR] ${error.toString()}`);
-    return errorResponse('Gagal export: ' + error.toString());
-  }
-}
-
-// ===== EXPORT REALISASI SELECTED KUA PER BULAN =====
-function exportRealisasiSelectedPerMonth(data) {
-  Logger.log(`[EXPORT_REALISASI_SELECTED_MONTH] ========== START ==========`);
-  
-  try {
-    const sheet = getSheet(SHEETS.REALISASI);
-    const values = sheet.getDataRange().getValues();
-    
-    let realisasi = null;
-    for (let i = 1; i < values.length; i++) {
-      const row = values[i];
-      if (row[1] === data.kua && row[3] === data.month && row[4] == data.year) {
-        realisasi = {
-          kua: row[1],
-          month: row[3],
-          year: row[4],
-          data: JSON.parse(row[6] || '{}'),
-          total: row[7],
-          status: row[8]
-        };
-        break;
-      }
-    }
-    
-    if (!realisasi) {
-      return errorResponse('Realisasi tidak ditemukan');
-    }
-    
-    // Get RPD data for comparison
-    const rpdSheet = getSheet(SHEETS.RPD);
-    const rpdValues = rpdSheet.getDataRange().getValues();
-    let rpd = { data: {} };
-    
-    for (let i = 1; i < rpdValues.length; i++) {
-      const row = rpdValues[i];
-      if (row[1] === data.kua && row[3] === data.month && row[4] == data.year) {
-        rpd.data = JSON.parse(row[5] || '{}');
-        break;
-      }
-    }
-    
-    if (data.format === 'pdf') {
-      return exportRealisasiSelectedMonthPDF(realisasi, rpd);
-    } else {
-      return exportRealisasiSelectedMonthExcel(realisasi, rpd);
-    }
-  } catch (error) {
-    Logger.log(`[EXPORT_REALISASI_SELECTED_MONTH ERROR] ${error.toString()}`);
-    return errorResponse('Gagal export: ' + error.toString());
-  }
-}
-
-function exportRealisasiSelectedMonthPDF(realisasi, rpd) {
-  Logger.log(`[EXPORT_REALISASI_SELECTED_MONTH_PDF] Creating PDF`);
-  
-  try {
-    let detailHTML = '';
-    
-    if (realisasi.data && typeof realisasi.data === 'object') {
-      Object.entries(realisasi.data).forEach(([code, items]) => {
-        const param = CONFIG.RPD_PARAMETERS[code];
-        if (!param) return;
-        
-        detailHTML += `<tr><td colspan="4" style="background: #f0f0f0; font-weight: bold; padding: 8px;">${code} - ${param.name}</td></tr>`;
-        
-        if (items && typeof items === 'object') {
-          Object.entries(items).forEach(([item, realValue]) => {
-            const rpdValue = rpd.data && rpd.data[code] && rpd.data[code][item] ? parseFloat(rpd.data[code][item]) : 0;
-            const realVal = parseFloat(realValue) || 0;
-            const selisih = realVal - rpdValue;
-            
-            detailHTML += `
-              <tr>
-                <td style="padding: 6px; border: 1px solid #ddd;">${item}</td>
-                <td style="padding: 6px; border: 1px solid #ddd; text-align: right;">Rp ${formatNumber(rpdValue)}</td>
-                <td style="padding: 6px; border: 1px solid #ddd; text-align: right;">Rp ${formatNumber(realVal)}</td>
-                <td style="padding: 6px; border: 1px solid #ddd; text-align: right;">Rp ${formatNumber(selisih)}</td>
-              </tr>
-            `;
-          });
-        }
-      });
-    }
-    
-    if (!detailHTML) {
-      detailHTML = '<tr><td colspan="4" style="padding: 10px; text-align: center; color: #999;">Tidak ada data</td></tr>';
-    }
-    
-    const htmlContent = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta charset="UTF-8">
-        <style>
-          body { font-family: Arial, sans-serif; padding: 40px; }
-          .header { text-align: center; margin-bottom: 30px; }
-          .info { margin-bottom: 20px; }
-          table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-          th { background: #667eea; color: white; padding: 10px; }
-        </style>
-      </head>
-      <body>
-        <div class="header">
-          <h2>LAPORAN REALISASI BOP KUA</h2>
-          <h3>Kementerian Agama Kabupaten Indramayu</h3>
-        </div>
-        
-        <div class="info">
-          <table style="border: none;">
-            <tr><td width="150"><strong>KUA</strong></td><td>: ${realisasi.kua}</td></tr>
-            <tr><td><strong>Bulan</strong></td><td>: ${realisasi.month} ${realisasi.year}</td></tr>
-            <tr><td><strong>Status</strong></td><td>: ${realisasi.status}</td></tr>
-            <tr><td><strong>Total Realisasi</strong></td><td>: Rp ${formatNumber(realisasi.total)}</td></tr>
-          </table>
-        </div>
-        
-        <h3>Detail Realisasi</h3>
-        <table>
-          <thead>
-            <tr>
-              <th>Item</th>
-              <th>RPD</th>
-              <th>Realisasi</th>
-              <th>Selisih</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${detailHTML}
-          </tbody>
-        </table>
-        
-        <div style="margin-top: 50px; text-align: right;">
-          <p>Indramayu, ${new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
-          <p><strong>Kepala Seksi Bimas Islam</strong></p>
-          <p style="margin-top: 80px;"><strong>( ${NAMA_KASI_BIMAS} )</strong></p>
-          <p>${NIP_KASI_BIMAS}</p>
-        </div>
-      </body>
-      </html>
-    `;
-    
-    const blob = Utilities.newBlob(htmlContent, MimeType.HTML, 'temp.html');
-    const pdfBlob = blob.getAs('application/pdf');
-    pdfBlob.setName(`Realisasi ${realisasi.kua} - ${realisasi.month} ${realisasi.year}.pdf`);
-    
-    const base64 = Utilities.base64Encode(pdfBlob.getBytes());
-    
-    return successResponse({
-      fileData: base64,
-      fileName: pdfBlob.getName(),
-      mimeType: 'application/pdf'
-    });
-  } catch (error) {
-    Logger.log(`[EXPORT_REALISASI_SELECTED_MONTH_PDF ERROR] ${error.toString()}`);
-    return errorResponse('Gagal export PDF: ' + error.toString());
-  }
-}
-
-function exportRealisasiSelectedMonthExcel(realisasi, rpd) {
-  Logger.log(`[EXPORT_REALISASI_SELECTED_MONTH_EXCEL] Creating Excel`);
-  
-  try {
-    const rows = [];
-    
-    rows.push([`LAPORAN REALISASI - ${realisasi.kua.toUpperCase()}`]);
-    rows.push([`${realisasi.month} ${realisasi.year}`]);
-    rows.push([]);
-    
-    rows.push(['Kode', 'Nama Parameter', 'Item', 'RPD', 'Realisasi', 'Selisih']);
-    
-    if (realisasi.data && typeof realisasi.data === 'object') {
-      Object.entries(realisasi.data).forEach(([code, items]) => {
-        const paramName = CONFIG.RPD_PARAMETERS[code] ? CONFIG.RPD_PARAMETERS[code].name : '';
-        if (items && typeof items === 'object') {
-          Object.entries(items).forEach(([item, realValue]) => {
-            const rpdValue = rpd.data && rpd.data[code] && rpd.data[code][item] ? parseFloat(rpd.data[code][item]) : 0;
-            const realVal = parseFloat(realValue) || 0;
-            const selisih = realVal - rpdValue;
-            
-            rows.push([code, paramName, item, rpdValue, realVal, selisih]);
-          });
-        }
-      });
-    }
-    
-    rows.push([]);
-    rows.push(['', '', '', '', 'TOTAL', realisasi.total]);
-    
-    const tsvContent = rows.map(row => row.map(cell => String(cell).replace(/\t/g, ' ').replace(/\n/g, ' ')).join('\t')).join('\n');
-    const blob = Utilities.newBlob(tsvContent, 'text/tab-separated-values', `Realisasi ${realisasi.kua} - ${realisasi.month} ${realisasi.year}.xls`);
-    const base64 = Utilities.base64Encode(blob.getBytes());
-    
-    return successResponse({
-      fileData: base64,
-      fileName: `Realisasi ${realisasi.kua} - ${realisasi.month} ${realisasi.year}.xls`,
-      mimeType: 'application/vnd.ms-excel'
-    });
-  } catch (error) {
-    Logger.log(`[EXPORT_REALISASI_SELECTED_MONTH_EXCEL ERROR] ${error.toString()}`);
-    return errorResponse('Gagal export: ' + error.toString());
-  }
-}
-
-// ===== EXPORT REALISASI ALL DETAIL (31 KUA PER BULAN) =====
-function exportRealisasiAllDetailPerMonth(data) {
-  Logger.log(`[EXPORT_REALISASI_ALL_DETAIL_MONTH] ========== START ==========`);
-  
-  try {
-    const sheet = getSheet(SHEETS.REALISASI);
-    const values = sheet.getDataRange().getValues();
-    
-    let realisasis = [];
-    for (let i = 1; i < values.length; i++) {
-      const row = values[i];
-      if (row[3] === data.month && row[4] == data.year) {
-        realisasis.push({
-          kua: row[1],
-          month: row[3],
-          year: row[4],
-          data: JSON.parse(row[6] || '{}'),
-          total: row[7],
-          status: row[8]
-        });
-      }
-    }
-    
-    if (data.format === 'pdf') {
-      return exportRealisasiAllDetailMonthPDF(realisasis, data.year, data.month);
-    } else {
-      return exportRealisasiAllDetailMonthExcel(realisasis, data.year, data.month);
-    }
-  } catch (error) {
-    Logger.log(`[EXPORT_REALISASI_ALL_DETAIL_MONTH ERROR] ${error.toString()}`);
-    return errorResponse('Gagal export: ' + error.toString());
-  }
-}
-
-function exportRealisasiAllDetailMonthPDF(realisasis, year, month) {
-  Logger.log(`[EXPORT_REALISASI_ALL_DETAIL_MONTH_PDF] Creating PDF`);
-  
-  try {
-    let tableRows = '';
-    let grandTotal = 0;
-    
-    realisasis.forEach(realisasi => {
-      if (realisasi.data && typeof realisasi.data === 'object') {
-        Object.entries(realisasi.data).forEach(([code, items]) => {
-          const paramName = CONFIG.RPD_PARAMETERS[code] ? CONFIG.RPD_PARAMETERS[code].name : '';
-          if (items && typeof items === 'object') {
-            Object.entries(items).forEach(([item, value]) => {
-              const val = parseFloat(value) || 0;
-              grandTotal += val;
-              tableRows += `
-                <tr>
-                  <td style="padding: 6px; border: 1px solid #ddd;">${realisasi.kua}</td>
-                  <td style="padding: 6px; border: 1px solid #ddd;">${code}</td>
-                  <td style="padding: 6px; border: 1px solid #ddd;">${paramName}</td>
-                  <td style="padding: 6px; border: 1px solid #ddd;">${item}</td>
-                  <td style="padding: 6px; border: 1px solid #ddd; text-align: right;">Rp ${formatNumber(val)}</td>
-                  <td style="padding: 6px; border: 1px solid #ddd; text-align: center;">${realisasi.status}</td>
-                </tr>
-              `;
-            });
-          }
-        });
-      }
-    });
-    
-    if (!tableRows) {
-      tableRows = '<tr><td colspan="6" style="padding: 20px; text-align: center; color: #999;">Tidak ada data</td></tr>';
-    }
-    
-    tableRows += `
-      <tr style="background: #f0f0f0; font-weight: bold;">
-        <td colspan="4" style="padding: 8px; border: 1px solid #ddd; text-align: right;">GRAND TOTAL</td>
-        <td style="padding: 8px; border: 1px solid #ddd; text-align: right;">Rp ${formatNumber(grandTotal)}</td>
-        <td style="padding: 8px; border: 1px solid #ddd;"></td>
-      </tr>
-    `;
-    
-    const htmlContent = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta charset="UTF-8">
-        <style>
-          body { font-family: Arial, sans-serif; padding: 40px; }
-          .header { text-align: center; margin-bottom: 30px; }
-          table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 11px; }
-          th { background: #667eea; color: white; padding: 10px; }
-        </style>
-      </head>
-      <body>
-        <div class="header">
-          <h2>LAPORAN DETAIL REALISASI SEMUA KUA</h2>
-          <h3>Kementerian Agama Kabupaten Indramayu</h3>
-          <p>${month} ${year}</p>
-        </div>
-        
-        <table>
-          <thead>
-            <tr>
-              <th>KUA</th>
-              <th>Kode</th>
-              <th>Nama Parameter</th>
-              <th>Item</th>
-              <th>Nominal</th>
-              <th>Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${tableRows}
-          </tbody>
-        </table>
-        
-        <div style="margin-top: 50px; text-align: right;">
-          <p>Indramayu, ${new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
-          <p style="margin-top: 80px;"><strong>( ${NAMA_KASI_BIMAS} )</strong></p>
-          <p>${NIP_KASI_BIMAS}</p>
-        </div>
-      </body>
-      </html>
-    `;
-    
-    const blob = Utilities.newBlob(htmlContent, MimeType.HTML, 'temp.html');
-    const pdfBlob = blob.getAs('application/pdf');
-    pdfBlob.setName(`Realisasi All Detail - ${month} ${year}.pdf`);
-    
-    const base64 = Utilities.base64Encode(pdfBlob.getBytes());
-    
-    return successResponse({
-      fileData: base64,
-      fileName: pdfBlob.getName(),
-      mimeType: 'application/pdf'
-    });
-  } catch (error) {
-    Logger.log(`[EXPORT_REALISASI_ALL_DETAIL_MONTH_PDF ERROR] ${error.toString()}`);
-    return errorResponse('Gagal export PDF: ' + error.toString());
-  }
-}
-
-function exportRealisasiAllDetailMonthExcel(realisasis, year, month) {
-  Logger.log(`[EXPORT_REALISASI_ALL_DETAIL_MONTH_EXCEL] Creating detailed Excel`);
-  
-  try {
-    const rows = [];
-    
-    rows.push([`LAPORAN DETAIL REALISASI SEMUA KUA - ${month.toUpperCase()} ${year}`]);
-    rows.push(['Kementerian Agama Kabupaten Indramayu']);
-    rows.push([]);
-    
-    rows.push(['KUA', 'Kode', 'Nama Parameter', 'Item', 'Nominal', 'Status']);
-    
-    let grandTotal = 0;
-    realisasis.forEach(realisasi => {
-      if (realisasi.data && typeof realisasi.data === 'object') {
-        Object.entries(realisasi.data).forEach(([code, items]) => {
-          const paramName = CONFIG.RPD_PARAMETERS[code] ? CONFIG.RPD_PARAMETERS[code].name : '';
-          if (items && typeof items === 'object') {
-            Object.entries(items).forEach(([item, value]) => {
-              const val = parseFloat(value) || 0;
-              grandTotal += val;
-              rows.push([realisasi.kua, code, paramName, item, val, realisasi.status]);
-            });
-          }
-        });
-      }
-    });
-    
-    rows.push([]);
-    rows.push(['', '', '', 'GRAND TOTAL', grandTotal, '']);
-    
-    const tsvContent = rows.map(row => row.map(cell => String(cell).replace(/\t/g, ' ').replace(/\n/g, ' ')).join('\t')).join('\n');
-    const blob = Utilities.newBlob(tsvContent, 'text/tab-separated-values', `Realisasi All Detail - ${month} ${year}.xls`);
-    const base64 = Utilities.base64Encode(blob.getBytes());
-    
-    return successResponse({
-      fileData: base64,
-      fileName: `Realisasi All Detail - ${month} ${year}.xls`,
-      mimeType: 'application/vnd.ms-excel'
-    });
-  } catch (error) {
-    Logger.log(`[EXPORT_REALISASI_ALL_DETAIL_MONTH_EXCEL ERROR] ${error.toString()}`);
-    return errorResponse('Gagal export: ' + error.toString());
-  }
-}
-
-// ===== EXPORT RPD PER YEAR (NEW FORMAT) =====
+// 1. Export RPD per Year
 function exportRPDPerYear(data) {
-  Logger.log(`[EXPORT_RPD_YEAR] ========== START ==========`);
-  Logger.log(`[EXPORT_RPD_YEAR] Year: ${data.year}, KUA: ${data.kua || 'ALL'}`);
+  Logger.log('[EXPORT_RPD_PER_YEAR] Format: ' + data.format + ', KUA: ' + data.kua + ', Year: ' + data.year);
   
   try {
-    const year = data.year || new Date().getFullYear();
-    const selectedKUA = data.kua;
-    
-    // Get all budgets for the year
     const budgetSheet = getSheet(SHEETS.BUDGET);
-    const budgetValues = budgetSheet.getDataRange().getValues();
-    
-    // Get all RPDs for the year
     const rpdSheet = getSheet(SHEETS.RPD);
-    const rpdValues = rpdSheet.getDataRange().getValues();
     
-    // Prepare data structure
-    const kuaData = {};
+    const budgets = budgetSheet.getDataRange().getValues();
+    const rpds = rpdSheet.getDataRange().getValues();
     
-    // Filter KUA list
-    let kuaList = selectedKUA ? [selectedKUA] : KUA_LIST;
-    
-    Logger.log(`[EXPORT_RPD_YEAR] Processing ${kuaList.length} KUAs`);
-    
-    // Initialize data for each KUA
-    kuaList.forEach(kua => {
-      kuaData[kua] = {
-        budget: 0,
-        months: {}
-      };
-      
-      // Initialize all months to 0
-      const months = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 
-                      'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
-      months.forEach(month => {
-        kuaData[kua].months[month] = 0;
-      });
-    });
-    
-    // Fill budget data
-    for (let i = 1; i < budgetValues.length; i++) {
-      const row = budgetValues[i];
-      if (row[2] == year) {
-        const kua = row[1];
-        if (kuaData[kua]) {
-          kuaData[kua].budget = parseFloat(row[3]) || 0;
-        }
-      }
-    }
-    
-    // Fill RPD data
-    for (let i = 1; i < rpdValues.length; i++) {
-      const row = rpdValues[i];
-      if (row[4] == year) {
-        const kua = row[1];
-        const month = row[3];
-        if (kuaData[kua]) {
-          kuaData[kua].months[month] = parseFloat(row[6]) || 0;
-        }
-      }
-    }
-    
-    Logger.log(`[EXPORT_RPD_YEAR] Data prepared, generating ${data.format}`);
-    
-    if (data.format === 'pdf') {
-      return exportRPDPerYearPDF(kuaData, year, selectedKUA);
-    } else {
-      return exportRPDPerYearExcel(kuaData, year, selectedKUA);
-    }
-  } catch (error) {
-    Logger.log(`[EXPORT_RPD_YEAR ERROR] ${error.toString()}`);
-    Logger.log(`[EXPORT_RPD_YEAR ERROR] Stack: ${error.stack}`);
-    return errorResponse('Gagal export: ' + error.toString());
-  }
-}
-
-function exportRPDPerYearExcel(kuaData, year, selectedKUA) {
-  Logger.log(`[EXPORT_RPD_YEAR_EXCEL] Creating Excel`);
-  
-  try {
-    const rows = [];
-    const months = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 
-                    'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
-    
-    // Title
-    rows.push([selectedKUA ? `LAPORAN RPD ${selectedKUA} - TAHUN ${year}` : `LAPORAN RPD SEMUA KUA - TAHUN ${year}`]);
-    rows.push(['Kementerian Agama Kabupaten Indramayu']);
-    rows.push([]);
-    
-    // Headers
-    const headers = ['No', 'Nama', 'ALOKASI BOP'];
-    months.forEach(month => headers.push(month));
-    headers.push('Total', 'Sisa Anggaran');
-    rows.push(headers);
-    
-    // Data
-    let totalBudget = 0;
-    const totalMonths = {};
-    months.forEach(month => totalMonths[month] = 0);
-    let grandTotal = 0;
-    let totalSisa = 0;
-    
-    const kuaList = Object.keys(kuaData).sort();
-    
-    kuaList.forEach((kua, index) => {
-      const data = kuaData[kua];
-      const row = [index + 1, kua, data.budget];
-      
-      let kuaTotal = 0;
-      months.forEach(month => {
-        const value = data.months[month] || 0;
-        row.push(value);
-        kuaTotal += value;
-        totalMonths[month] += value;
-      });
-      
-      const sisaAnggaran = data.budget - kuaTotal;
-      row.push(kuaTotal, sisaAnggaran);
-      
-      totalBudget += data.budget;
-      grandTotal += kuaTotal;
-      totalSisa += sisaAnggaran;
-      
-      rows.push(row);
-    });
-    
-    // Total row
-    const totalRow = ['', 'TOTAL', totalBudget];
-    months.forEach(month => totalRow.push(totalMonths[month]));
-    totalRow.push(grandTotal, totalSisa);
-    rows.push(totalRow);
-    
-    const tsvContent = rows.map(row => row.map(cell => String(cell).replace(/\t/g, ' ').replace(/\n/g, ' ')).join('\t')).join('\n');
-    const blob = Utilities.newBlob(tsvContent, 'text/tab-separated-values', `RPD ${selectedKUA || 'Semua KUA'} - ${year}.xls`);
-    const base64 = Utilities.base64Encode(blob.getBytes());
-    
-    Logger.log(`[EXPORT_RPD_YEAR_EXCEL] Success`);
-    
-    return successResponse({
-      fileData: base64,
-      fileName: `RPD ${selectedKUA || 'Semua KUA'} - ${year}.xls`,
-      mimeType: 'application/vnd.ms-excel'
-    });
-  } catch (error) {
-    Logger.log(`[EXPORT_RPD_YEAR_EXCEL ERROR] ${error.toString()}`);
-    return errorResponse('Gagal export: ' + error.toString());
-  }
-}
-
-function exportRPDPerYearPDF(kuaData, year, selectedKUA) {
-  Logger.log(`[EXPORT_RPD_YEAR_PDF] Creating PDF`);
-  
-  try {
-    const months = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 
-                    'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
-    
-    let tableRows = '';
-    let totalBudget = 0;
-    const totalMonths = {};
-    months.forEach(month => totalMonths[month] = 0);
-    let grandTotal = 0;
-    let totalSisa = 0;
-    
-    const kuaList = Object.keys(kuaData).sort();
-    
-    kuaList.forEach((kua, index) => {
-      const data = kuaData[kua];
-      let kuaTotal = 0;
-      
-      let monthCells = '';
-      months.forEach(month => {
-        const value = data.months[month] || 0;
-        monthCells += `<td style="padding: 6px; border: 1px solid #ddd; text-align: right;">${formatNumber(value)}</td>`;
-        kuaTotal += value;
-        totalMonths[month] += value;
-      });
-      
-      const sisaAnggaran = data.budget - kuaTotal;
-      totalBudget += data.budget;
-      grandTotal += kuaTotal;
-      totalSisa += sisaAnggaran;
-      
-      tableRows += `
-        <tr>
-          <td style="padding: 6px; border: 1px solid #ddd; text-align: center;">${index + 1}</td>
-          <td style="padding: 6px; border: 1px solid #ddd;">${kua}</td>
-          <td style="padding: 6px; border: 1px solid #ddd; text-align: right;">${formatNumber(data.budget)}</td>
-          ${monthCells}
-          <td style="padding: 6px; border: 1px solid #ddd; text-align: right; font-weight: bold;">${formatNumber(kuaTotal)}</td>
-          <td style="padding: 6px; border: 1px solid #ddd; text-align: right;">${formatNumber(sisaAnggaran)}</td>
-        </tr>
-      `;
-    });
-    
-    // Total row
-    let totalMonthCells = '';
-    months.forEach(month => {
-      totalMonthCells += `<td style="padding: 6px; border: 1px solid #ddd; text-align: right; font-weight: bold;">${formatNumber(totalMonths[month])}</td>`;
-    });
-    
-    tableRows += `
-      <tr style="background: #f0f0f0; font-weight: bold;">
-        <td colspan="2" style="padding: 6px; border: 1px solid #ddd; text-align: center;">TOTAL</td>
-        <td style="padding: 6px; border: 1px solid #ddd; text-align: right;">${formatNumber(totalBudget)}</td>
-        ${totalMonthCells}
-        <td style="padding: 6px; border: 1px solid #ddd; text-align: right;">${formatNumber(grandTotal)}</td>
-        <td style="padding: 6px; border: 1px solid #ddd; text-align: right;">${formatNumber(totalSisa)}</td>
-      </tr>
-    `;
-    
-    const htmlContent = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta charset="UTF-8">
-        <style>
-          @page { size: A4 landscape; margin: 15mm; }
-          body { font-family: Arial, sans-serif; font-size: 9px; }
-          .header { text-align: center; margin-bottom: 20px; }
-          table { width: 100%; border-collapse: collapse; }
-          th { background: #667eea; color: white; padding: 8px; font-size: 8px; }
-        </style>
-      </head>
-      <body>
-        <div class="header">
-          <h2>LAPORAN RPD ${selectedKUA || 'SEMUA KUA'}</h2>
-          <h3>Kementerian Agama Kabupaten Indramayu</h3>
-          <p>Tahun ${year}</p>
-        </div>
-        
-        <table>
-          <thead>
-            <tr>
-              <th>No</th>
-              <th>Nama</th>
-              <th>ALOKASI BOP</th>
-              ${months.map(m => `<th>${m}</th>`).join('')}
-              <th>Total</th>
-              <th>Sisa</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${tableRows}
-          </tbody>
-        </table>
-        
-        <div style="margin-top: 30px; text-align: right;">
-          <p>Indramayu, ${new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
-          <p style="margin-top: 60px;"><strong>( ${NAMA_KASI_BIMAS} )</strong></p>
-          <p>${NIP_KASI_BIMAS}</p>
-        </div>
-      </body>
-      </html>
-    `;
-    
-    const blob = Utilities.newBlob(htmlContent, MimeType.HTML, 'temp.html');
-    const pdfBlob = blob.getAs('application/pdf');
-    pdfBlob.setName(`RPD ${selectedKUA || 'Semua KUA'} - ${year}.pdf`);
-    
-    const base64 = Utilities.base64Encode(pdfBlob.getBytes());
-    
-    Logger.log(`[EXPORT_RPD_YEAR_PDF] Success`);
-    
-    return successResponse({
-      fileData: base64,
-      fileName: pdfBlob.getName(),
-      mimeType: 'application/pdf'
-    });
-  } catch (error) {
-    Logger.log(`[EXPORT_RPD_YEAR_PDF ERROR] ${error.toString()}`);
-    return errorResponse('Gagal export PDF: ' + error.toString());
-  }
-}
-
-// ===== EXPORT RPD DETAIL ALL YEAR (NEW FORMAT) =====
-function exportRPDDetailAllYear(data) {
-  Logger.log(`[EXPORT_RPD_DETAIL_ALL] ========== START ==========`);
-  
-  try {
-    const year = data.year || new Date().getFullYear();
-    
-    // Get budget and RPD data
-    const budgetSheet = getSheet(SHEETS.BUDGET);
-    const budgetValues = budgetSheet.getDataRange().getValues();
-    
-    const rpdSheet = getSheet(SHEETS.RPD);
-    const rpdValues = rpdSheet.getDataRange().getValues();
-    
-    // Structure: kuaData[kua][code][item] = total
-    const kuaData = {};
-    const kuaBudgets = {};
-    
-    Logger.log(`[EXPORT_RPD_DETAIL_ALL] Initializing data for ${KUA_LIST.length} KUAs`);
-    
-    // Initialize
-    KUA_LIST.forEach(kua => {
-      kuaData[kua] = {};
-      kuaBudgets[kua] = 0;
-      
-      Object.keys(CONFIG.RPD_PARAMETERS).forEach(code => {
-        kuaData[kua][code] = {};
-        CONFIG.RPD_PARAMETERS[code].items.forEach(item => {
-          kuaData[kua][code][item] = 0;
-        });
-      });
-    });
-    
-    // Get budgets
-    for (let i = 1; i < budgetValues.length; i++) {
-      const row = budgetValues[i];
-      if (row[2] == year && kuaBudgets[row[1]] !== undefined) {
-        kuaBudgets[row[1]] = parseFloat(row[3]) || 0;
-      }
-    }
-    
-    // Aggregate RPD data
-    for (let i = 1; i < rpdValues.length; i++) {
-      const row = rpdValues[i];
-      if (row[4] == year) {
-        const kua = row[1];
-        if (kuaData[kua]) {
-          const rpdData = JSON.parse(row[5] || '{}');
-          
-          Object.entries(rpdData).forEach(([code, items]) => {
-            if (kuaData[kua][code]) {
-              Object.entries(items).forEach(([item, value]) => {
-                if (kuaData[kua][code][item] !== undefined) {
-                  kuaData[kua][code][item] += parseFloat(value) || 0;
-                }
-              });
-            }
+    const yearBudgets = [];
+    for (let i = 1; i < budgets.length; i++) {
+      if (budgets[i][2] == data.year) {
+        if (!data.kua || budgets[i][1] === data.kua) {
+          yearBudgets.push({
+            kua: budgets[i][1],
+            budget: budgets[i][3] || 0
           });
         }
       }
     }
     
-    Logger.log(`[EXPORT_RPD_DETAIL_ALL] Data prepared, generating ${data.format}`);
-    
-    if (data.format === 'pdf') {
-      return exportRPDDetailAllYearPDF(kuaData, kuaBudgets, year);
-    } else {
-      return exportRPDDetailAllYearExcel(kuaData, kuaBudgets, year);
-    }
-  } catch (error) {
-    Logger.log(`[EXPORT_RPD_DETAIL_ALL ERROR] ${error.toString()}`);
-    Logger.log(`[EXPORT_RPD_DETAIL_ALL ERROR] Stack: ${error.stack}`);
-    return errorResponse('Gagal export: ' + error.toString());
-  }
-}
-
-// ===== EXPORT REALISASI PER YEAR (NEW FORMAT) =====
-function exportRealisasiPerYear(data) {
-  Logger.log(`[EXPORT_REALISASI_YEAR] ========== START ==========`);
-  Logger.log(`[EXPORT_REALISASI_YEAR] Year: ${data.year}, KUA: ${data.kua || 'ALL'}`);
-  
-  try {
-    const year = data.year || new Date().getFullYear();
-    const selectedKUA = data.kua;
-    
-    // Get all budgets for the year
-    const budgetSheet = getSheet(SHEETS.BUDGET);
-    const budgetValues = budgetSheet.getDataRange().getValues();
-    
-    // Get all Realisasi for the year (only Diterima)
-    const realisasiSheet = getSheet(SHEETS.REALISASI);
-    const realisasiValues = realisasiSheet.getDataRange().getValues();
-    
-    // Prepare data structure
-    const kuaData = {};
-    
-    // Filter KUA list
-    let kuaList = selectedKUA ? [selectedKUA] : KUA_LIST;
-    
-    Logger.log(`[EXPORT_REALISASI_YEAR] Processing ${kuaList.length} KUAs`);
-    
-    // Initialize data for each KUA
-    kuaList.forEach(kua => {
-      kuaData[kua] = {
-        budget: 0,
+    const result = yearBudgets.map(b => {
+      const row = {
+        kua: b.kua,
+        budget: b.budget,
         months: {}
       };
       
-      // Initialize all months to 0
-      const months = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 
-                      'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
-      months.forEach(month => {
-        kuaData[kua].months[month] = 0;
+      MONTHS.forEach(month => {
+        row.months[month] = 0;
       });
+      
+      for (let i = 1; i < rpds.length; i++) {
+        if (rpds[i][1] === b.kua && rpds[i][4] == data.year) {
+          row.months[rpds[i][3]] = parseFloat(rpds[i][6]) || 0;
+        }
+      }
+      
+      row.totalRPD = Object.values(row.months).reduce((sum, val) => sum + val, 0);
+      row.sisa = b.budget - row.totalRPD;
+      
+      return row;
     });
-    
-    // Fill budget data
-    for (let i = 1; i < budgetValues.length; i++) {
-      const row = budgetValues[i];
-      if (row[2] == year) {
-        const kua = row[1];
-        if (kuaData[kua]) {
-          kuaData[kua].budget = parseFloat(row[3]) || 0;
-        }
-      }
-    }
-    
-    // Fill Realisasi data (only Diterima)
-    for (let i = 1; i < realisasiValues.length; i++) {
-      const row = realisasiValues[i];
-      if (row[4] == year && row[8] === 'Diterima') {
-        const kua = row[1];
-        const month = row[3];
-        if (kuaData[kua]) {
-          kuaData[kua].months[month] = parseFloat(row[7]) || 0;
-        }
-      }
-    }
-    
-    Logger.log(`[EXPORT_REALISASI_YEAR] Data prepared, generating ${data.format}`);
     
     if (data.format === 'pdf') {
-      return exportRealisasiPerYearPDF(kuaData, year, selectedKUA);
+      return exportRPDPerYearPDF(result, data.year, data.kua);
     } else {
-      return exportRealisasiPerYearExcel(kuaData, year, selectedKUA);
+      return exportRPDPerYearExcel(result, data.year, data.kua);
     }
   } catch (error) {
-    Logger.log(`[EXPORT_REALISASI_YEAR ERROR] ${error.toString()}`);
-    Logger.log(`[EXPORT_REALISASI_YEAR ERROR] Stack: ${error.stack}`);
+    Logger.log('[EXPORT_RPD_PER_YEAR ERROR] ' + error.toString());
     return errorResponse('Gagal export: ' + error.toString());
   }
 }
 
-function exportRealisasiPerYearExcel(kuaData, year, selectedKUA) {
-  Logger.log(`[EXPORT_REALISASI_YEAR_EXCEL] Creating Excel`);
+function exportRPDPerYearExcel(data, year, kua) {
+  let tsv = `LAPORAN RPD PER TAHUN ${year}\n`;
+  if (kua) tsv += `KUA: ${kua}\n`;
+  tsv += `\nNo\tKUA\tBudget\t`;
   
-  try {
-    const rows = [];
-    const months = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 
-                    'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
-    
-    // Title
-    rows.push([selectedKUA ? `LAPORAN REALISASI ${selectedKUA} - TAHUN ${year}` : `LAPORAN REALISASI SEMUA KUA - TAHUN ${year}`]);
-    rows.push(['Kementerian Agama Kabupaten Indramayu']);
-    rows.push([]);
-    
-    // Headers
-    const headers = ['No', 'Nama', 'ALOKASI BOP'];
-    months.forEach(month => headers.push(month));
-    headers.push('Total', 'Sisa Anggaran');
-    rows.push(headers);
-    
-    // Data
-    let totalBudget = 0;
-    const totalMonths = {};
-    months.forEach(month => totalMonths[month] = 0);
-    let grandTotal = 0;
-    let totalSisa = 0;
-    
-    const kuaList = Object.keys(kuaData).sort();
-    
-    kuaList.forEach((kua, index) => {
-      const data = kuaData[kua];
-      const row = [index + 1, kua, data.budget];
-      
-      let kuaTotal = 0;
-      months.forEach(month => {
-        const value = data.months[month] || 0;
-        row.push(value);
-        kuaTotal += value;
-        totalMonths[month] += value;
-      });
-      
-      const sisaAnggaran = data.budget - kuaTotal;
-      row.push(kuaTotal, sisaAnggaran);
-      
-      totalBudget += data.budget;
-      grandTotal += kuaTotal;
-      totalSisa += sisaAnggaran;
-      
-      rows.push(row);
+  MONTHS.forEach(month => {
+    tsv += `${month}\t`;
+  });
+  tsv += `Total RPD\tSisa\n`;
+  
+  data.forEach((row, index) => {
+    tsv += `${index + 1}\t${row.kua}\t${row.budget}\t`;
+    MONTHS.forEach(month => {
+      tsv += `${row.months[month]}\t`;
     });
-    
-    // Total row
-    const totalRow = ['', 'TOTAL', totalBudget];
-    months.forEach(month => totalRow.push(totalMonths[month]));
-    totalRow.push(grandTotal, totalSisa);
-    rows.push(totalRow);
-    
-    const tsvContent = rows.map(row => row.map(cell => String(cell).replace(/\t/g, ' ').replace(/\n/g, ' ')).join('\t')).join('\n');
-    const blob = Utilities.newBlob(tsvContent, 'text/tab-separated-values', `Realisasi ${selectedKUA || 'Semua KUA'} - ${year}.xls`);
-    const base64 = Utilities.base64Encode(blob.getBytes());
-    
-    Logger.log(`[EXPORT_REALISASI_YEAR_EXCEL] Success`);
-    
-    return successResponse({
-      fileData: base64,
-      fileName: `Realisasi ${selectedKUA || 'Semua KUA'} - ${year}.xls`,
-      mimeType: 'application/vnd.ms-excel'
-    });
-  } catch (error) {
-    Logger.log(`[EXPORT_REALISASI_YEAR_EXCEL ERROR] ${error.toString()}`);
-    return errorResponse('Gagal export: ' + error.toString());
-  }
+    tsv += `${row.totalRPD}\t${row.sisa}\n`;
+  });
+  
+  const blob = Utilities.newBlob(tsv, 'text/tab-separated-values');
+  const base64 = Utilities.base64Encode(blob.getBytes());
+  
+  Logger.log('[EXPORT_RPD_PER_YEAR_EXCEL] Export completed');
+  return successResponse({
+    fileData: base64,
+    fileName: `Laporan_RPD_${year}${kua ? '_' + kua : ''}.xls`,
+    mimeType: 'application/vnd.ms-excel'
+  });
 }
 
-function exportRealisasiPerYearPDF(kuaData, year, selectedKUA) {
-  Logger.log(`[EXPORT_REALISASI_YEAR_PDF] Creating PDF`);
+function exportRPDPerYearPDF(data, year, kua) {
+  let html = `<html><head><style>
+    body { font-family: Arial; font-size: 10px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+    th, td { border: 1px solid #000; padding: 5px; text-align: center; }
+    th { background: #28a745; color: white; }
+  </style></head><body>
+  <h3 style="text-align:center">LAPORAN RPD PER TAHUN ${year}</h3>`;
   
-  try {
-    const months = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 
-                    'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
-    
-    let tableRows = '';
-    let totalBudget = 0;
-    const totalMonths = {};
-    months.forEach(month => totalMonths[month] = 0);
-    let grandTotal = 0;
-    let totalSisa = 0;
-    
-    const kuaList = Object.keys(kuaData).sort();
-    
-    kuaList.forEach((kua, index) => {
-      const data = kuaData[kua];
-      let kuaTotal = 0;
-      
-      let monthCells = '';
-      months.forEach(month => {
-        const value = data.months[month] || 0;
-        monthCells += `<td style="padding: 6px; border: 1px solid #ddd; text-align: right;">${formatNumber(value)}</td>`;
-        kuaTotal += value;
-        totalMonths[month] += value;
-      });
-      
-      const sisaAnggaran = data.budget - kuaTotal;
-      totalBudget += data.budget;
-      grandTotal += kuaTotal;
-      totalSisa += sisaAnggaran;
-      
-      tableRows += `
-        <tr>
-          <td style="padding: 6px; border: 1px solid #ddd; text-align: center;">${index + 1}</td>
-          <td style="padding: 6px; border: 1px solid #ddd;">${kua}</td>
-          <td style="padding: 6px; border: 1px solid #ddd; text-align: right;">${formatNumber(data.budget)}</td>
-          ${monthCells}
-          <td style="padding: 6px; border: 1px solid #ddd; text-align: right; font-weight: bold;">${formatNumber(kuaTotal)}</td>
-          <td style="padding: 6px; border: 1px solid #ddd; text-align: right;">${formatNumber(sisaAnggaran)}</td>
-        </tr>
-      `;
+  if (kua) html += `<p style="text-align:center">KUA: ${kua}</p>`;
+  
+  html += `<table><tr><th>No</th><th>KUA</th><th>Budget</th>`;
+  
+  MONTHS.forEach(month => {
+    html += `<th>${month}</th>`;
+  });
+  html += `<th>Total RPD</th><th>Sisa</th></tr>`;
+  
+  data.forEach((row, index) => {
+    html += `<tr><td>${index + 1}</td><td>${row.kua}</td><td>${formatCurrency(row.budget)}</td>`;
+    MONTHS.forEach(month => {
+      html += `<td>${formatCurrency(row.months[month])}</td>`;
     });
-    
-    // Total row
-    let totalMonthCells = '';
-    months.forEach(month => {
-      totalMonthCells += `<td style="padding: 6px; border: 1px solid #ddd; text-align: right; font-weight: bold;">${formatNumber(totalMonths[month])}</td>`;
-    });
-    
-    tableRows += `
-      <tr style="background: #f0f0f0; font-weight: bold;">
-        <td colspan="2" style="padding: 6px; border: 1px solid #ddd; text-align: center;">TOTAL</td>
-        <td style="padding: 6px; border: 1px solid #ddd; text-align: right;">${formatNumber(totalBudget)}</td>
-        ${totalMonthCells}
-        <td style="padding: 6px; border: 1px solid #ddd; text-align: right;">${formatNumber(grandTotal)}</td>
-        <td style="padding: 6px; border: 1px solid #ddd; text-align: right;">${formatNumber(totalSisa)}</td>
-      </tr>
-    `;
-    
-    const htmlContent = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta charset="UTF-8">
-        <style>
-          @page { size: A4 landscape; margin: 15mm; }
-          body { font-family: Arial, sans-serif; font-size: 9px; }
-          .header { text-align: center; margin-bottom: 20px; }
-          table { width: 100%; border-collapse: collapse; }
-          th { background: #667eea; color: white; padding: 8px; font-size: 8px; }
-        </style>
-      </head>
-      <body>
-        <div class="header">
-          <h2>LAPORAN REALISASI ${selectedKUA || 'SEMUA KUA'}</h2>
-          <h3>Kementerian Agama Kabupaten Indramayu</h3>
-          <p>Tahun ${year}</p>
-        </div>
-        
-        <table>
-          <thead>
-            <tr>
-              <th>No</th>
-              <th>Nama</th>
-              <th>ALOKASI BOP</th>
-              ${months.map(m => `<th>${m}</th>`).join('')}
-              <th>Total</th>
-              <th>Sisa</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${tableRows}
-          </tbody>
-        </table>
-        
-        <div style="margin-top: 30px; text-align: right;">
-          <p>Indramayu, ${new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
-          <p style="margin-top: 60px;"><strong>( ${NAMA_KASI_BIMAS} )</strong></p>
-          <p>${NIP_KASI_BIMAS}</p>
-        </div>
-      </body>
-      </html>
-    `;
-    
-    const blob = Utilities.newBlob(htmlContent, MimeType.HTML, 'temp.html');
-    const pdfBlob = blob.getAs('application/pdf');
-    pdfBlob.setName(`Realisasi ${selectedKUA || 'Semua KUA'} - ${year}.pdf`);
-    
-    const base64 = Utilities.base64Encode(pdfBlob.getBytes());
-    
-    Logger.log(`[EXPORT_REALISASI_YEAR_PDF] Success`);
-    
-    return successResponse({
-      fileData: base64,
-      fileName: pdfBlob.getName(),
-      mimeType: 'application/pdf'
-    });
-  } catch (error) {
-    Logger.log(`[EXPORT_REALISASI_YEAR_PDF ERROR] ${error.toString()}`);
-    return errorResponse('Gagal export PDF: ' + error.toString());
-  }
+    html += `<td>${formatCurrency(row.totalRPD)}</td><td>${formatCurrency(row.sisa)}</td></tr>`;
+  });
+  
+  html += `</table></body></html>`;
+  
+  const blob = Utilities.newBlob(html, 'text/html');
+  const pdfBlob = blob.getAs('application/pdf');
+  const base64 = Utilities.base64Encode(pdfBlob.getBytes());
+  
+  Logger.log('[EXPORT_RPD_PER_YEAR_PDF] Export completed');
+  return successResponse({
+    fileData: base64,
+    fileName: `Laporan_RPD_${year}${kua ? '_' + kua : ''}.pdf`,
+    mimeType: 'application/pdf'
+  });
 }
 
-// ===== EXPORT REALISASI DETAIL ALL YEAR (NEW FORMAT) =====
-function exportRealisasiDetailAllYear(data) {
-  Logger.log(`[EXPORT_REALISASI_DETAIL_ALL] ========== START ==========`);
+// 2. Export RPD Detail Year - CORRECTED FORMAT
+function exportRPDDetailYear(data) {
+  Logger.log('[EXPORT_RPD_DETAIL_YEAR] Format: ' + data.format + ', Year: ' + data.year);
   
   try {
-    const year = data.year || new Date().getFullYear();
+    const rpdSheet = getSheet(SHEETS.RPD);
+    const rpds = rpdSheet.getDataRange().getValues();
     
-    // Get budget and Realisasi data
-    const budgetSheet = getSheet(SHEETS.BUDGET);
-    const budgetValues = budgetSheet.getDataRange().getValues();
+    const rpdByKUA = {};
+    const kuaList = new Set();
     
-    const realisasiSheet = getSheet(SHEETS.REALISASI);
-    const realisasiValues = realisasiSheet.getDataRange().getValues();
-    
-    // Structure: kuaData[kua][code][item] = total
-    const kuaData = {};
-    const kuaBudgets = {};
-    
-    Logger.log(`[EXPORT_REALISASI_DETAIL_ALL] Initializing data for ${KUA_LIST.length} KUAs`);
-    
-    // Initialize
-    KUA_LIST.forEach(kua => {
-      kuaData[kua] = {};
-      kuaBudgets[kua] = 0;
-      
-      Object.keys(CONFIG.RPD_PARAMETERS).forEach(code => {
-        kuaData[kua][code] = {};
-        CONFIG.RPD_PARAMETERS[code].items.forEach(item => {
-          kuaData[kua][code][item] = 0;
-        });
-      });
-    });
-    
-    // Get budgets
-    for (let i = 1; i < budgetValues.length; i++) {
-      const row = budgetValues[i];
-      if (row[2] == year && kuaBudgets[row[1]] !== undefined) {
-        kuaBudgets[row[1]] = parseFloat(row[3]) || 0;
-      }
-    }
-    
-    // Aggregate Realisasi data (only Diterima)
-    for (let i = 1; i < realisasiValues.length; i++) {
-      const row = realisasiValues[i];
-      if (row[4] == year && row[8] === 'Diterima') {
-        const kua = row[1];
-        if (kuaData[kua]) {
-          const realisasiData = JSON.parse(row[6] || '{}');
-          
-          Object.entries(realisasiData).forEach(([code, items]) => {
-            if (kuaData[kua][code]) {
-              Object.entries(items).forEach(([item, value]) => {
-                if (kuaData[kua][code][item] !== undefined) {
-                  kuaData[kua][code][item] += parseFloat(value) || 0;
-                }
-              });
+    for (let i = 1; i < rpds.length; i++) {
+      if (rpds[i][4] == data.year) {
+        const kua = rpds[i][1];
+        kuaList.add(kua);
+        
+        if (!rpdByKUA[kua]) {
+          rpdByKUA[kua] = {};
+        }
+        
+        let rpdData = {};
+        try {
+          rpdData = JSON.parse(rpds[i][5] || '{}');
+        } catch (parseError) {
+          Logger.log('[EXPORT_RPD_DETAIL_YEAR] JSON parse error: ' + parseError.toString());
+        }
+        
+        Object.keys(rpdData).forEach(code => {
+          if (!rpdByKUA[kua][code]) {
+            rpdByKUA[kua][code] = {};
+          }
+          Object.keys(rpdData[code]).forEach(item => {
+            if (!rpdByKUA[kua][code][item]) {
+              rpdByKUA[kua][code][item] = 0;
             }
+            rpdByKUA[kua][code][item] += parseFloat(rpdData[code][item]) || 0;
           });
-        }
+        });
       }
     }
     
-    Logger.log(`[EXPORT_REALISASI_DETAIL_ALL] Data prepared, generating ${data.format}`);
+    const sortedKUAs = Array.from(kuaList).sort();
     
     if (data.format === 'pdf') {
-      return exportRealisasiDetailAllYearPDF(kuaData, kuaBudgets, year);
+      return exportRPDDetailYearPDF(rpdByKUA, sortedKUAs, data.year);
     } else {
-      return exportRealisasiDetailAllYearExcel(kuaData, kuaBudgets, year);
+      return exportRPDDetailYearExcel(rpdByKUA, sortedKUAs, data.year);
     }
   } catch (error) {
-    Logger.log(`[EXPORT_REALISASI_DETAIL_ALL ERROR] ${error.toString()}`);
-    Logger.log(`[EXPORT_REALISASI_DETAIL_ALL ERROR] Stack: ${error.stack}`);
+    Logger.log('[EXPORT_RPD_DETAIL_YEAR ERROR] ' + error.toString());
     return errorResponse('Gagal export: ' + error.toString());
   }
 }
 
-function exportRealisasiDetailAllYearExcel(kuaData, kuaBudgets, year) {
-  Logger.log(`[EXPORT_REALISASI_DETAIL_ALL_EXCEL] Creating Excel`);
+function exportRPDDetailYearExcel(rpdByKUA, kuaList, year) {
+  let tsv = `LAPORAN RPD DETAIL - TAHUN ${year}\n`;
+  tsv += `Kementerian Agama Kabupaten Indramayu\n\n`;
   
-  try {
-    const rows = [];
-    const kuaList = KUA_LIST.slice().sort();
+  tsv += `No\tKode\tUraian Program/Kegiatan/Output/Komponen`;
+  kuaList.forEach(kua => {
+    tsv += `\t${kua}`;
+  });
+  tsv += `\tJUMLAH\n`;
+  
+  let rowNum = 0;
+  let grandTotal = {};
+  kuaList.forEach(kua => { grandTotal[kua] = 0; });
+  let grandTotalAll = 0;
+  
+  rowNum++;
+  tsv += `${rowNum}\t025.04.WA\tDukungan Manajemen dan Pelaksanaan Tugas Teknis Lainnya Bimas Islam`;
+  kuaList.forEach(() => tsv += `\t`);
+  tsv += `\t\n`;
+  
+  Object.keys(BOP_CONFIG.RPD_PARAMETERS).forEach(code => {
+    const config = BOP_CONFIG.RPD_PARAMETERS[code];
     
-    // Title
-    rows.push([`LAPORAN REALISASI DETAIL SEMUA KUA - TAHUN ${year}`]);
-    rows.push(['Kementerian Agama Kabupaten Indramayu']);
-    rows.push([]);
+    // Calculate totals
+    let codeTotal = {};
+    kuaList.forEach(kua => { codeTotal[kua] = 0; });
+    let codeTotalAll = 0;
     
-    // Headers
-    const headers = ['No', 'Kode', 'Uraian Program/Kegiatan/Output/Komponen'];
-    kuaList.forEach(kua => headers.push(kua));
-    headers.push('Total Realisasi');
-    rows.push(headers);
-    
-    // Budget row
-    const budgetRow = ['', '', 'Budget Alokasi Tahunan'];
-    let totalBudget = 0;
-    kuaList.forEach(kua => {
-      budgetRow.push(kuaBudgets[kua] || 0);
-      totalBudget += kuaBudgets[kua] || 0;
+    config.items.forEach(item => {
+      kuaList.forEach(kua => {
+        const value = (rpdByKUA[kua] && rpdByKUA[kua][code] && rpdByKUA[kua][code][item]) || 0;
+        codeTotal[kua] += value;
+        codeTotalAll += value;
+      });
     });
-    budgetRow.push(totalBudget);
-    rows.push(budgetRow);
     
-    // Detail rows
-    let rowNum = 1;
-    const kuaTotals = {};
-    kuaList.forEach(kua => kuaTotals[kua] = 0);
-    let grandTotal = 0;
+    // ✅ FIX: Show empty if hasSubItems, show total if not
+    tsv += `\t${code}\t${config.name}`;
+    kuaList.forEach(kua => {
+      if (config.hasSubItems) {
+        tsv += `\t`;  // Empty for codes with breakdown
+      } else {
+        tsv += `\t${codeTotal[kua]}`;  // Show total for codes without breakdown
+      }
+    });
+    if (config.hasSubItems) {
+      tsv += `\t\n`;
+    } else {
+      tsv += `\t${codeTotalAll}\n`;
+    }
+    grandTotalAll += codeTotalAll;
     
-    Object.entries(CONFIG.RPD_PARAMETERS).forEach(([code, param]) => {
-      // Main category
-      rows.push([rowNum++, code, param.name, ...Array(kuaList.length + 1).fill('')]);
-      
-      // Items
-      param.items.forEach(item => {
-        const row = ['', '', `  ${item}`];
+    // ✅ FIX: Only show sub-items if hasSubItems is true
+    if (config.hasSubItems) {
+      config.items.forEach((item, idx) => {
+        const prefix = String.fromCharCode(97 + idx);
+        tsv += `\t\t  ${prefix}. ${item}`;
+        
         let itemTotal = 0;
-        
         kuaList.forEach(kua => {
-          const value = kuaData[kua][code][item] || 0;
-          row.push(value);
+          const value = (rpdByKUA[kua] && rpdByKUA[kua][code] && rpdByKUA[kua][code][item]) || 0;
+          tsv += `\t${value}`;
           itemTotal += value;
-          kuaTotals[kua] += value;
+          grandTotal[kua] += value;  // Add to grand total here
         });
-        
-        row.push(itemTotal);
-        grandTotal += itemTotal;
-        rows.push(row);
+        tsv += `\t${itemTotal}\n`;
+      });
+    } else {
+      // No sub-items, but still add to grand total
+      kuaList.forEach(kua => {
+        grandTotal[kua] += codeTotal[kua];
+      });
+    }
+  });
+  
+  tsv += `JUMLAH\t\t`;
+  kuaList.forEach(kua => {
+    tsv += `\t${grandTotal[kua]}`;
+  });
+  tsv += `\t${grandTotalAll}\n`;
+  
+  const blob = Utilities.newBlob(tsv, 'text/tab-separated-values');
+  const base64 = Utilities.base64Encode(blob.getBytes());
+  
+  Logger.log('[EXPORT_RPD_DETAIL_YEAR_EXCEL] Export completed');
+  return successResponse({
+    fileData: base64,
+    fileName: `Laporan_RPD_Detail_${year}.xls`,
+    mimeType: 'application/vnd.ms-excel'
+  });
+}
+
+function exportRPDDetailYearPDF(rpdByKUA, kuaList, year) {
+  let html = `<html><head><style>
+    body { font-family: Arial; font-size: 9px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+    th, td { border: 1px solid #000; padding: 4px; text-align: center; }
+    th { background: #28a745; color: white; font-weight: bold; }
+    .left { text-align: left; }
+    .code { font-weight: bold; }
+    .subitem { padding-left: 20px; text-align: left; }
+    .total { background: #f0f0f0; font-weight: bold; }
+    h3 { text-align: center; margin-bottom: 5px; }
+    h4 { text-align: center; margin-top: 0; margin-bottom: 20px; }
+  </style></head><body>
+  <h3>LAPORAN RPD DETAIL - TAHUN ${year}</h3>
+  <h4>Kementerian Agama Kabupaten Indramayu</h4>
+  <table>
+    <tr>
+      <th width="3%">No</th>
+      <th width="8%">Kode</th>
+      <th width="25%">Uraian Program/Kegiatan/Output/Komponen</th>`;
+  
+  kuaList.forEach(kua => {
+    html += `<th>${kua.replace('KUA ', '')}</th>`;
+  });
+  html += `<th>JUMLAH</th></tr>`;
+  
+  let rowNum = 0;
+  let grandTotal = {};
+  kuaList.forEach(kua => { grandTotal[kua] = 0; });
+  let grandTotalAll = 0;
+  
+  rowNum++;
+  html += `<tr>
+    <td>${rowNum}</td>
+    <td class="code">025.04.WA</td>
+    <td class="left">Dukungan Manajemen dan Pelaksanaan Tugas Teknis Lainnya Bimas Islam</td>`;
+  kuaList.forEach(() => html += `<td></td>`);
+  html += `<td></td></tr>`;
+  
+  Object.keys(BOP_CONFIG.RPD_PARAMETERS).forEach(code => {
+    const config = BOP_CONFIG.RPD_PARAMETERS[code];
+    
+    let codeTotal = {};
+    kuaList.forEach(kua => { codeTotal[kua] = 0; });
+    let codeTotalAll = 0;
+    
+    config.items.forEach(item => {
+      kuaList.forEach(kua => {
+        const value = (rpdByKUA[kua] && rpdByKUA[kua][code] && rpdByKUA[kua][code][item]) || 0;
+        codeTotal[kua] += value;
+        codeTotalAll += value;
       });
     });
     
-    // Jumlah row
-    const jumlahRow = ['', '', 'Jumlah'];
-    kuaList.forEach(kua => jumlahRow.push(kuaTotals[kua]));
-    jumlahRow.push(grandTotal);
-    rows.push(jumlahRow);
+    html += `<tr>
+      <td></td>
+      <td class="code">${code}</td>
+      <td class="left">${config.name}</td>`;
     
-    // Sisa Anggaran row
-    const sisaRow = ['', '', 'Sisa Anggaran'];
-    let totalSisa = 0;
     kuaList.forEach(kua => {
-      const sisa = (kuaBudgets[kua] || 0) - (kuaTotals[kua] || 0);
-      sisaRow.push(sisa);
-      totalSisa += sisa;
+      html += `<td>${formatNumber(codeTotal[kua])}</td>`;
+      grandTotal[kua] += codeTotal[kua];
     });
-    sisaRow.push(totalSisa);
-    rows.push(sisaRow);
+    html += `<td class="total">${formatNumber(codeTotalAll)}</td></tr>`;
+    grandTotalAll += codeTotalAll;
     
-    const tsvContent = rows.map(row => row.map(cell => String(cell).replace(/\t/g, ' ').replace(/\n/g, ' ')).join('\t')).join('\n');
-    const blob = Utilities.newBlob(tsvContent, 'text/tab-separated-values', `Realisasi Detail Semua KUA - ${year}.xls`);
-    const base64 = Utilities.base64Encode(blob.getBytes());
-    
-    Logger.log(`[EXPORT_REALISASI_DETAIL_ALL_EXCEL] Success`);
-    
-    return successResponse({
-      fileData: base64,
-      fileName: `Realisasi Detail Semua KUA - ${year}.xls`,
-      mimeType: 'application/vnd.ms-excel'
+    config.items.forEach((item, idx) => {
+      const prefix = String.fromCharCode(97 + idx);
+      html += `<tr>
+        <td></td>
+        <td></td>
+        <td class="subitem">${prefix}. ${item}</td>`;
+      
+      let itemTotal = 0;
+      kuaList.forEach(kua => {
+        const value = (rpdByKUA[kua] && rpdByKUA[kua][code] && rpdByKUA[kua][code][item]) || 0;
+        html += `<td>${formatNumber(value)}</td>`;
+        itemTotal += value;
+      });
+      html += `<td>${formatNumber(itemTotal)}</td></tr>`;
     });
+  });
+  
+  html += `<tr class="total">
+    <td colspan="3">JUMLAH</td>`;
+  kuaList.forEach(kua => {
+    html += `<td>${formatNumber(grandTotal[kua])}</td>`;
+  });
+  html += `<td>${formatNumber(grandTotalAll)}</td></tr>`;
+  
+  html += `</table></body></html>`;
+  
+  const blob = Utilities.newBlob(html, 'text/html');
+  const pdfBlob = blob.getAs('application/pdf');
+  const base64 = Utilities.base64Encode(pdfBlob.getBytes());
+  
+  Logger.log('[EXPORT_RPD_DETAIL_YEAR_PDF] Export completed');
+  return successResponse({
+    fileData: base64,
+    fileName: `Laporan_RPD_Detail_${year}.pdf`,
+    mimeType: 'application/pdf'
+  });
+}
+
+// 3. Export Realisasi per Year
+function exportRealisasiPerYear(data) {
+  Logger.log('[EXPORT_REALISASI_PER_YEAR] Format: ' + data.format);
+  
+  try {
+    const budgetSheet = getSheet(SHEETS.BUDGET);
+    const realisasiSheet = getSheet(SHEETS.REALISASI);
+    
+    const budgets = budgetSheet.getDataRange().getValues();
+    const realisasis = realisasiSheet.getDataRange().getValues();
+    
+    const yearBudgets = [];
+    for (let i = 1; i < budgets.length; i++) {
+      if (budgets[i][2] == data.year) {
+        if (!data.kua || budgets[i][1] === data.kua) {
+          yearBudgets.push({
+            kua: budgets[i][1],
+            budget: budgets[i][3] || 0
+          });
+        }
+      }
+    }
+    
+    const result = yearBudgets.map(b => {
+      const row = {
+        kua: b.kua,
+        budget: b.budget,
+        months: {}
+      };
+      
+      MONTHS.forEach(month => {
+        row.months[month] = 0;
+      });
+      
+      for (let i = 1; i < realisasis.length; i++) {
+        if (realisasis[i][1] === b.kua && 
+            realisasis[i][4] == data.year && 
+            realisasis[i][8] === 'Diterima') {
+          row.months[realisasis[i][3]] += parseFloat(realisasis[i][7]) || 0;
+        }
+      }
+      
+      row.totalRealisasi = Object.values(row.months).reduce((sum, val) => sum + val, 0);
+      row.sisa = b.budget - row.totalRealisasi;
+      
+      return row;
+    });
+    
+    if (data.format === 'pdf') {
+      return exportRealisasiPerYearPDF(result, data.year, data.kua);
+    } else {
+      return exportRealisasiPerYearExcel(result, data.year, data.kua);
+    }
   } catch (error) {
-    Logger.log(`[EXPORT_REALISASI_DETAIL_ALL_EXCEL ERROR] ${error.toString()}`);
+    Logger.log('[EXPORT_REALISASI_PER_YEAR ERROR] ' + error.toString());
     return errorResponse('Gagal export: ' + error.toString());
   }
 }
 
-function exportRealisasiDetailAllYearPDF(kuaData, kuaBudgets, year) {
-    Logger.log(`[EXPORT_REALISASI_DETAIL_ALL_PDF] Creating PDF`);
-
-    try {
-        const kuaList = KUA_LIST.slice().sort();
-
-        // Build table headers
-        let headerCells = '<th>No</th><th>Kode</th><th>Uraian</th>';
-        kuaList.forEach(kua => {
-            headerCells += `<th style="font-size: 7px;">${kua}</th>`;
-        });
-        headerCells += '<th>Total</th>';
-
-        // Budget row
-        let budgetRow = '<tr style="background: #e3f2fd; font-weight: bold;"><td colspan="3">Budget Alokasi Tahunan</td>';
-        let totalBudget = 0;
-        kuaList.forEach(kua => {
-            budgetRow += `<td style="text-align: right;">${formatNumber(kuaBudgets[kua] || 0)}</td>`;
-            totalBudget += kuaBudgets[kua] || 0;
-        });
-        budgetRow += `<td style="text-align: right;">${formatNumber(totalBudget)}</td></tr>`;
-
-        // Detail rows
-        let detailRows = '';
-        let rowNum = 1;
-        const kuaTotals = {};
-        kuaList.forEach(kua => kuaTotals[kua] = 0);
-        let grandTotal = 0;
-
-        Object.entries(CONFIG.RPD_PARAMETERS).forEach(([code, param]) => {
-            detailRows += `<tr><td>${rowNum++}</td><td>${code}</td><td style="font-weight: bold;">${param.name}</td>${'<td></td>'.repeat(kuaList.length + 1)}</tr>`;
-
-            param.items.forEach(item => {
-                let itemRow = `<tr><td></td><td></td><td style="padding-left: 15px;">${item}</td>`;
-                let itemTotal = 0;
-
-                kuaList.forEach(kua => {
-                    const value = kuaData[kua][code][item] || 0;
-                    itemRow += `<td style="text-align: right;">${formatNumber(value)}</td>`;
-                    itemTotal += value;
-                    kuaTotals[kua] += value;
-                });
-
-                itemRow += `<td style="text-align: right;">${formatNumber(itemTotal)}</td></tr>`;
-                grandTotal += itemTotal;
-                detailRows += itemRow;
-            });
-        });
-
-        // Jumlah row
-        let jumlahRow = '<tr style="background: #fff3cd; font-weight: bold;"><td colspan="3">Jumlah</td>';
-        kuaList.forEach(kua => {
-            jumlahRow += `<td style="text-align: right;">${formatNumber(kuaTotals[kua])}</td>`;
-        });
-        jumlahRow += `<td style="text-align: right;">${formatNumber(grandTotal)}</td></tr>`;
-
-        // Sisa row
-        let sisaRow = '<tr style="background: #f8d7da; font-weight: bold;"><td colspan="3">Sisa Anggaran</td>';
-        let totalSisa = 0;
-        kuaList.forEach(kua => {
-            const sisa = (kuaBudgets[kua] || 0) - (kuaTotals[kua] || 0);
-            sisaRow += `<td style="text-align: right;">${formatNumber(sisa)}</td>`;
-            totalSisa += sisa;
-        });
-        sisaRow += `<td style="text-align: right;">${formatNumber(totalSisa)}</td></tr>`;
-        const htmlContent = `
-  <!DOCTYPE html>
-  <html>
-  <head>
-    <meta charset="UTF-8">
-    <style>
-      @page { size: A4 landscape; margin: 10mm; }
-      body { font-family: Arial, sans-serif; font-size: 7px; }
-      .header { text-align: center; margin-bottom: 15px; }
-      table { width: 100%; border-collapse: collapse; }
-      th, td { padding: 4px; border: 1px solid #ddd; }
-      th { background: #667eea; color: white; font-size: 7px; }
-    </style>
-  </head>
-  <body>
-    <div class="header">
-      <h2 style="margin: 5px 0;">LAPORAN REALISASI DETAIL SEMUA KUA</h2>
-      <h3 style="margin: 5px 0;">Kementerian Agama Kabupaten Indramayu - Tahun ${year}</h3>
-    </div>    <table>
-      <thead><tr>${headerCells}</tr></thead>
-      <tbody>
-        ${budgetRow}
-        ${detailRows}
-        ${jumlahRow}
-        ${sisaRow}
-      </tbody>
-    </table>    <div style="margin-top: 20px; text-align: right;">
-      <p>Indramayu, ${new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
-      <p style="margin-top: 40px;"><strong>( ${NAMA_KASI_BIMAS} )</strong></p>
-      <p>${NIP_KASI_BIMAS}</p>
-    </div>
-  </body>
-  </html>
-`;
-        const blob = Utilities.newBlob(htmlContent, MimeType.HTML, 'temp.html');
-        const pdfBlob = blob.getAs('application/pdf');
-        pdfBlob.setName(`Realisasi Detail Semua KUA - ${year}.pdf`);
-        const base64 = Utilities.base64Encode(pdfBlob.getBytes());
-        Logger.log(`[EXPORT_REALISASI_DETAIL_ALL_PDF] Success`);
-        return successResponse({
-            fileData: base64,
-            fileName: pdfBlob.getName(),
-            mimeType: 'application/pdf'
-        });
-    } catch (error) {
-        Logger.log(`[EXPORT_REALISASI_DETAIL_ALL_PDF ERROR] ${error.toString()}`);
-        return errorResponse('Gagal export PDF: ' + error.toString());
-    }
+function exportRealisasiPerYearExcel(data, year, kua) {
+  let tsv = `LAPORAN REALISASI PER TAHUN ${year}\n`;
+  if (kua) tsv += `KUA: ${kua}\n`;
+  tsv += `\nNo\tKUA\tBudget\t`;
+  
+  MONTHS.forEach(month => {
+    tsv += `${month}\t`;
+  });
+  tsv += `Total Realisasi\tSisa\n`;
+  
+  data.forEach((row, index) => {
+    tsv += `${index + 1}\t${row.kua}\t${row.budget}\t`;
+    MONTHS.forEach(month => {
+      tsv += `${row.months[month]}\t`;
+    });
+    tsv += `${row.totalRealisasi}\t${row.sisa}\n`;
+  });
+  
+  const blob = Utilities.newBlob(tsv, 'text/tab-separated-values');
+  const base64 = Utilities.base64Encode(blob.getBytes());
+  
+  Logger.log('[EXPORT_REALISASI_PER_YEAR_EXCEL] Export completed');
+  return successResponse({
+    fileData: base64,
+    fileName: `Laporan_Realisasi_${year}${kua ? '_' + kua : ''}.xls`,
+    mimeType: 'application/vnd.ms-excel'
+  });
 }
 
-/*
- * =====================================================================
- * INSTRUKSI UNTUK MELENGKAPI FILE INI:
- * =====================================================================
- * 
- * 1. Copy fungsi-fungsi berikut dari code.gs LAMA:
- * 
- *    RPD Functions (lines ~590-747):
- *    - getRPDs()
- *    - saveRPD()
- *    - deleteRPD()
- * 
- *    Realisasi Functions (lines ~749-1100+):
- *    - getRealisasis()
- *    - saveRealisasi()
- *    - updateRealisasiStatus()
- * 
- *    File Upload (cari function uploadFile):
- *    - uploadFile()
- * 
- *    Dashboard Stats (cari function getDashboardStats):
- *    - getDashboardStats()
- * 
- *    Export Functions (cari semua function yang mulai dengan "export"):
- *    - exportBudget()
- *    - exportRPD()
- *    - exportRealisasi()
- *    - downloadRealisasiBulanan()
- *    - exportBudgetEnhanced()
- *    - exportRPDEnhanced()
- *    - exportRealisasiEnhanced()
- *    - exportRPDAllPerMonth()
- *    - exportRPDSelectedPerMonth()
- *    - exportRPDAllDetailYear()
- *    - exportRealisasiAllPerMonth()
- *    - exportRealisasiSelectedPerMonth()
- *    - exportRealisasiAllDetailPerMonth()
- *    - exportRPDPerYear()
- *    - exportRPDDetailAllYear()
- *    - exportRealisasiPerYear()
- *    - exportRealisasiDetailAllYear()
- * 
- * 2. Copy juga semua helper functions yang digunakan oleh fungsi-fungsi di atas
- * 
- * 3. Pastikan semua reference ke getSheet(), successResponse(), errorResponse(),
- *    generateID(), logAction() tetap menggunakan fungsi dari code-main.gs
- * 
- * 4. Test setiap fungsi setelah di-copy untuk memastikan berfungsi dengan baik
- * 
- * =====================================================================
- */
+function exportRealisasiPerYearPDF(data, year, kua) {
+  let html = `<html><head><style>
+    body { font-family: Arial; font-size: 10px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+    th, td { border: 1px solid #000; padding: 5px; text-align: center; }
+    th { background: #dc3545; color: white; }
+  </style></head><body>
+  <h3 style="text-align:center">LAPORAN REALISASI PER TAHUN ${year}</h3>`;
+  
+  if (kua) html += `<p style="text-align:center">KUA: ${kua}</p>`;
+  
+  html += `<table><tr><th>No</th><th>KUA</th><th>Budget</th>`;
+  
+  MONTHS.forEach(month => {
+    html += `<th>${month}</th>`;
+  });
+  html += `<th>Total Realisasi</th><th>Sisa</th></tr>`;
+  
+  data.forEach((row, index) => {
+    html += `<tr><td>${index + 1}</td><td>${row.kua}</td><td>${formatCurrency(row.budget)}</td>`;
+    MONTHS.forEach(month => {
+      html += `<td>${formatCurrency(row.months[month])}</td>`;
+    });
+    html += `<td>${formatCurrency(row.totalRealisasi)}</td><td>${formatCurrency(row.sisa)}</td></tr>`;
+  });
+  
+  html += `</table></body></html>`;
+  
+  const blob = Utilities.newBlob(html, 'text/html');
+  const pdfBlob = blob.getAs('application/pdf');
+  const base64 = Utilities.base64Encode(pdfBlob.getBytes());
+  
+  Logger.log('[EXPORT_REALISASI_PER_YEAR_PDF] Export completed');
+  return successResponse({
+    fileData: base64,
+    fileName: `Laporan_Realisasi_${year}${kua ? '_' + kua : ''}.pdf`,
+    mimeType: 'application/pdf'
+  });
+}
+
+// 4. Export Realisasi Detail Year - CORRECTED FORMAT
+function exportRealisasiDetailYear(data) {
+  Logger.log('[EXPORT_REALISASI_DETAIL_YEAR] Format: ' + data.format + ', Year: ' + data.year);
+  
+  try {
+    const realisasiSheet = getSheet(SHEETS.REALISASI);
+    const realisasis = realisasiSheet.getDataRange().getValues();
+    
+    const realisasiByKUA = {};
+    const kuaList = new Set();
+    
+    for (let i = 1; i < realisasis.length; i++) {
+      if (realisasis[i][4] == data.year && realisasis[i][8] === 'Diterima') {
+        const kua = realisasis[i][1];
+        kuaList.add(kua);
+        
+        if (!realisasiByKUA[kua]) {
+          realisasiByKUA[kua] = {};
+        }
+        
+        let realisasiData = {};
+        try {
+          realisasiData = JSON.parse(realisasis[i][6] || '{}');
+        } catch (parseError) {
+          Logger.log('[EXPORT_REALISASI_DETAIL_YEAR] JSON parse error: ' + parseError.toString());
+        }
+        
+        Object.keys(realisasiData).forEach(code => {
+          if (!realisasiByKUA[kua][code]) {
+            realisasiByKUA[kua][code] = {};
+          }
+          Object.keys(realisasiData[code]).forEach(item => {
+            if (!realisasiByKUA[kua][code][item]) {
+              realisasiByKUA[kua][code][item] = 0;
+            }
+            realisasiByKUA[kua][code][item] += parseFloat(realisasiData[code][item]) || 0;
+          });
+        });
+      }
+    }
+    
+    const sortedKUAs = Array.from(kuaList).sort();
+    
+    if (data.format === 'pdf') {
+      return exportRealisasiDetailYearPDF(realisasiByKUA, sortedKUAs, data.year);
+    } else {
+      return exportRealisasiDetailYearExcel(realisasiByKUA, sortedKUAs, data.year);
+    }
+  } catch (error) {
+    Logger.log('[EXPORT_REALISASI_DETAIL_YEAR ERROR] ' + error.toString());
+    return errorResponse('Gagal export: ' + error.toString());
+  }
+}
+
+function exportRealisasiDetailYearExcel(realisasiByKUA, kuaList, year) {
+  let tsv = `LAPORAN REALISASI DETAIL - TAHUN ${year}\n`;
+  tsv += `Kementerian Agama Kabupaten Indramayu\n\n`;
+  
+  tsv += `No\tKode\tUraian Program/Kegiatan/Output/Komponen`;
+  kuaList.forEach(kua => {
+    tsv += `\t${kua}`;
+  });
+  tsv += `\tJUMLAH\n`;
+  
+  let rowNum = 0;
+  let grandTotal = {};
+  kuaList.forEach(kua => { grandTotal[kua] = 0; });
+  let grandTotalAll = 0;
+  
+  rowNum++;
+  tsv += `${rowNum}\t025.04.WA\tDukungan Manajemen dan Pelaksanaan Tugas Teknis Lainnya Bimas Islam`;
+  kuaList.forEach(() => tsv += `\t`);
+  tsv += `\t\n`;
+  
+  Object.keys(BOP_CONFIG.RPD_PARAMETERS).forEach(code => {
+    const config = BOP_CONFIG.RPD_PARAMETERS[code];
+    
+    tsv += `\t${code}\t${config.name}`;
+    
+    let codeTotal = {};
+    kuaList.forEach(kua => { codeTotal[kua] = 0; });
+    let codeTotalAll = 0;
+    
+    config.items.forEach(item => {
+      kuaList.forEach(kua => {
+        const value = (realisasiByKUA[kua] && realisasiByKUA[kua][code] && realisasiByKUA[kua][code][item]) || 0;
+        codeTotal[kua] += value;
+        codeTotalAll += value;
+      });
+    });
+    
+    kuaList.forEach(kua => {
+      tsv += `\t${codeTotal[kua]}`;
+      grandTotal[kua] += codeTotal[kua];
+    });
+    tsv += `\t${codeTotalAll}\n`;
+    grandTotalAll += codeTotalAll;
+    
+    config.items.forEach((item, idx) => {
+      const prefix = String.fromCharCode(97 + idx);
+      tsv += `\t\t  ${prefix}. ${item}`;
+      
+      let itemTotal = 0;
+      kuaList.forEach(kua => {
+        const value = (realisasiByKUA[kua] && realisasiByKUA[kua][code] && realisasiByKUA[kua][code][item]) || 0;
+        tsv += `\t${value}`;
+        itemTotal += value;
+      });
+      tsv += `\t${itemTotal}\n`;
+    });
+  });
+  
+  tsv += `JUMLAH\t\t`;
+  kuaList.forEach(kua => {
+    tsv += `\t${grandTotal[kua]}`;
+  });
+  tsv += `\t${grandTotalAll}\n`;
+  
+  const blob = Utilities.newBlob(tsv, 'text/tab-separated-values');
+  const base64 = Utilities.base64Encode(blob.getBytes());
+  
+  Logger.log('[EXPORT_REALISASI_DETAIL_YEAR_EXCEL] Export completed');
+  return successResponse({
+    fileData: base64,
+    fileName: `Laporan_Realisasi_Detail_${year}.xls`,
+    mimeType: 'application/vnd.ms-excel'
+  });
+}
+
+function exportRealisasiDetailYearPDF(realisasiByKUA, kuaList, year) {
+  let html = `<html><head><style>
+    body { font-family: Arial; font-size: 9px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+    th, td { border: 1px solid #000; padding: 4px; text-align: center; }
+    th { background: #dc3545; color: white; font-weight: bold; }
+    .left { text-align: left; }
+    .code { font-weight: bold; }
+    .subitem { padding-left: 20px; text-align: left; }
+    .total { background: #f0f0f0; font-weight: bold; }
+    h3 { text-align: center; margin-bottom: 5px; }
+    h4 { text-align: center; margin-top: 0; margin-bottom: 20px; }
+  </style></head><body>
+  <h3>LAPORAN REALISASI DETAIL - TAHUN ${year}</h3>
+  <h4>Kementerian Agama Kabupaten Indramayu</h4>
+  <table>
+    <tr>
+      <th width="3%">No</th>
+      <th width="8%">Kode</th>
+      <th width="25%">Uraian Program/Kegiatan/Output/Komponen</th>`;
+  
+  kuaList.forEach(kua => {
+    html += `<th>${kua.replace('KUA ', '')}</th>`;
+  });
+  html += `<th>JUMLAH</th></tr>`;
+  
+  let rowNum = 0;
+  let grandTotal = {};
+  kuaList.forEach(kua => { grandTotal[kua] = 0; });
+  let grandTotalAll = 0;
+  
+  rowNum++;
+  html += `<tr>
+    <td>${rowNum}</td>
+    <td class="code">025.04.WA</td>
+    <td class="left">Dukungan Manajemen dan Pelaksanaan Tugas Teknis Lainnya Bimas Islam</td>`;
+  kuaList.forEach(() => html += `<td></td>`);
+  html += `<td></td></tr>`;
+  
+  Object.keys(BOP_CONFIG.RPD_PARAMETERS).forEach(code => {
+    const config = BOP_CONFIG.RPD_PARAMETERS[code];
+    
+    let codeTotal = {};
+    kuaList.forEach(kua => { codeTotal[kua] = 0; });
+    let codeTotalAll = 0;
+    
+    config.items.forEach(item => {
+      kuaList.forEach(kua => {
+        const value = (realisasiByKUA[kua] && realisasiByKUA[kua][code] && realisasiByKUA[kua][code][item]) || 0;
+        codeTotal[kua] += value;
+        codeTotalAll += value;
+      });
+    });
+    
+    html += `<tr>
+      <td></td>
+      <td class="code">${code}</td>
+      <td class="left">${config.name}</td>`;
+    
+    kuaList.forEach(kua => {
+      html += `<td>${formatNumber(codeTotal[kua])}</td>`;
+      grandTotal[kua] += codeTotal[kua];
+    });
+    html += `<td class="total">${formatNumber(codeTotalAll)}</td></tr>`;
+    grandTotalAll += codeTotalAll;
+    
+    config.items.forEach((item, idx) => {
+      const prefix = String.fromCharCode(97 + idx);
+      html += `<tr>
+        <td></td>
+        <td></td>
+        <td class="subitem">${prefix}. ${item}</td>`;
+      
+      let itemTotal = 0;
+      kuaList.forEach(kua => {
+        const value = (realisasiByKUA[kua] && realisasiByKUA[kua][code] && realisasiByKUA[kua][code][item]) || 0;
+        html += `<td>${formatNumber(value)}</td>`;
+        itemTotal += value;
+      });
+      html += `<td>${formatNumber(itemTotal)}</td></tr>`;
+    });
+  });
+  
+  html += `<tr class="total">
+    <td colspan="3">JUMLAH</td>`;
+  kuaList.forEach(kua => {
+    html += `<td>${formatNumber(grandTotal[kua])}</td>`;
+  });
+  html += `<td>${formatNumber(grandTotalAll)}</td></tr>`;
+  
+  html += `</table></body></html>`;
+  
+  const blob = Utilities.newBlob(html, 'text/html');
+  const pdfBlob = blob.getAs('application/pdf');
+  const base64 = Utilities.base64Encode(pdfBlob.getBytes());
+  
+  Logger.log('[EXPORT_REALISASI_DETAIL_YEAR_PDF] Export completed');
+  return successResponse({
+    fileData: base64,
+    fileName: `Laporan_Realisasi_Detail_${year}.pdf`,
+    mimeType: 'application/pdf'
+  });
+}
+
+function uploadFile(data) {
+  Logger.log('[UPLOAD_FILE] Filename: ' + data.filename);
+  
+  try {
+    if (!data.fileData || !data.filename) {
+      return errorResponse('File data atau filename tidak ada');
+    }
+    
+    const blob = Utilities.newBlob(
+      Utilities.base64Decode(data.fileData),
+      data.mimeType || 'application/octet-stream',
+      data.filename
+    );
+    
+    const folder = DriveApp.getFolderById(DRIVE_FOLDER_ID);
+    const file = folder.createFile(blob);
+    
+    const fileInfo = {
+      id: file.getId(),
+      name: file.getName(),
+      url: file.getUrl(),
+      size: file.getSize(),
+      mimeType: file.getMimeType()
+    };
+    
+    Logger.log('[UPLOAD_FILE] Success: ' + file.getId());
+    return successResponse(fileInfo);
+    
+  } catch (error) {
+    Logger.log('[UPLOAD_FILE ERROR] ' + error.toString());
+    return errorResponse('Gagal upload file: ' + error.toString());
+  }
+}

@@ -79,6 +79,18 @@ function displayUserInfo() {
         userRoleEl.textContent = roleText;
     }
     
+    // Show Pengguna & Kelola Info KUA menu for Admin
+    if (currentUser.role === 'Admin') {
+        const menuPengguna = document.getElementById('menuPengguna');
+        if (menuPengguna) {
+            menuPengguna.style.display = 'block';
+        }
+        const menuKelolInfoKUA = document.getElementById('menuKelolInfoKUA');
+        if (menuKelolInfoKUA) {
+            menuKelolInfoKUA.style.display = 'block';
+        }
+    }
+    
     debugLog('MAIN', 'User info displayed', { name: currentUser.name, role: currentUser.role });
 }
 

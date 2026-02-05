@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Menu Utama - Sistem Kemenag Indramayu</title>
+    <title>Menu Utama - Sistem Kemenag</title>
     <link rel="icon" type="image/png" href="assets/coin.png">
     <link rel="stylesheet" href="style/main-styles.css">
 </head>
@@ -16,9 +16,64 @@
     <!-- Notification -->
     <div class="notification" id="notification"></div>
 
-    <!-- Modal Ubah Password -->
+    <!-- Main Menu -->
+    <div class="main-container">
+        <div class="header">
+            <h1>Sistem Informasi Kemenag Indramayu</h1>
+            <div class="user-info">
+                <strong id="userName"></strong>
+                <small id="userRole"></small>
+            </div>
+        </div>
+
+        <div class="menu-grid">
+            <div class="menu-card" onclick="window.location.href='bop-dashboard.html'">
+                <div class="menu-icon">💰</div>
+                <h3>BOP Management</h3>
+                <p>Kelola Budget, RPD, dan Realisasi</p>
+            </div>
+
+            <div class="menu-card" onclick="window.location.href='bmn-dashboard.html'">
+                <div class="menu-icon">📦</div>
+                <h3>BMN Management</h3>
+                <p>Kelola Barang Milik Negara</p>
+            </div>
+
+            <div class="menu-card" onclick="window.location.href='nikah-dashboard.html'">
+                <div class="menu-icon">💍</div>
+                <h3>Data Pernikahan</h3>
+                <p>Pendataan Peristiwa Nikah KUA</p>
+            </div>
+
+            <div class="menu-card" id="menuKelolInfoKUA" style="display: none;" onclick="window.location.href='nikah-dashboard.html?action=kuainfo'">
+                <div class="menu-icon">📋</div>
+                <h3>Kelola Info KUA</h3>
+                <p>Update Kepala KUA &amp; NIP</p>
+            </div>
+
+            <div class="menu-card" id="menuPengguna" style="display: none;" onclick="window.location.href='user-management.html'">
+                <div class="menu-icon">👥</div>
+                <h3>Kelola Pengguna</h3>
+                <p>Manajemen user dan akses</p>
+            </div>
+
+            <div class="menu-card" onclick="showPasswordModal()">
+                <div class="menu-icon">🔑</div>
+                <h3>Ubah Password</h3>
+                <p>Ganti password akun Anda</p>
+            </div>
+
+            <div class="menu-card" onclick="logout()">
+                <div class="menu-icon">🚪</div>
+                <h3>Keluar</h3>
+                <p>Logout dari sistem</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Password Change Modal -->
     <div class="modal" id="changePasswordModal">
-        <div class="modal-content" style="max-width: 500px;">
+        <div class="modal-content">
             <div class="modal-header">
                 <h3>Ubah Password</h3>
                 <button class="close-btn" onclick="closePasswordModal()">&times;</button>
@@ -26,23 +81,23 @@
             <form id="changePasswordForm">
                 <div class="form-group">
                     <label>Password Lama</label>
-                    <div class="password-input-group">
+                    <div class="password-input">
                         <input type="password" id="oldPassword" required>
-                        <button type="button" class="password-toggle" onclick="togglePassword('oldPassword')">👁️</button>
+                        <button type="button" class="toggle-password" onclick="togglePassword('oldPassword')">👁️</button>
                     </div>
                 </div>
                 <div class="form-group">
                     <label>Password Baru</label>
-                    <div class="password-input-group">
+                    <div class="password-input">
                         <input type="password" id="newPassword" required minlength="6">
-                        <button type="button" class="password-toggle" onclick="togglePassword('newPassword')">👁️</button>
+                        <button type="button" class="toggle-password" onclick="togglePassword('newPassword')">👁️</button>
                     </div>
                 </div>
                 <div class="form-group">
                     <label>Konfirmasi Password Baru</label>
-                    <div class="password-input-group">
+                    <div class="password-input">
                         <input type="password" id="confirmPassword" required minlength="6">
-                        <button type="button" class="password-toggle" onclick="togglePassword('confirmPassword')">👁️</button>
+                        <button type="button" class="toggle-password" onclick="togglePassword('confirmPassword')">👁️</button>
                     </div>
                 </div>
                 <button type="submit" class="btn">Ubah Password</button>
@@ -50,133 +105,8 @@
         </div>
     </div>
 
-    <div class="container">
-        <div class="header">
-            <div class="header-left">
-                <h1>Sistem Informasi Terintegrasi</h1>
-                <p>Kementerian Agama Kabupaten Indramayu</p>
-            </div>
-            <div class="header-right">
-                <div class="user-info">
-                    <strong id="userName"></strong>
-                    <small id="userRole"></small>
-                </div>
-                <button class="btn btn-info btn-sm" onclick="showPasswordModal()">🔒 Ubah Password</button>
-                <button class="btn btn-danger btn-sm" onclick="logout()">Keluar</button>
-            </div>
-        </div>
-
-        <div class="menu-grid">
-            <!-- Menu BOP -->
-            <a href="bop-dashboard.html" class="menu-card bop">
-                <div class="menu-icon">💰</div>
-                <h3>Pengelolaan BOP KUA</h3>
-                <p>Sistem pengelolaan Budget Operasional Perkantoran untuk KUA se-Kabupaten Indramayu</p>
-            </a>
-
-            <!-- Menu BMN -->
-            <a href="bmn-dashboard.html" class="menu-card bmn">
-                <div class="menu-icon">🏛️</div>
-                <h3>Pendataan BMN</h3>
-                <p>Sistem pendataan Barang Milik Negara untuk 31 KUA</p>
-            </a>
-
-            <!-- Menu Arsip (Coming Soon) -->
-            <div class="menu-card disabled" style="border-top: 4px solid #ffc107;">
-                <div class="menu-icon">📁</div>
-                <h3>Sistem Arsip Digital</h3>
-                <p>Pengelolaan dokumen dan arsip digital terintegrasi</p>
-                <span class="badge-coming-soon">Coming Soon</span>
-            </div>
-
-            <!-- Menu Lainnya (Coming Soon) -->
-            <div class="menu-card disabled" style="border-top: 4px solid #17a2b8;">
-                <div class="menu-icon">⚙️</div>
-                <h3>Sistem Lainnya</h3>
-                <p>Modul dan sistem pendukung lainnya</p>
-                <span class="badge-coming-soon">Coming Soon</span>
-            </div>
-        </div>
-    </div>
-
     <!-- Load Config & Scripts -->
     <script src="js/config.js"></script>
     <script src="js/main-script.js"></script>
-    <script>
-        // Global state
-        let currentUser = null;
-
-        // Check if user is logged in
-        window.addEventListener('DOMContentLoaded', function() {
-            currentUser = SessionManager.getCurrentUser();
-            
-            if (!currentUser) {
-                window.location.href = 'index.html';
-                return;
-            }
-
-            // Display user info
-            document.getElementById('userName').textContent = currentUser.name;
-            document.getElementById('userRole').textContent = currentUser.role + (currentUser.kua ? ' - ' + currentUser.kua : '');
-        });
-
-        function logout() {
-            commonLogout();
-        }
-
-        // Password Modal Functions
-        function showPasswordModal() {
-            ModalManager.show('changePasswordModal');
-        }
-
-        function closePasswordModal() {
-            ModalManager.hide('changePasswordModal');
-            document.getElementById('changePasswordForm').reset();
-        }
-
-        // Handle Change Password Form
-        document.getElementById('changePasswordForm').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            
-            const oldPassword = document.getElementById('oldPassword').value;
-            const newPassword = document.getElementById('newPassword').value;
-            const confirmPassword = document.getElementById('confirmPassword').value;
-
-            // Validate
-            if (newPassword !== confirmPassword) {
-                showNotification('Password baru tidak cocok', 'error');
-                return;
-            }
-
-            if (newPassword.length < 6) {
-                showNotification('Password baru minimal 6 karakter', 'error');
-                return;
-            }
-
-            try {
-                await apiCall('changePassword', {
-                    userId: currentUser.id,
-                    username: currentUser.username,
-                    role: currentUser.role,
-                    oldPassword: oldPassword,
-                    newPassword: newPassword
-                });
-
-                showNotification('Password berhasil diubah', 'success');
-                closePasswordModal();
-                
-                // Logout after password change
-                setTimeout(() => {
-                    showNotification('Silakan login dengan password baru', 'info');
-                    setTimeout(() => {
-                        SessionManager.clearUser();
-                        window.location.href = 'index.html';
-                    }, 2000);
-                }, 1000);
-            } catch (error) {
-                showNotification(error.message || 'Gagal mengubah password', 'error');
-            }
-        });
-    </script>
 </body>
 </html>

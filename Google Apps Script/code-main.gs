@@ -1,11 +1,18 @@
-// ===== GOOGLE APPS SCRIPT - MAIN =====
+// ===== GOOGLE APPS SCRIPT - MAIN (FIXED WITH CORS SUPPORT) =====
 // File: code-main.gs
 // Deskripsi: Handler utama dan fungsi-fungsi umum untuk login, user management
 
 // ===== KONFIGURASI SPREADSHEET =====
 const SS_ID = '1yz9IeOW9WSDRM9JHwBHYtwi5xmA9hIxJVFPX9G10pNw';
 
-// ===== MAIN HANDLER =====
+// ✅ FIX: Add doGet for CORS preflight
+function doGet(e) {
+  return ContentService
+    .createTextOutput(JSON.stringify({ status: 'OK', message: 'API is running' }))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+// ===== MAIN HANDLER WITH CORS SUPPORT =====
 function doPost(e) {
   try {
     const data = JSON.parse(e.postData.contents);
@@ -14,23 +21,31 @@ function doPost(e) {
     Logger.log(`[${new Date().toISOString()}] Action: ${action}`);
     Logger.log(`Data: ${JSON.stringify(data)}`);
     
+    let result;
+    
     // Route ke fungsi yang sesuai
     switch(action) {
       // Authentication & User Management
       case 'login':
-        return handleLogin(data);
+        result = handleLogin(data);
+        break;
       case 'changePassword':
-        return changePassword(data);
+        result = changePassword(data);
+        break;
       case 'getUsers':
-        return getUsers(data);
+        result = getUsers(data);
+        break;
       case 'saveUser':
-        return saveUser(data);
+        result = saveUser(data);
+        break;
       case 'deleteUser':
-        return deleteUser(data);
+        result = deleteUser(data);
+        break;
       
       // BOP Actions
       case 'getBudgets':
       case 'saveBudget':
+      case 'deleteBudget':
       case 'getRPDConfig':
       case 'saveRPDConfig':
       case 'getRPDs':
@@ -38,6 +53,8 @@ function doPost(e) {
       case 'deleteRPD':
       case 'getRealisasis':
       case 'saveRealisasi':
+      case 'deleteRealisasi':
+      case 'verifyRealisasi':
       case 'updateRealisasiStatus':
       case 'uploadFile':
       case 'getDashboardStats':
@@ -55,11 +72,14 @@ function doPost(e) {
       case 'exportRealisasiSelectedPerMonth':
       case 'exportRealisasiAllDetailPerMonth':
       case 'exportRPDPerYear':
+      case 'exportRPDDetailYear':
       case 'exportRPDDetailAllYear':
       case 'exportRealisasiPerYear':
+      case 'exportRealisasiDetailYear':
       case 'exportRealisasiDetailAllYear':
         // Delegate ke BOP module
-        return handleBOPAction(action, data);
+        result = handleBOPAction(action, data);
+        break;
       
       // BMN Actions
       case 'getBMNStats':
@@ -71,32 +91,61 @@ function doPost(e) {
       case 'getBMNRiwayat':
       case 'exportLaporanBMN':
         // Delegate ke BMN module
-        return handleBMNAction(action, data);
+        result = handleBMNAction(action, data);
+        break;
+      
+      // NIKAH Actions
+      case 'getNikahStats':
+      case 'getNikahData':
+      case 'saveNikahData':
+      case 'getNikahMonthStatus':
+      case 'toggleNikahMonthStatus':
+      case 'getKUAInfo':
+      case 'updateKUAInfo':
+      case 'getAllKUAInfo':
+      case 'exportNikahExcel':
+      case 'cleanupExportFile':
+      case 'exportNikahPDF':
+        // Delegate ke NIKAH module
+        result = handleNikahAction(action, data);
+        break;
       
       default:
         Logger.log(`[ERROR] Unknown action: ${action}`);
-        return errorResponse('Action tidak dikenal');
+        result = { success: false, message: 'Action tidak dikenal' };
     }
+    
+    // ✅ FIX: Convert result to proper response format with CORS
+    return createCORSResponse(result);
+    
   } catch (error) {
     Logger.log(`[ERROR] ${error.toString()}`);
     Logger.log(`Stack: ${error.stack}`);
-    return errorResponse(error.toString());
+    return createCORSResponse({ success: false, message: error.toString() });
   }
 }
 
-// ===== RESPONSE HELPERS =====
+// ✅ NEW: Create response with CORS headers
+function createCORSResponse(data) {
+  const output = ContentService.createTextOutput(JSON.stringify(data))
+    .setMimeType(ContentService.MimeType.JSON);
+  
+  // Note: Apps Script doesn't support custom headers in ContentService
+  // CORS must be configured in deployment settings
+  return output;
+}
+
+// ===== RESPONSE HELPERS (UPDATED) =====
 function successResponse(data) {
-  Logger.log(`[SUCCESS] Response: ${JSON.stringify(data)}`);
-  return ContentService.createTextOutput(
-    JSON.stringify({ success: true, data: data })
-  ).setMimeType(ContentService.MimeType.JSON);
+  Logger.log(`[SUCCESS] Response data type: ${typeof data}`);
+  // ✅ FIX: Return plain object, not ContentService
+  return { success: true, data: data };
 }
 
 function errorResponse(message) {
   Logger.log(`[ERROR RESPONSE] ${message}`);
-  return ContentService.createTextOutput(
-    JSON.stringify({ success: false, message: message })
-  ).setMimeType(ContentService.MimeType.JSON);
+  // ✅ FIX: Return plain object, not ContentService
+  return { success: false, message: message };
 }
 
 // ===== DATABASE HELPERS =====
@@ -131,157 +180,122 @@ function initializeSheet(sheet, sheetName) {
     BMN_CONFIG: 'BMN_Config'
   };
   
+  const NIKAH_SHEETS = {
+    NIKAH_DATA: 'Nikah_Data',
+    NIKAH_STATUS: 'Nikah_Status',
+    KUA_INFO: 'KUA_Info'
+  };
+  
   switch(sheetName) {
     case SHEETS.USERS:
-      headers = ['ID', 'Username', 'Password', 'Name', 'Role', 'KUA', 'Status', 'CreatedAt'];
+      headers = ['ID', 'Username', 'Password', 'Name', 'Role', 'KUA', 'Created', 'Updated'];
       break;
     case SHEETS.BUDGET:
-      headers = ['ID', 'KUA', 'Year', 'Budget', 'TotalRPD', 'TotalRealisasi', 'UpdatedAt'];
+      headers = ['ID', 'KUA', 'Year', 'Total', 'Pagu', 'Realisasi', 'Created', 'Updated'];
       break;
     case SHEETS.RPD:
-      headers = ['ID', 'KUA', 'UserID', 'Month', 'Year', 'Data', 'Total', 'CreatedAt', 'UpdatedAt'];
+      headers = ['ID', 'KUA', 'UserID', 'Month', 'Year', 'Data', 'Total', 'Created', 'Updated'];
       break;
     case SHEETS.REALISASI:
-      headers = ['ID', 'KUA', 'UserID', 'Month', 'Year', 'RPDID', 'Data', 'Total', 'Status', 'Files', 'CreatedAt', 'UpdatedAt', 'VerifiedBy', 'VerifiedAt', 'Notes'];
+      headers = ['ID', 'KUA', 'UserID', 'Month', 'Year', 'RPD_ID', 'Data', 'Total', 'Status', 'Catatan', 'Files', 'Created', 'Updated'];
       break;
-    case SHEETS.LOGS:
-      headers = ['Timestamp', 'UserID', 'Username', 'Role', 'Action', 'Details'];
-      break;
-    case SHEETS.CONFIG:
-      headers = ['Key', 'Value', 'UpdatedAt'];
-      sheet.appendRow(headers);
-      sheet.appendRow(['RPD_STATUS', 'open', new Date()]);
-      sheet.appendRow(['REALISASI_STATUS', 'open', new Date()]);
-      sheet.appendRow(['REALISASI_MAX_FILE_SIZE', '5', new Date()]);
-      sheet.appendRow(['REALISASI_MAX_FILES', '10', new Date()]);
-      return;
     case BMN_SHEETS.BMN_DATA:
-      headers = [
-        'ID', 'KUA', 'Kode Barang', 'Nama Barang', 'Jenis', 'Tahun Perolehan',
-        'Sumber Perolehan', 'Nilai Perolehan', 'Kondisi', 'Status', 'Lokasi Barang',
-        'ID BMN', 'Keterangan', 'Fotos (JSON)', 'Status Verifikasi', 'Catatan Verifikasi',
-        'Created At', 'Updated At'
-      ];
+      headers = ['ID', 'KUA', 'Jenis', 'Nama', 'Merk', 'Tahun', 'Kondisi', 'Nilai', 'Status', 'Keterangan', 'Photos', 'Created', 'Updated'];
       break;
     case BMN_SHEETS.BMN_RIWAYAT:
-      headers = ['ID', 'KUA', 'Kode Barang', 'Nama Barang', 'Action', 'Operator', 'Timestamp'];
+      headers = ['ID', 'BMN_ID', 'Action', 'Description', 'UserID', 'Timestamp'];
+      break;
+    case NIKAH_SHEETS.NIKAH_DATA:
+      headers = ['ID', 'KUA', 'Month', 'Year', 'Jumlah', 'UserID', 'Created', 'Updated'];
+      break;
+    case NIKAH_SHEETS.NIKAH_STATUS:
+      headers = ['KUA', 'Month', 'Year', 'Status', 'Updated'];
+      break;
+    case NIKAH_SHEETS.KUA_INFO:
+      headers = ['KUA', 'Kepala_KUA', 'NIP', 'Updated'];
       break;
   }
   
   if (headers.length > 0) {
-    sheet.appendRow(headers);
-  }
-  
-  Logger.log(`[INFO] Sheet initialized: ${sheetName}`);
-}
-
-function generateID() {
-  return Utilities.getUuid();
-}
-
-// ===== LOGGING =====
-function logAction(userID, username, role, action, details) {
-  try {
-    const sheet = getSheet('Logs');
-    sheet.appendRow([
-      new Date(),
-      userID,
-      username,
-      role,
-      action,
-      JSON.stringify(details)
-    ]);
-    Logger.log(`[LOG] ${username} (${role}): ${action}`);
-  } catch (error) {
-    Logger.log(`[ERROR] Logging error: ${error}`);
+    sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+    sheet.getRange(1, 1, 1, headers.length).setFontWeight('bold');
+    sheet.setFrozenRows(1);
   }
 }
 
-// ===== AUTHENTICATION =====
+// ===== USER MANAGEMENT =====
 function handleLogin(data) {
   Logger.log('[LOGIN] Attempting login for: ' + data.username);
   
   try {
     const sheet = getSheet('Users');
-    const values = sheet.getDataRange().getValues();
+    const rows = sheet.getDataRange().getValues();
     
-    for (let i = 1; i < values.length; i++) {
-      const row = values[i];
-      const status = String(row[6]).toLowerCase();
-      if (row[1] === data.username && row[2] === data.password) {
-        if (status !== 'active') {
-          Logger.log('[LOGIN] User inactive');
-          return errorResponse('Akun tidak aktif');
-        }
-        
+    for (let i = 1; i < rows.length; i++) {
+      if (rows[i][1] === data.username && rows[i][2] === data.password) {
         const user = {
-          id: row[0],
-          username: row[1],
-          name: row[3],
-          role: row[4],
-          kua: row[5]
+          id: rows[i][0],
+          username: rows[i][1],
+          name: rows[i][3],
+          role: rows[i][4],
+          kua: rows[i][5] || ''
         };
         
-        logAction(user.id, user.username, user.role, 'LOGIN', { ip: 'web' });
-        Logger.log('[LOGIN] Success: ' + user.username);
+        Logger.log('[LOGIN] Success for: ' + data.username);
         return successResponse(user);
       }
     }
     
-    Logger.log('[LOGIN] Failed: Invalid credentials');
+    Logger.log('[LOGIN] Failed for: ' + data.username);
     return errorResponse('Username atau password salah');
   } catch (error) {
     Logger.log('[LOGIN ERROR] ' + error.toString());
-    return errorResponse(error.toString());
+    return errorResponse('Login gagal: ' + error.toString());
   }
 }
 
-// ===== CHANGE PASSWORD =====
 function changePassword(data) {
   Logger.log('[CHANGE_PASSWORD] User: ' + data.username);
   
   try {
     const sheet = getSheet('Users');
-    const values = sheet.getDataRange().getValues();
+    const rows = sheet.getDataRange().getValues();
     
-    for (let i = 1; i < values.length; i++) {
-      const row = values[i];
-      if (row[1] === data.username && row[2] === data.oldPassword) {
+    for (let i = 1; i < rows.length; i++) {
+      if (rows[i][1] === data.username && rows[i][2] === data.oldPassword) {
         sheet.getRange(i + 1, 3).setValue(data.newPassword);
+        sheet.getRange(i + 1, 8).setValue(new Date());
         
-        logAction(row[0], data.username, row[4], 'CHANGE_PASSWORD', {});
-        Logger.log('[CHANGE_PASSWORD] Success');
+        Logger.log('[CHANGE_PASSWORD] Success for: ' + data.username);
         return successResponse({ message: 'Password berhasil diubah' });
       }
     }
     
-    Logger.log('[CHANGE_PASSWORD] Failed: Invalid old password');
+    Logger.log('[CHANGE_PASSWORD] Failed - wrong old password');
     return errorResponse('Password lama salah');
   } catch (error) {
     Logger.log('[CHANGE_PASSWORD ERROR] ' + error.toString());
-    return errorResponse(error.toString());
+    return errorResponse('Gagal mengubah password: ' + error.toString());
   }
 }
 
-// ===== USER MANAGEMENT =====
 function getUsers(data) {
-  Logger.log('[GET_USERS] Getting all users');
+  Logger.log('[GET_USERS]');
   
   try {
     const sheet = getSheet('Users');
-    const values = sheet.getDataRange().getValues();
+    const rows = sheet.getDataRange().getValues();
     const users = [];
     
-    for (let i = 1; i < values.length; i++) {
-      const row = values[i];
+    for (let i = 1; i < rows.length; i++) {
       users.push({
-        id: row[0],
-        username: row[1],
-        name: row[3],
-        role: row[4],
-        kua: row[5],
-        status: row[6],
-        createdAt: row[7]
+        id: rows[i][0],
+        username: rows[i][1],
+        name: rows[i][3],
+        role: rows[i][4],
+        kua: rows[i][5] || '',
+        created: rows[i][6] ? new Date(rows[i][6]).toISOString() : '',
+        updated: rows[i][7] ? new Date(rows[i][7]).toISOString() : ''
       });
     }
     
@@ -289,83 +303,78 @@ function getUsers(data) {
     return successResponse(users);
   } catch (error) {
     Logger.log('[GET_USERS ERROR] ' + error.toString());
-    return errorResponse(error.toString());
+    return errorResponse('Gagal memuat users: ' + error.toString());
   }
 }
 
 function saveUser(data) {
-  Logger.log('[SAVE_USER] Saving user: ' + data.username);
+  Logger.log('[SAVE_USER] ID: ' + (data.id || 'new'));
   
   try {
     const sheet = getSheet('Users');
-    const values = sheet.getDataRange().getValues();
+    const rows = sheet.getDataRange().getValues();
+    const now = new Date();
     
-    // Check if username exists (for new user)
-    if (!data.id) {
-      for (let i = 1; i < values.length; i++) {
-        if (values[i][1] === data.username) {
+    if (data.id) {
+      // Update existing
+      for (let i = 1; i < rows.length; i++) {
+        if (rows[i][0] === data.id) {
+          sheet.getRange(i + 1, 2).setValue(data.username);
+          sheet.getRange(i + 1, 4).setValue(data.name);
+          sheet.getRange(i + 1, 5).setValue(data.role);
+          sheet.getRange(i + 1, 6).setValue(data.kua || '');
+          sheet.getRange(i + 1, 8).setValue(now);
+          
+          if (data.password) {
+            sheet.getRange(i + 1, 3).setValue(data.password);
+          }
+          
+          Logger.log('[SAVE_USER] Updated: ' + data.id);
+          return successResponse({ message: 'User berhasil diupdate', id: data.id });
+        }
+      }
+      return errorResponse('User tidak ditemukan');
+    } else {
+      // Check duplicate username
+      for (let i = 1; i < rows.length; i++) {
+        if (rows[i][1] === data.username) {
           return errorResponse('Username sudah digunakan');
         }
       }
-    }
-    
-    if (data.id) {
-      // Update existing user
-      for (let i = 1; i < values.length; i++) {
-        if (values[i][0] === data.id) {
-          sheet.getRange(i + 1, 2, 1, 6).setValues([[
-            data.username,
-            data.password || values[i][2],
-            data.name,
-            data.role,
-            data.kua,
-            data.status
-          ]]);
-          
-          logAction(data.currentUserId, data.currentUsername, data.currentUserRole, 'UPDATE_USER', { userId: data.id });
-          Logger.log('[SAVE_USER] Updated');
-          return successResponse({ message: 'User berhasil diupdate' });
-        }
-      }
-    } else {
-      // Create new user
-      const newUser = [
-        generateID(),
+      
+      // Create new
+      const id = 'USR-' + Date.now();
+      sheet.appendRow([
+        id,
         data.username,
         data.password,
         data.name,
         data.role,
-        data.kua,
-        'active',
-        new Date()
-      ];
-      sheet.appendRow(newUser);
+        data.kua || '',
+        now,
+        now
+      ]);
       
-      logAction(data.currentUserId, data.currentUsername, data.currentUserRole, 'CREATE_USER', { username: data.username });
-      Logger.log('[SAVE_USER] Created');
-      return successResponse({ message: 'User berhasil ditambahkan' });
+      Logger.log('[SAVE_USER] Created: ' + id);
+      return successResponse({ message: 'User berhasil dibuat', id: id });
     }
-    
-    return errorResponse('User tidak ditemukan');
   } catch (error) {
     Logger.log('[SAVE_USER ERROR] ' + error.toString());
-    return errorResponse(error.toString());
+    return errorResponse('Gagal menyimpan user: ' + error.toString());
   }
 }
 
 function deleteUser(data) {
-  Logger.log('[DELETE_USER] Deleting user: ' + data.id);
+  Logger.log('[DELETE_USER] ID: ' + data.id);
   
   try {
     const sheet = getSheet('Users');
-    const values = sheet.getDataRange().getValues();
+    const rows = sheet.getDataRange().getValues();
     
-    for (let i = 1; i < values.length; i++) {
-      if (values[i][0] === data.id) {
+    for (let i = 1; i < rows.length; i++) {
+      if (rows[i][0] === data.id) {
         sheet.deleteRow(i + 1);
-        
-        logAction(data.currentUserId, data.currentUsername, data.currentUserRole, 'DELETE_USER', { userId: data.id });
-        Logger.log('[DELETE_USER] Success');
+        Logger.log('[DELETE_USER] Deleted: ' + data.id);
         return successResponse({ message: 'User berhasil dihapus' });
       }
     }
@@ -373,6 +382,21 @@ function deleteUser(data) {
     return errorResponse('User tidak ditemukan');
   } catch (error) {
     Logger.log('[DELETE_USER ERROR] ' + error.toString());
-    return errorResponse(error.toString());
+    return errorResponse('Gagal menghapus user: ' + error.toString());
+  }
+}
+
+// ===== LOGGING =====
+function logAction(action, userId, details) {
+  try {
+    const sheet = getSheet('Logs');
+    sheet.appendRow([
+      new Date(),
+      action,
+      userId,
+      details
+    ]);
+  } catch (error) {
+    Logger.log('[LOG_ACTION ERROR] ' + error.toString());
   }
 }

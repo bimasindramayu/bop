@@ -186,12 +186,6 @@ async function loadBMNDashboardStats() {
     debugLog('DASHBOARD', 'Loading dashboard stats');
     
     try {
-        if (isCacheValid(CACHE_CONFIG.KEYS.STATS)) {
-            debugLog('DASHBOARD', 'Using cached stats');
-            displayDashboardStats(bmnCache.stats);
-            return;
-        }
-        
         const filters = {
             role: currentUser.role,
             kua: currentUser.role === 'Admin' ? '' : currentUser.kua
@@ -200,7 +194,6 @@ async function loadBMNDashboardStats() {
         const stats = await apiCall('getBMNStats', filters);
         debugLog('DASHBOARD', 'Stats loaded from API', stats);
         
-        updateCache(CACHE_CONFIG.KEYS.STATS, stats);
         displayDashboardStats(stats);
     } catch (error) {
         debugLog('DASHBOARD ERROR', error.message, error);
@@ -1287,13 +1280,7 @@ async function loadRiwayat() {
             kua: currentUser.role === 'Admin' ? document.getElementById('riwayatKUA')?.value : currentUser.kua
         };
         
-        if (isCacheValid(CACHE_CONFIG.KEYS.RIWAYAT)) {
-            displayRiwayat(bmnCache.riwayat);
-            return;
-        }
-        
         const data = await apiCall('getBMNRiwayat', filters);
-        updateCache(CACHE_CONFIG.KEYS.RIWAYAT, data);
         displayRiwayat(data);
     } catch (error) {
         console.error('[RIWAYAT ERROR]', error);

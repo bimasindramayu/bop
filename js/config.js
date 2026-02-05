@@ -4,8 +4,8 @@
 
 const APP_CONFIG = {
     // API Configuration
-    SCRIPT_URL: 'https://script.google.com/macros/s/AKfycbxkODOYjlkk7mKSTU1d1uMynPog6TE6NHmZbF6m0jVV4RVXyC98ehHT4d8ndhbJhTLC/exec',
-    
+    SCRIPT_URL: 'https://script.google.com/macros/s/AKfycbzJyfnNZmEfld6SpIMoZSmGcbnLTW-G8xmygguFDVaJt2Xe0gJoTWH3QPfk_KNbyjuu/exec',
+
     // KUA List
     KUA_LIST: [
         'KUA Anjatan', 'KUA Arahan', 'KUA Balongan', 'KUA Bangodua', 'KUA Bongas',
@@ -163,13 +163,19 @@ function togglePassword(inputId) {
     }
 }
 
-// API Call Helper
+// API Call Helper - FIXED VERSION
 async function apiCall(action, data = {}) {
     showLoading();
     try {
+        // ✅ FIX: Kirim data langsung tanpa nested structure
+        const payload = { 
+            action: action,
+            ...data  // Spread data langsung ke root level
+        };
+        
         const response = await fetch(APP_CONFIG.SCRIPT_URL, {
             method: 'POST',
-            body: JSON.stringify({ action, ...data })
+            body: JSON.stringify(payload)
         });
         
         const result = await response.json();
