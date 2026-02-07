@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kelola Pengguna - Sistem Kemenag</title>
+    <link rel="icon" type="image/png" href="assets/coin.png">
+    <link rel="stylesheet" href="style/bop-styles.css">
+</head>
+<body>
+    <!-- Loading Spinner -->
+    <div class="loading" id="loading">
+        <div class="spinner"></div>
+    </div>
+
+    <!-- Notification -->
+    <div class="notification" id="notification"></div>
+
+    <!-- User Management Page -->
+    <div class="dashboard active">
+        <div class="container">
+            <div class="header">
+                <div class="header-left">
+                    <h2>Kelola Pengguna</h2>
+                    <p>Manajemen User dan Akses Sistem</p>
+                </div>
+                <div class="header-right">
+                    <div class="user-info">
+                        <strong id="userNameDisplay"></strong>
+                        <small id="userRoleDisplay"></small>
+                    </div>
+                    <button class="btn btn-info btn-sm" onclick="backToMenu()">← Menu Utama</button>
+                    <button class="btn btn-secondary btn-sm" onclick="logout()">Keluar</button>
+                </div>
+            </div>
+
+            <div class="content-area">
+                <div class="page active">
+                    <h2 style="margin-bottom: 20px;">Daftar Pengguna</h2>
+                    <div class="toolbar">
+                        <button class="btn btn-success btn-sm" onclick="showUserModal()">+ Tambah Pengguna</button>
+                    </div>
+                    <div class="table-container">
+                        <table id="userTable">
+                            <thead>
+                                <tr>
+                                    <th>No</th>
+                                    <th>Username</th>
+                                    <th>Nama</th>
+                                    <th>Role</th>
+                                    <th>KUA</th>
+                                    <th>Status</th>
+                                    <th>Dibuat</th>
+                                    <th>Aksi</th>
+                                </tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal will be created by JavaScript -->
+
+    <!-- Load Config & Scripts -->
+    <script src="js/config.js"></script>
+    <script src="js/bop-script.js"></script>
+    
+    <script>
+        // Initialize page
+        window.addEventListener('DOMContentLoaded', function() {
+            currentUser = SessionManager.getCurrentUser();
+            
+            if (!currentUser) {
+                window.location.href = 'index.html';
+                return;
+            }
+            
+            // Only Admin can access
+            if (currentUser.role !== 'Admin') {
+                showNotification('Akses ditolak. Hanya Admin yang dapat mengakses halaman ini.', 'error');
+                setTimeout(() => {
+                    window.location.href = 'main-menu.html';
+                }, 2000);
+                return;
+            }
+            
+            // Display user info
+            document.getElementById('userNameDisplay').textContent = currentUser.name;
+            document.getElementById('userRoleDisplay').textContent = currentUser.role;
+            
+            // Load users
+            loadUsers();
+        });
+        
+        function backToMenu() {
+            window.location.href = 'main-menu.html';
+        }
+        
+        function logout() {
+            if (confirm('Apakah Anda yakin ingin keluar?')) {
+                SessionManager.clearUser();
+                window.location.href = 'index.html';
+            }
+        }
+    </script>
+</body>
+</html>

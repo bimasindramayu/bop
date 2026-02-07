@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Data Pernikahan - Sistem Kemenag</title>
+    <link rel="icon" type="image/png" href="assets/coin.png">
+    <link rel="stylesheet" href="style/main-styles.css">
+    <link rel="stylesheet" href="style/nikah-styles.css">
+</head>
+<body>
+    <!-- Loading Spinner -->
+    <div class="loading" id="loading">
+        <div class="spinner"></div>
+    </div>
+
+    <!-- Notification -->
+    <div class="notification" id="notification"></div>
+
+    <!-- Main Container -->
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <div class="header-left">
+                <h1>Data Pernikahan KUA</h1>
+                <p>Sistem Informasi Kementerian Agama Kabupaten Indramayu</p>
+            </div>
+            <div class="header-right">
+                <div class="user-info">
+                    <strong id="userName"></strong>
+                    <small id="userRole"></small>
+                </div>
+                <button class="btn btn-secondary btn-sm" onclick="backToMenu()">Kembali</button>
+            </div>
+        </div>
+
+        <!-- Statistics Cards  (di ATAS filter) -->
+        <div class="stats-grid" id="statsGrid">
+            <!-- populated by JS -->
+        </div>
+
+        <!-- Admin Actions -->
+        <div class="card" id="adminActions" style="display: none;">
+            <div class="card-header">
+                <h3>Aksi Admin</h3>
+            </div>
+            <div class="card-body">
+                <div class="action-buttons">
+                    <button class="btn btn-info btn-sm" onclick="showMonthStatusModal()">
+                        🔒 Status Bulan
+                    </button>
+                    <button class="btn btn-sm" onclick="showExportModal()">
+                        📥 Export Data
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- View All Data Table -->
+        <div class="card" id="viewDataCard">
+            <div class="card-header">
+                <h3>Data Semua KUA</h3>
+            </div>
+            <div class="card-body">
+                <!-- Filter Tahun & Bulan untuk tabel -->
+                <div class="filter-grid" style="margin-bottom:16px;">
+                    <div class="form-group">
+                        <label>Tahun</label>
+                        <select id="tableFilterYear" onchange="handleTableFilterChange()">
+                            <!-- populated by JS -->
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Bulan</label>
+                        <select id="tableFilterMonth" onchange="handleTableFilterChange()">
+                            <option value="0">Semua Bulan</option>
+                            <option value="1">Januari</option>
+                            <option value="2">Februari</option>
+                            <option value="3">Maret</option>
+                            <option value="4">April</option>
+                            <option value="5">Mei</option>
+                            <option value="6">Juni</option>
+                            <option value="7">Juli</option>
+                            <option value="8">Agustus</option>
+                            <option value="9">September</option>
+                            <option value="10">Oktober</option>
+                            <option value="11">November</option>
+                            <option value="12">Desember</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Alert status bulan (tampil khusus Operator saat bulan spesifik dipilih) -->
+                <div id="monthStatusInfo" class="alert" style="display:none; margin-bottom:16px;"></div>
+
+                <div class="table-responsive">
+                    <table id="dataTable" class="data-table">
+                        <thead>
+                            <!-- Row 1: grup besar -->
+                            <tr class="thead-group">
+                                <th rowspan="3" class="text-center">No</th>
+                                <th rowspan="3" class="text-center">Nama KUA</th>
+                                <th rowspan="3" class="text-center">Jumlah</th>
+                                <th colspan="3" class="text-center">Peristiwa Nikah</th>
+                                <th colspan="2" class="text-center">Nikah Campuran</th>
+                                <th colspan="2" class="text-center">Rujuk &amp; Itsbat</th>
+                                <th colspan="6" class="text-center">Usia Pengantin</th>
+                                <th colspan="16" class="text-center">Pendidikan Pengantin</th>
+                            </tr>
+                            <!-- Row 2: sub-grup -->
+                            <tr class="thead-sub">
+                                <th colspan="3" class="text-center"></th>
+                                <th colspan="2" class="text-center"></th>
+                                <th colspan="2" class="text-center"></th>
+                                <th colspan="3" class="text-center">Laki-Laki</th>
+                                <th colspan="3" class="text-center">Wanita</th>
+                                <th colspan="8" class="text-center">Laki-Laki</th>
+                                <th colspan="8" class="text-center">Wanita</th>
+                            </tr>
+                            <!-- Row 3: label kolom -->
+                            <tr class="thead-label">
+                                <th>Kantor</th>
+                                <th>Luar Kantor</th>
+                                <th>Itsbat</th>
+                                <th>Laki-Laki</th>
+                                <th>Wanita</th>
+                                <th>Rujuk</th>
+                                <th>Itsbat Nikah</th>
+                                <th>&lt;19</th><th>19-21</th><th>21+</th>
+                                <th>&lt;19</th><th>19-21</th><th>21+</th>
+                                <th>SD</th><th>SLTP</th><th>SLTA</th><th>D1-D2</th><th>D3</th><th>S1</th><th>S2</th><th>S3</th>
+                                <th>SD</th><th>SLTP</th><th>SLTA</th><th>D1-D2</th><th>D3</th><th>S1</th><th>S2</th><th>S3</th>
+                            </tr>
+                        </thead>
+                        <tbody id="dataTableBody">
+                            <!-- populated by JS -->
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Tombol Simpan (tampil khusus Operator saat bulan open & spesifik) -->
+                <div id="operatorSaveBar" style="display:none; margin-top:20px; text-align:center;">
+                    <button class="btn btn-save-row" onclick="saveOperatorData()">💾 Simpan Data</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- KUA Info Modal -->
+    <div class="modal" id="kuaInfoModal">
+        <div class="modal-content modal-large">
+            <div class="modal-header">
+                <h3>Kelola Info KUA</h3>
+                <button class="close-btn" onclick="closeKUAInfoModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="table-responsive">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>KUA</th>
+                                <th>Kepala KUA</th>
+                                <th>NIP</th>
+                                <th>Aksi</th>
+                            </tr>
+                        </thead>
+                        <tbody id="kuaInfoTableBody">
+                            <!-- Will be populated by JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit KUA Info Modal -->
+    <div class="modal" id="editKUAInfoModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Edit Info KUA</h3>
+                <button class="close-btn" onclick="closeEditKUAInfoModal()">&times;</button>
+            </div>
+            <form id="editKUAInfoForm" onsubmit="handleSaveKUAInfo(event)">
+                <div class="form-group">
+                    <label>KUA</label>
+                    <input type="text" id="editKUAName" readonly>
+                </div>
+                <div class="form-group">
+                    <label>Kepala KUA</label>
+                    <input type="text" id="editKepalaKUA" required>
+                </div>
+                <div class="form-group">
+                    <label>NIP</label>
+                    <input type="text" id="editNIP" required>
+                </div>
+                <button type="submit" class="btn">💾 Simpan</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Month Status Modal -->
+    <div class="modal" id="monthStatusModal">
+        <div class="modal-content modal-large">
+            <div class="modal-header">
+                <h3>Status Bulan</h3>
+                <button class="close-btn" onclick="closeMonthStatusModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="filter-grid" style="margin-bottom:16px;">
+                    <div class="form-group">
+                        <label>Tahun</label>
+                        <select id="monthStatusYear" onchange="handleMonthStatusYearChange()">
+                            <!-- populated by JS -->
+                        </select>
+                    </div>
+                </div>
+                <p>Klik bulan untuk membuka/mengunci input data</p>
+                <div id="monthStatusGrid" class="month-grid">
+                    <!-- Will be populated by JS -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Export Modal -->
+    <div class="modal" id="exportModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Export Data</h3>
+                <button class="close-btn" onclick="closeExportModal()">&times;</button>
+            </div>
+            <form id="exportForm" onsubmit="handleExport(event)">
+                <div class="form-group">
+                    <label>Jenis Export</label>
+                    <select id="exportType" onchange="handleExportTypeChange()">
+                        <option value="monthly">Bulanan</option>
+                        <option value="yearly">Tahunan</option>
+                    </select>
+                </div>
+                <div class="form-group" id="exportMonthGroup">
+                    <label>Bulan</label>
+                    <select id="exportMonth">
+                        <option value="1">Januari</option>
+                        <option value="2">Februari</option>
+                        <option value="3">Maret</option>
+                        <option value="4">April</option>
+                        <option value="5">Mei</option>
+                        <option value="6">Juni</option>
+                        <option value="7">Juli</option>
+                        <option value="8">Agustus</option>
+                        <option value="9">September</option>
+                        <option value="10">Oktober</option>
+                        <option value="11">November</option>
+                        <option value="12">Desember</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Tahun</label>
+                    <select id="exportYear">
+                        <!-- Will be populated by JS -->
+                    </select>
+                </div>
+                <button type="submit" class="btn">📥 Download Excel</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Load Config & Scripts -->
+    <script src="js/config.js"></script>
+    <script src="js/nikah-script.js"></script>
+</body>
+</html>
