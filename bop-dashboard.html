@@ -86,7 +86,11 @@
                 <div class="page" id="rpdPage">
                     <h2 style="margin-bottom: 20px;">Rencana Penggunaan Dana (RPD)</h2>
                     <div class="toolbar">
-                        <button class="btn btn-success btn-sm" onclick="showRPDModal()">Tambah RPD</button>
+                        <button class="btn btn-success btn-sm" id="btnCreateRPD" onclick="showRPDModal()">Tambah RPD</button>                        
+                        <select id="rpdKUAFilter" onchange="loadRPDs()" style="display: none;">
+                            <option value="">Semua KUA</option>
+                        </select>
+                        
                         <select id="rpdYearFilter" onchange="loadRPDs()">
                             <option value="2024">2024</option>
                             <option value="2025">2025</option>
@@ -114,9 +118,15 @@
 
                 <!-- Realisasi Page -->
                 <div class="page" id="realisasiPage">
-                    <h2 style="margin-bottom: 20px;">Realisasi BOP</h2>
+                    <h2 style="margin-bottom: 20px;">Realisasi</h2>
                     <div class="toolbar">
-                        <button class="btn btn-success btn-sm" onclick="showRealisasiModal()">Tambah Realisasi</button>
+                        <button 
+                            class="btn btn-success btn-sm" 
+                            id="btnCreateRealisasi"
+                            onclick="showRealisasiModal()">
+                            Tambah Realisasi
+                        </button>
+                        
                         <select id="realisasiYearFilter" onchange="loadRealisasis()">
                             <option value="2024">2024</option>
                             <option value="2025">2025</option>
@@ -152,7 +162,7 @@
                             <option value="2025">2025</option>
                             <option value="2026" selected>2026</option>
                             <option value="2027">2027</option>
-                        </select>
+                        </select>                        
                         <select id="verifikasiKUAFilter" onchange="loadVerifikasi()">
                             <option value="">Semua KUA</option>
                         </select>
@@ -172,8 +182,8 @@
                                     <th>Bulan</th>
                                     <th>Tahun</th>
                                     <th>Total</th>
-                                    <th>Status</th>
                                     <th>Dibuat</th>
+                                    <th>Status</th>
                                     <th>Aksi</th>
                                 </tr>
                             </thead>

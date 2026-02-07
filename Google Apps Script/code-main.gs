@@ -41,6 +41,9 @@ function doPost(e) {
       case 'deleteUser':
         result = deleteUser(data);
         break;
+      case 'updateRPDConfig':
+        result = updateRPDConfig(data);
+        break;
       
       // BOP Actions
       case 'getBudgets':
@@ -116,12 +119,16 @@ function doPost(e) {
     }
     
     // ✅ FIX: Convert result to proper response format with CORS
-    return createCORSResponse(result);
-    
+    // return createCORSResponse(result);
+    return ContentService.createTextOutput(JSON.stringify(result))
+      .setMimeType(ContentService.MimeType.JSON);
+      
   } catch (error) {
-    Logger.log(`[ERROR] ${error.toString()}`);
-    Logger.log(`Stack: ${error.stack}`);
-    return createCORSResponse({ success: false, message: error.toString() });
+    Logger.log('[doPost ERROR] ' + error.toString());
+    return ContentService.createTextOutput(JSON.stringify({
+      success: false,
+      message: error.toString()
+    })).setMimeType(ContentService.MimeType.JSON);
   }
 }
 

@@ -6,6 +6,7 @@
     <title>Login - Sistem Kemenag Indramayu</title>
     <link rel="icon" type="image/png" href="assets/coin.png">
     <link rel="stylesheet" href="style/main-styles.css">
+    <link rel="stylesheet" href="style/captcha-styles.css">
 </head>
 <body>
     <!-- Loading Spinner -->
@@ -36,6 +37,17 @@
                         <button type="button" class="password-toggle" onclick="togglePassword('password')">👁️</button>
                     </div>
                 </div>
+                
+                <!-- CAPTCHA Section -->
+                <div class="form-group captcha-section" id="captchaSection" style="display: none;">
+                    <label>Kode CAPTCHA</label>
+                    <div style="display: flex; gap: 10px; align-items: center; margin-bottom: 10px;">
+                        <canvas id="captchaCanvas" width="200" height="60" style="border: 1px solid #ddd; border-radius: 4px; background: white;"></canvas>
+                        <button type="button" class="btn-refresh" onclick="refreshCaptcha()" title="Refresh CAPTCHA">🔄</button>
+                    </div>
+                    <input type="text" id="captchaInput" placeholder="Masukkan kode di atas" autocomplete="off">
+                </div>
+                
                 <button type="submit" class="btn">Masuk</button>
             </form>
         </div>
@@ -45,26 +57,30 @@
     <script src="js/config.js"></script>
     <script src="js/main-script.js"></script>
     <script>
-        // Handle Login Form
-        document.getElementById('loginForm').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            
-            const username = document.getElementById('username').value;
-            const password = document.getElementById('password').value;
-
-            try {
-                const user = await apiCall('login', { username, password });
-                SessionManager.setCurrentUser(user);
-                showNotification('Login berhasil', 'success');
+        // Initialize CAPTCHA on page load
+        window.addEventListener('DOMContentLoaded', function() {
+            if (APP_CONFIG.CAPTCHA.ENABLED) {
+                document.getElementById('captchaSection').style.display = 'block';
+                document.getElementById('captchaInput').required = true;
+                CaptchaManager.init('captchaCanvas');
                 
-                // Redirect ke menu utama
-                setTimeout(() => {
-                    window.location.href = 'main-menu.html';
-                }, 1000);
-            } catch (error) {
-                showNotification(error.message || 'Username atau password salah', 'error');
+                // Auto-uppercase input saat mengetik (tanpa mempengaruhi placeholder)
+                const captchaInput = document.getElementById('captchaInput');
+                captchaInput.addEventListener('input', function(e) {
+                    const start = this.selectionStart;
+                    const end = this.selectionEnd;
+                    this.value = this.value.toUpperCase();
+                    this.setSelectionRange(start, end);
+                });
             }
         });
+        
+        // Refresh CAPTCHA function - exposed to global
+        window.refreshCaptcha = function() {
+            CaptchaManager.refresh();
+            document.getElementById('captchaInput').value = '';
+            document.getElementById('captchaInput').focus();
+        };
     </script>
 </body>
 </html>

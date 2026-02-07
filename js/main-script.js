@@ -27,6 +27,28 @@ async function handleLogin(e) {
         return;
     }
     
+    // ✅ VALIDATE CAPTCHA if enabled
+    if (APP_CONFIG.CAPTCHA.ENABLED) {
+        const captchaInput = document.getElementById('captchaInput').value;
+        
+        if (!captchaInput) {
+            showNotification('Kode CAPTCHA harus diisi', 'error');
+            return;
+        }
+        
+        if (!CaptchaManager.validate(captchaInput)) {
+            showNotification('Kode CAPTCHA salah', 'error');
+            // Refresh CAPTCHA
+            if (typeof window.refreshCaptcha === 'function') {
+                window.refreshCaptcha();
+            } else {
+                CaptchaManager.refresh();
+                document.getElementById('captchaInput').value = '';
+            }
+            return; // ❌ STOP LOGIN PROCESS
+        }
+    }
+    
     try {
         debugLog('LOGIN', 'Attempting login', { username });
         const user = await apiCall('login', { username, password });
@@ -43,6 +65,16 @@ async function handleLogin(e) {
     } catch (error) {
         debugLog('LOGIN', 'Login failed', error);
         showNotification(error.message || 'Username atau password salah', 'error');
+        
+        // ✅ Refresh CAPTCHA on failed login
+        if (APP_CONFIG.CAPTCHA.ENABLED) {
+            if (typeof window.refreshCaptcha === 'function') {
+                window.refreshCaptcha();
+            } else {
+                CaptchaManager.refresh();
+                document.getElementById('captchaInput').value = '';
+            }
+        }
     }
 }
 

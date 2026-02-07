@@ -4,15 +4,15 @@
 
 const APP_CONFIG = {
     // API Configuration
-    SCRIPT_URL: 'https://script.google.com/macros/s/AKfycbzJyfnNZmEfld6SpIMoZSmGcbnLTW-G8xmygguFDVaJt2Xe0gJoTWH3QPfk_KNbyjuu/exec',
+    SCRIPT_URL: 'https://script.google.com/macros/s/AKfycbxHGsjKUeIk8saYlUfL5nm1Uy-WcYxUYo24xK2id8FNJ2ltk9o6nNyVLw16GVEZrrm4/exec',
 
     // KUA List
     KUA_LIST: [
         'KUA Anjatan', 'KUA Arahan', 'KUA Balongan', 'KUA Bangodua', 'KUA Bongas',
         'KUA Cantigi', 'KUA Cikedung', 'KUA Gantar', 'KUA Gabuswetan', 'KUA Haurgeulis',
         'KUA Indramayu', 'KUA Jatibarang', 'KUA Juntinyuat', 'KUA Kandanghaur', 'KUA Karangampel',
-        'KUA Kedokan Bunder', 'KUA Kertasemaya', 'KUA Krangkeng', 'KUA Lelea', 'KUA Lohbener',
-        'KUA Losarang', 'KUA Pasekan', 'KUA Patrol', 'KUA Sindang', 'KUA Sliyeg',
+        'KUA Kedokan Bunder', 'KUA Kertasemaya', 'KUA Krangkeng', 'KUA Kroya', 'KUA Lelea',
+        'KUA Lohbener', 'KUA Losarang', 'KUA Pasekan', 'KUA Patrol', 'KUA Sindang', 'KUA Sliyeg',
         'KUA Sukagumiwang', 'KUA Sukra', 'KUA Terisi', 'KUA Tukdana', 'KUA Widasari'
     ],
     
@@ -89,7 +89,7 @@ const APP_CONFIG = {
     
     // Cache Configuration
     CACHE: {
-        ENABLED: true,
+        ENABLED: false,
         DURATION: 5 * 60 * 1000, // 5 minutes
         KEYS: {
             STATS: 'stats',
@@ -100,8 +100,29 @@ const APP_CONFIG = {
     },
     
     // Debug Mode
-    DEBUG_MODE: true
+    DEBUG_MODE: true,
+    
+    // CAPTCHA Configuration
+    CAPTCHA: {
+        ENABLED: true,  // Set false untuk menonaktifkan CAPTCHA
+        LENGTH: 6,      // Panjang kode CAPTCHA
+        CHARS: 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789', // Karakter yang digunakan (tanpa huruf/angka yang membingungkan)
+        NOISE_LINES: 3, // Jumlah garis noise
+        NOISE_DOTS: 50  // Jumlah titik noise
+    }
 };
+
+const CACHE_CONFIG = {
+    ENABLED: true,              // ✅ Set false untuk disable cache
+    AUTO_REFRESH_ENABLED: false, // ✅ Set false untuk disable auto-refresh
+    AUTO_REFRESH_INTERVAL: 600000 // 30 detik (30000 ms)
+};
+
+// Export ke window agar bisa diakses dari file lain
+window.CACHE_CONFIG = CACHE_CONFIG;
+
+console.log('[CONFIG] Cache configuration loaded:', CACHE_CONFIG);
+
 
 // ===== UTILITY FUNCTIONS =====
 
@@ -343,3 +364,134 @@ function commonLogout() {
 function backToMenu() {
     window.location.href = 'main-menu.html';
 }
+
+// ===== CAPTCHA FUNCTIONS =====
+const CaptchaManager = {
+    currentCode: '',
+    canvas: null,
+    ctx: null,
+    
+    init(canvasId) {
+        if (!APP_CONFIG.CAPTCHA.ENABLED) return;
+        
+        this.canvas = document.getElementById(canvasId);
+        if (!this.canvas) return;
+        
+        this.ctx = this.canvas.getContext('2d');
+        this.generate();
+    },
+    
+    generate() {
+        if (!APP_CONFIG.CAPTCHA.ENABLED) return '';
+        
+        // Generate random code
+        const chars = APP_CONFIG.CAPTCHA.CHARS;
+        const length = APP_CONFIG.CAPTCHA.LENGTH;
+        this.currentCode = '';
+        
+        for (let i = 0; i < length; i++) {
+            this.currentCode += chars.charAt(Math.floor(Math.random() * chars.length));
+        }
+        
+        debugLog('CAPTCHA', 'Generated code', this.currentCode);
+        
+        // Draw CAPTCHA
+        this.draw();
+        
+        return this.currentCode;
+    },
+    
+    draw() {
+        if (!this.ctx || !this.canvas) return;
+        
+        const width = this.canvas.width;
+        const height = this.canvas.height;
+        
+        // Clear canvas
+        this.ctx.clearRect(0, 0, width, height);
+        
+        // Background with gradient
+        const gradient = this.ctx.createLinearGradient(0, 0, width, height);
+        gradient.addColorStop(0, '#f0f0f0');
+        gradient.addColorStop(1, '#e0e0e0');
+        this.ctx.fillStyle = gradient;
+        this.ctx.fillRect(0, 0, width, height);
+        
+        // Add noise dots
+        for (let i = 0; i < APP_CONFIG.CAPTCHA.NOISE_DOTS; i++) {
+            this.ctx.fillStyle = this.randomColor(100, 200);
+            this.ctx.beginPath();
+            this.ctx.arc(
+                Math.random() * width,
+                Math.random() * height,
+                Math.random() * 2,
+                0,
+                Math.PI * 2
+            );
+            this.ctx.fill();
+        }
+        
+        // Add noise lines
+        for (let i = 0; i < APP_CONFIG.CAPTCHA.NOISE_LINES; i++) {
+            this.ctx.strokeStyle = this.randomColor(100, 200);
+            this.ctx.lineWidth = Math.random() * 2 + 1;
+            this.ctx.beginPath();
+            this.ctx.moveTo(Math.random() * width, Math.random() * height);
+            this.ctx.lineTo(Math.random() * width, Math.random() * height);
+            this.ctx.stroke();
+        }
+        
+        // Draw text
+        const chars = this.currentCode.split('');
+        const charWidth = width / chars.length;
+        
+        chars.forEach((char, index) => {
+            this.ctx.save();
+            
+            // Random rotation
+            const angle = (Math.random() - 0.5) * 0.4;
+            const x = charWidth * (index + 0.5);
+            const y = height / 2;
+            
+            this.ctx.translate(x, y);
+            this.ctx.rotate(angle);
+            
+            // Random font size
+            const fontSize = 32 + Math.random() * 8;
+            this.ctx.font = `bold ${fontSize}px Arial`;
+            
+            // Random color
+            this.ctx.fillStyle = this.randomColor(0, 100);
+            
+            // Draw shadow
+            this.ctx.shadowColor = 'rgba(0, 0, 0, 0.3)';
+            this.ctx.shadowBlur = 3;
+            this.ctx.shadowOffsetX = 2;
+            this.ctx.shadowOffsetY = 2;
+            
+            // Draw character
+            this.ctx.fillText(char, -charWidth / 4, fontSize / 4);
+            
+            this.ctx.restore();
+        });
+    },
+    
+    randomColor(min, max) {
+        const r = Math.floor(Math.random() * (max - min) + min);
+        const g = Math.floor(Math.random() * (max - min) + min);
+        const b = Math.floor(Math.random() * (max - min) + min);
+        return `rgb(${r}, ${g}, ${b})`;
+    },
+    
+    validate(inputCode) {
+        if (!APP_CONFIG.CAPTCHA.ENABLED) return true;
+        
+        const isValid = inputCode.toUpperCase() === this.currentCode.toUpperCase();
+        debugLog('CAPTCHA', 'Validation', { input: inputCode, expected: this.currentCode, valid: isValid });
+        return isValid;
+    },
+    
+    refresh() {
+        this.generate();
+    }
+};
