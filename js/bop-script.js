@@ -1774,11 +1774,11 @@ async function showRealisasiModal(realisasi = null) {
     // ✅ PERBAIKAN: Reset uploadedFiles (harus pakai 'let' di global, bukan 'const')
     uploadedFiles = [];  // INI YANG MENYEBABKAN ERROR JIKA uploadedFiles adalah const!
     
-    // Get modal
-    const modal = document.getElementById('realisasiModal');
+    // Get modal - FIXED: menggunakan let agar bisa di-reassign
+    let modal = document.getElementById('realisasiModal');
     if (!modal) {
         modal = document.createElement('div');
-        modal.id = 'modal';
+        modal.id = 'realisasiModal';  // FIXED: id yang benar
         modal.className = 'modal';
         document.body.appendChild(modal);
     }
@@ -1787,12 +1787,7 @@ async function showRealisasiModal(realisasi = null) {
     let realisasiBudgetInfo = { budget: 0, totalRealisasi: 0, sisaBudget: 0 };
     
     try {
-        const budgetData = await apiCall('getBudget', { 
-            kua: currentUser.kua, 
-            year: new Date().getFullYear() 
-        });
-        console.log('[REALISASI MODAL] Budget info loaded:', budgetData);
-        
+        // FIXED: Langsung gunakan getBudgets saja, tidak perlu getBudget
         const budgets = await apiCall('getBudgets', { kua: currentUser.kua });
         
         if (Array.isArray(budgets) && budgets.length > 0) {
@@ -1851,7 +1846,44 @@ async function showRealisasiModal(realisasi = null) {
         });
         
         if (Array.isArray(rpds)) {
-            availableRPDs = rpds.filter(rpd => rpd && rpd.month && rpd.year);
+            // Filter RPDs yang valid
+            let validRPDs = rpds.filter(rpd => rpd && rpd.month && rpd.year);
+            
+            // ✅ FILTER OUT bulan yang sudah ada realisasinya (untuk tambah baru)
+            if (!realisasi) {
+                // Get all existing realisasi untuk KUA ini
+                const existingRealisasis = await apiCall('getRealisasis', {
+                    kua: currentUser.kua,
+                    year: year
+                });
+                
+                console.log('[REALISASI MODAL] Existing realisasis:', existingRealisasis.length);
+                
+                // Buat set dari bulan yang sudah ada realisasinya
+                const usedMonths = new Set(
+                    existingRealisasis.map(r => `${r.month}-${r.year}`)
+                );
+                
+                console.log('[REALISASI MODAL] Used months:', Array.from(usedMonths));
+                
+                // Filter out RPD yang bulannya sudah ada realisasi
+                availableRPDs = validRPDs.filter(rpd => {
+                    const monthKey = `${rpd.month}-${rpd.year}`;
+                    const isAvailable = !usedMonths.has(monthKey);
+                    
+                    if (!isAvailable) {
+                        console.log('[REALISASI MODAL] Filtering out month:', monthKey, '- already has realisasi');
+                    }
+                    
+                    return isAvailable;
+                });
+                
+                console.log('[REALISASI MODAL] Available RPDs after filtering:', availableRPDs.length);
+            } else {
+                // Untuk edit, pakai semua RPD
+                availableRPDs = validRPDs;
+            }
+            
             console.log('[REALISASI MODAL] Found RPDs:', availableRPDs.length);
         } else {
             console.warn('[REALISASI MODAL] RPDs response is not array:', rpds);
@@ -1873,11 +1905,23 @@ async function showRealisasiModal(realisasi = null) {
     let monthOptions = '';
     
     if (realisasi) {
-        monthOptions = `<option value="${realisasi.month}" selected>${realisasi.month}</option>`;
+        // ✅ Untuk edit, cari RPD yang sesuai dengan bulan realisasi
+        const matchingRPD = availableRPDs.find(rpd => 
+            rpd.month === realisasi.month && rpd.year == realisasi.year
+        );
+        
+        if (matchingRPD) {
+            // Gunakan data dari RPD
+            monthOptions = `<option value="${matchingRPD.id}" data-month="${matchingRPD.month}" data-year="${matchingRPD.year}" data-rpd-data='${JSON.stringify(matchingRPD.data)}' selected>${matchingRPD.month} ${matchingRPD.year}</option>`;
+        } else {
+            // Fallback: gunakan data dari realisasi itu sendiri
+            monthOptions = `<option value="${realisasi.rpdId || ''}" data-month="${realisasi.month}" data-year="${realisasi.year}" data-rpd-data='${JSON.stringify(realisasi.data)}' selected>${realisasi.month} ${realisasi.year}</option>`;
+        }
     } else {
+        // Untuk tambah baru, tampilkan daftar RPD yang tersedia (yang belum ada realisasinya)
         if (availableRPDs.length > 0) {
             monthOptions = availableRPDs.map(rpd => 
-                `<option value="${rpd.month}" data-rpd-id="${rpd.id}" data-rpd-data='${JSON.stringify(rpd.data)}'>${rpd.month} ${rpd.year}</option>`
+                `<option value="${rpd.id}" data-month="${rpd.month}" data-year="${rpd.year}" data-rpd-data='${JSON.stringify(rpd.data)}'>${rpd.month} ${rpd.year}</option>`
             ).join('');
         } else {
             monthOptions = '<option value="">Tidak ada RPD tersedia</option>';
@@ -1948,7 +1992,7 @@ async function showRealisasiModal(realisasi = null) {
         <div class="modal-content" style="max-width: 900px; max-height: 90vh; overflow-y: auto;">
             <div class="modal-header">
                 <h3>${realisasi ? 'Edit' : 'Tambah'} Realisasi</h3>
-                <button class="btn-close" onclick="closeModal()">×</button>
+                <button class="btn-close" onclick="closeRealisasiModal()">×</button>
             </div>
             
             <form id="realisasiForm">
@@ -1958,46 +2002,37 @@ async function showRealisasiModal(realisasi = null) {
                     <div class="info-box">
                         <div class="info-item">
                             <span>Anggaran:</span>
-                            <strong id="budgetInfo">-</strong>
+                            <strong id="budgetInfo">${formatCurrency(realisasiBudgetInfo.budget)}</strong>
                         </div>
                         <div class="info-item">
                             <span>Total Realisasi:</span>
-                            <strong id="totalRealisasiInfo">-</strong>
+                            <strong id="totalRealisasiInfo">${formatCurrency(realisasiBudgetInfo.totalRealisasi)}</strong>
                         </div>
                         <div class="info-item">
                             <span>Sisa Budget:</span>
-                            <strong id="sisaBudgetInfo">-</strong>
+                            <strong id="sisaBudgetInfo">${formatCurrency(realisasiBudgetInfo.sisaBudget)}</strong>
                         </div>
                     </div>
                     
-                    <!-- Form Fields -->
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label>Bulan <span class="required">*</span></label>
-                            <select id="realisasiMonth" required onchange="loadRPDData()">
-                                <option value="">Pilih Bulan</option>
-                                ${['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
-                                   'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember']
-                                  .map(m => `<option value="${m}"${realisasi && realisasi.month === m ? ' selected' : ''}>${m}</option>`).join('')}
-                            </select>
-                        </div>
-                        
-                        <div class="form-group">
-                            <label>Tahun <span class="required">*</span></label>
-                            <input type="number" id="realisasiYear" value="${realisasi ? realisasi.year : new Date().getFullYear()}" required readonly>
-                        </div>
-                    </div>
-                    
-                    <!-- Pilih RPD (optional) -->
+                    <!-- Pilih RPD (WAJIB) -->
                     <div class="form-group">
-                        <label>Pilih RPD (Opsional)</label>
-                        <select id="realisasiRPD" onchange="loadRPDData()">
-                            <option value="">Tidak menggunakan RPD</option>
+                        <label>Pilih RPD <span class="required">*</span></label>
+                        <select id="realisasiRPD" required onchange="loadRPDDataFromSelect()" ${realisasi ? 'disabled' : ''}>
+                            <option value="">-- Pilih RPD Bulan --</option>
+                            ${monthOptions}
                         </select>
+                        ${realisasi ? '<input type="hidden" id="realisasiRPDValue" value="' + (realisasi.rpdId || '') + '">' : ''}
+                        <small style="color: #666; display: block; margin-top: 5px;">
+                            ${realisasi ? 'Bulan tidak dapat diubah saat edit realisasi' : 'Pilih RPD bulan untuk menampilkan form input realisasi'}
+                        </small>
                     </div>
                     
-                    <!-- Realisasi Items -->
-                    <div id="realisasiItems"></div>
+                    <!-- Hidden fields for month/year (akan diisi otomatis dari RPD) -->
+                    <input type="hidden" id="realisasiMonth" value="">
+                    <input type="hidden" id="realisasiYear" value="">
+                    
+                    <!-- Realisasi Items (will be populated when RPD selected) -->
+                    <div id="realisasiParameters"></div>
                     
                     <!-- Total -->
                     <div class="total-section">
@@ -2050,7 +2085,7 @@ async function showRealisasiModal(realisasi = null) {
                 </div>
                 
                 <div class="modal-footer">
-                    <button type="button" class="btn" onclick="closeModal()">Batal</button>
+                    <button type="button" class="btn" onclick="closeRealisasiModal()">Batal</button>
                     <button type="submit" class="btn btn-success">Simpan</button>
                 </div>
             </form>
@@ -2081,8 +2116,35 @@ async function showRealisasiModal(realisasi = null) {
 
     
     // Event Handlers
-    if (!realisasi && availableRPDs.length > 0) {
-        setTimeout(() => loadRPDDataForRealisasi(), 100);
+    if (realisasi) {
+        // Untuk edit: load RPD data langsung
+        setTimeout(() => {
+            loadRPDDataFromSelect();
+            
+            // Populate existing realisasi values
+            if (realisasi.data) {
+                Object.entries(realisasi.data).forEach(([code, items]) => {
+                    Object.entries(items).forEach(([item, value]) => {
+                        const inputId = `realisasi_${code}_${item.replace(/\s+/g, '_')}`;
+                        const input = document.getElementById(inputId);
+                        if (input) {
+                            input.value = value;
+                            // Trigger format
+                            input.dispatchEvent(new Event('input'));
+                        }
+                    });
+                });
+            }
+        }, 200);
+    } else if (availableRPDs.length > 0) {
+        // Untuk tambah baru: select RPD pertama otomatis
+        setTimeout(() => {
+            const selectRPD = document.getElementById('realisasiRPD');
+            if (selectRPD && selectRPD.options.length > 1) {
+                selectRPD.selectedIndex = 1; // Select first RPD
+                loadRPDDataFromSelect();
+            }
+        }, 100);
     }
     
     // ✅ FIX #1: Updated form submit handler dengan existing files
@@ -2230,8 +2292,10 @@ async function showRealisasiModal(realisasi = null) {
             // Reset
             uploadedFiles = [];
             
-            // Reload
-            closeModal();
+            // Close modal dengan benar
+            closeRealisasiModal();
+            
+            // Reload data
             await loadRealisasis(true);
             await loadDashboardStats(true);
             
@@ -2262,28 +2326,12 @@ function removeExistingFile(index) {
         // Update hidden input
         existingFilesInput.value = JSON.stringify(files);
         
-        // Update DOM
-        const fileElement = document.getElementById(`existing-file-${index}`);
-        if (fileElement) {
-            fileElement.remove();
-        }
-        
-        // Update label count
-        const label = document.querySelector('#existingFilesList').previousElementSibling;
-        if (label) {
-            label.textContent = `Dokumen yang Sudah Diupload (${files.length} file)`;
-        }
-        
-        // If no files left, hide the whole section
-        if (files.length === 0) {
-            const parentGroup = document.querySelector('#existingFilesList').closest('.form-group');
-            if (parentGroup) {
-                parentGroup.remove();
-            }
-        }
-        
         console.log('[REMOVE_FILE] Remaining files:', files);
         showNotification('File dihapus dari daftar upload', 'info');
+        
+        // Re-render existing files display
+        displayExistingFiles(files);
+        updateFileCount();
         
     } catch (e) {
         console.error('[REMOVE_FILE] Error:', e);
@@ -2364,6 +2412,97 @@ function previewFile(file) {
     `;
     
     document.body.appendChild(modal);
+}
+
+function loadRPDDataFromSelect() {
+    console.log('[LOAD_RPD_DATA_FROM_SELECT] Loading RPD data from select');
+    
+    const selectRPD = document.getElementById('realisasiRPD');
+    const selectedOption = selectRPD.options[selectRPD.selectedIndex];
+    
+    if (!selectedOption || !selectedOption.value) {
+        console.warn('[LOAD_RPD_DATA_FROM_SELECT] No RPD selected');
+        // Clear parameters
+        const parametersDiv = document.getElementById('realisasiParameters');
+        if (parametersDiv) {
+            parametersDiv.innerHTML = '<p style="color: #999; text-align: center; padding: 20px;">Pilih RPD untuk menampilkan form input</p>';
+        }
+        return;
+    }
+    
+    // Set hidden month and year fields
+    const month = selectedOption.dataset.month;
+    const year = selectedOption.dataset.year;
+    
+    document.getElementById('realisasiMonth').value = month;
+    document.getElementById('realisasiYear').value = year;
+    
+    console.log('[LOAD_RPD_DATA_FROM_SELECT] Month:', month, 'Year:', year);
+    
+    try {
+        const rpdData = JSON.parse(selectedOption.dataset.rpdData);
+        console.log('[LOAD_RPD_DATA_FROM_SELECT] RPD data loaded:', rpdData);
+        
+        // Build parameters HTML with RPD data
+        let parametersHTML = '<h4 style="margin: 20px 0 15px 0; color: #333;">Input Realisasi per Akun</h4>';
+        
+        Object.entries(APP_CONFIG.BOP.RPD_PARAMETERS).forEach(([code, param]) => {
+            parametersHTML += `
+                <div class="rpd-item">
+                    <h4>${code} - ${param.name}</h4>
+            `;
+            
+            param.items.forEach(item => {
+                const inputId = `realisasi_${code}_${item.replace(/\s+/g, '_')}`;
+                const rpdValue = rpdData[code] && rpdData[code][item] ? rpdData[code][item] : 0;
+                
+                parametersHTML += `
+                    <div class="rpd-subitem" style="display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 10px; align-items: center;">
+                        <label style="margin: 0;">${item}</label>
+                        <div style="text-align: right; padding: 10px; background: #e9ecef; border-radius: 6px;">
+                            <small style="display: block; color: #666; font-size: 11px;">Anggaran RPD</small>
+                            <strong style="color: #333; font-size: 14px;">${formatCurrency(rpdValue)}</strong>
+                        </div>
+                        <input type="text" 
+                               id="${inputId}"
+                               class="realisasi-input auto-format-number"
+                               data-code="${code}"
+                               data-item="${item}"
+                               data-rpd-value="${rpdValue}"
+                               value="0" 
+                               placeholder="Input Realisasi"
+                               style="text-align: right;">
+                    </div>
+                `;
+            });
+            
+            parametersHTML += `</div>`;
+        });
+        
+        // Update the parameters section
+        const parametersDiv = document.getElementById('realisasiParameters');
+        if (parametersDiv) {
+            parametersDiv.innerHTML = parametersHTML;
+            
+            // Setup auto-format untuk input baru
+            setTimeout(() => {
+                console.log('[LOAD_RPD_DATA_FROM_SELECT] Setting up auto-format for new inputs');
+                setupAllAutoFormatInputs('.auto-format-number');
+                
+                // Attach listeners to new inputs
+                const inputs = document.querySelectorAll('.realisasi-input');
+                inputs.forEach(input => {
+                    input.addEventListener('input', calculateRealisasiTotal);
+                });
+                
+                calculateRealisasiTotal();
+            }, 100);
+        }
+        
+    } catch (error) {
+        console.error('[LOAD_RPD_DATA_FROM_SELECT ERROR]', error);
+        showNotification('Gagal memuat data RPD', 'error');
+    }
 }
 
 function loadRPDDataForRealisasi() {
@@ -4241,6 +4380,22 @@ function closeModal() {
     }
 }
 
+function closeRealisasiModal() {
+    const modal = document.getElementById('realisasiModal');
+    if (modal) {
+        modal.classList.remove('active');
+        modal.remove(); // Remove modal from DOM
+    }
+    
+    // Reset uploaded files
+    uploadedFiles = [];
+    
+    // Restart polling jika masih di halaman realisasi
+    if (currentPage === 'realisasiPage') {
+        startRealisasiPolling();
+    }
+}
+
 // Click outside modal to close
 window.addEventListener('load', function() {
     let modal = document.getElementById('modal');
@@ -5061,29 +5216,36 @@ function displayExistingFiles(existingFiles) {
         return;
     }
     
-    let html = '<div class="existing-files-section">';
-    html += '<h4 style="margin-bottom: 10px; font-size: 14px; color: #666;">File Terlampir:</h4>';
+    let html = '<div class="existing-files-section" style="margin-bottom: 15px;">';
+    html += '<h4 style="margin-bottom: 10px; font-size: 14px; color: #666;">File Sudah Terupload:</h4>';
     html += '<div class="existing-files-list">';
     
     existingFiles.forEach((file, index) => {
-        const fileIcon = file.mimeType === 'application/pdf' ? 'fa-file-pdf' : 'fa-file-image';
+        const fileIcon = file.mimeType === 'application/pdf' ? '📄' : '🖼️';
         
         html += `
-            <div class="existing-file-item">
-                <div class="file-info">
-                    <i class="fas ${fileIcon}"></i>
-                    <div class="file-details">
-                        <div class="file-name">${file.fileName}</div>
-                        <div class="file-size">${formatFileSize(file.size || 0)}</div>
+            <div class="existing-file-item" id="existing-file-${index}" style="display: flex; justify-content: space-between; align-items: center; padding: 12px; background: #f0f8ff; border: 1px solid #d0e8ff; border-radius: 6px; margin-bottom: 8px;">
+                <div style="display: flex; align-items: center; gap: 10px; flex: 1;">
+                    <span style="font-size: 24px;">${fileIcon}</span>
+                    <div>
+                        <div style="font-weight: 500; color: #333; font-size: 14px;">${file.fileName}</div>
+                        <div style="font-size: 12px; color: #666;">${formatFileSize(file.size || 0)}</div>
                     </div>
                 </div>
-                <div class="file-actions">
+                <div style="display: flex; gap: 8px;">
                     <button 
                         type="button" 
-                        class="btn-preview-file" 
                         onclick='previewFile(${JSON.stringify(file).replace(/'/g, "&#39;")})' 
-                        title="Preview">
-                        <i class="fas fa-eye"></i>
+                        title="Preview"
+                        style="background: #667eea; color: white; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer; display: flex; align-items: center; gap: 5px;">
+                        👁️ Preview
+                    </button>
+                    <button 
+                        type="button" 
+                        onclick="removeExistingFile(${index})" 
+                        title="Hapus"
+                        style="background: #dc3545; color: white; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer; display: flex; align-items: center; gap: 5px;">
+                        🗑️ Hapus
                     </button>
                 </div>
             </div>
@@ -5095,8 +5257,80 @@ function displayExistingFiles(existingFiles) {
     container.innerHTML = html;
 }
 
+function displayUploadedFiles() {
+    console.log('[DISPLAY_UPLOADED] Displaying uploaded files:', uploadedFiles.length);
+    
+    const container = document.getElementById('uploadedFilesContainer');
+    
+    if (!container) {
+        console.error('[DISPLAY_UPLOADED] Container not found');
+        return;
+    }
+    
+    if (uploadedFiles.length === 0) {
+        container.innerHTML = '<p style="color: #999; font-size: 14px;">Belum ada file yang dipilih</p>';
+        updateFileCount();
+        return;
+    }
+    
+    let html = '<div class="uploaded-files-section">';
+    html += '<h4 style="margin-bottom: 10px; font-size: 14px; color: #666;">File Baru Dipilih:</h4>';
+    html += '<div class="uploaded-files-list">';
+    
+    uploadedFiles.forEach((file, index) => {
+        const fileIcon = file.mimeType === 'application/pdf' ? 'fa-file-pdf' : 'fa-file-image';
+        
+        html += `
+            <div class="uploaded-file-item" id="uploaded-file-${index}" style="display: flex; justify-content: space-between; align-items: center; padding: 10px; background: #f8f9fa; border-radius: 6px; margin-bottom: 8px;">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <i class="fas ${fileIcon}" style="font-size: 24px; color: #667eea;"></i>
+                    <div>
+                        <div style="font-weight: 500; color: #333;">${file.fileName}</div>
+                        <div style="font-size: 12px; color: #666;">${formatFileSize(file.fileSize)}</div>
+                    </div>
+                </div>
+                <button 
+                    type="button" 
+                    class="btn-delete-file" 
+                    onclick="removeUploadedFile(${index})" 
+                    title="Hapus"
+                    style="background: #dc3545; color: white; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer;">
+                    <i class="fas fa-trash"></i> Hapus
+                </button>
+            </div>
+        `;
+    });
+    
+    html += '</div></div>';
+    
+    container.innerHTML = html;
+    updateFileCount();
+}
+
+function removeUploadedFile(index) {
+    console.log('[REMOVE_UPLOADED] Removing file at index:', index);
+    
+    if (index < 0 || index >= uploadedFiles.length) {
+        console.error('[REMOVE_UPLOADED] Invalid index:', index);
+        return;
+    }
+    
+    const removedFile = uploadedFiles.splice(index, 1);
+    console.log('[REMOVE_UPLOADED] Removed file:', removedFile[0].fileName);
+    
+    showNotification('File dihapus dari daftar', 'info');
+    
+    // Update UI
+    displayUploadedFiles();
+}
+
 // Expose to window
 window.downloadRPDPerYear = downloadRPDPerYear;
 window.downloadRPDDetailYear = downloadRPDDetailYear;
 window.downloadRealisasiPerYear = downloadRealisasiPerYear;
 window.downloadRealisasiDetailYear = downloadRealisasiDetailYear;
+window.loadRPDDataFromSelect = loadRPDDataFromSelect;
+window.closeRealisasiModal = closeRealisasiModal;
+window.removeUploadedFile = removeUploadedFile;
+window.removeExistingFile = removeExistingFile;
+window.handleFileInputChange = handleFileInputChange;
