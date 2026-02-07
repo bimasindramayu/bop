@@ -212,6 +212,15 @@ async function preloadAllData() {
                     return data;
                 })
             );
+            
+            // ✅ Preload config untuk Operator KUA juga (untuk button state)
+            promises.push(
+                apiCall('getRPDConfig').then(data => {
+                    updateLocalCache('config', data);
+                    console.log('[PRELOAD] ✅ RPD Config loaded for Operator');
+                    return data;
+                })
+            );
         }
         
         // 5. Verifikasi (untuk Admin)
@@ -433,7 +442,8 @@ function navigateTo(pageId) {
                 loadRPDs();
                 break;
             case 'realisasiPage':
-                loadRealisasis();
+                // ✅ FIX: Use cache (false) when navigating, data already preloaded
+                loadRealisasis(false);
                 // ✅ Start polling HANYA untuk halaman realisasi
                 startRealisasiPolling();
                 break;
@@ -542,13 +552,44 @@ function showPage(pageId) {
         }
     }
     
+    // ✅ FIX: Setup realisasiPage event listeners
+    if (pageId === 'realisasiPage') {
+        const realisasiYearFilter = document.getElementById('realisasiYearFilter');
+        
+        if (realisasiYearFilter) {
+            // Remove old listener if exists
+            realisasiYearFilter.onchange = null;
+            // Add new listener
+            realisasiYearFilter.addEventListener('change', function() {
+                console.log('[REALISASI] Year filter changed to:', this.value);
+                loadRealisasis(true); // Force refresh with new year
+            });
+        }
+    }
+    
+    // ✅ FIX: Setup budgetingPage event listeners
+    if (pageId === 'budgetingPage') {
+        const budgetYearFilter = document.getElementById('budgetYearFilter');
+        
+        if (budgetYearFilter) {
+            // Remove old listener if exists
+            budgetYearFilter.onchange = null;
+            // Add new listener
+            budgetYearFilter.addEventListener('change', function() {
+                console.log('[BUDGET] Year filter changed to:', this.value);
+                loadBudgets(true); // Force refresh with new year
+            });
+        }
+    }
+    
     // Load data for specific pages
     switch(pageId) {
         case 'dashboardPage':
             loadDashboardStats();
             break;
         case 'budgetingPage':
-            loadBudgets();
+            // ✅ FIX: Use cache, data already preloaded
+            loadBudgets(false); // false = use cache
             break;
         case 'rpdConfigPage':
             // ✅ FIX ISSUE #5: Gunakan cache, tidak perlu fetch dari server lagi
@@ -1829,7 +1870,7 @@ async function loadRealisasis(forceRefresh = false) {
         console.log('[REALISASI] Using cached data - NO SERVER CALL');
         displayRealisasis(cachedData);
         
-        // Update button state jika operator
+        // ✅ Update button state ONCE jika operator (menggunakan cached config)
         if (currentUser.role === 'Operator KUA') {
             updateRealisasiButtonState();
         }
@@ -1841,10 +1882,6 @@ async function loadRealisasis(forceRefresh = false) {
         console.log('[REALISASI] Fetching from server...');
         // ❌ NO LOADING SPINNER
         
-        if (currentUser.role === 'Operator KUA') {
-            updateRealisasiButtonState();
-        }
-        
         try {
             const yearFilter = document.getElementById('realisasiYearFilter');
             const year = yearFilter ? yearFilter.value : new Date().getFullYear();
@@ -1855,6 +1892,11 @@ async function loadRealisasis(forceRefresh = false) {
             // ✅ Update local cache
             updateLocalCache('realisasis', realisasis);
             displayRealisasis(realisasis);
+            
+            // ✅ Update button state AFTER displaying data
+            if (currentUser.role === 'Operator KUA') {
+                updateRealisasiButtonState();
+            }
         } catch (error) {
             console.error('[REALISASI ERROR]', error);
         }
@@ -5303,9 +5345,22 @@ async function saveConfig() {
 async function checkRealisasiStatus() {
     console.log('[CONFIG_CHECK] Checking realisasi status');
     
+    // ✅ Try cache first
+    const cachedConfig = getLocalCache('config');
+    if (cachedConfig) {
+        console.log('[CONFIG_CHECK] Using cached config');
+        const status = cachedConfig.REALISASI_STATUS || 'open';
+        console.log('[CONFIG_CHECK] Realisasi status:', status);
+        return status;
+    }
+    
+    // ✅ Fetch if no cache
     try {
         const configData = await apiCall('getRPDConfig');
-        console.log('[CONFIG_CHECK] Config received:', configData);
+        console.log('[CONFIG_CHECK] Config fetched from server:', configData);
+        
+        // Update cache
+        updateLocalCache('config', configData);
         
         const status = configData.REALISASI_STATUS || 'open';
         console.log('[CONFIG_CHECK] Realisasi status:', status);
@@ -5320,13 +5375,27 @@ async function checkRealisasiStatus() {
 async function loadUploadConfig() {
     console.log('[UPLOAD_CONFIG] Loading upload configuration');
     
+    // ✅ Try cache first
+    const cachedConfig = getLocalCache('config');
+    if (cachedConfig) {
+        console.log('[UPLOAD_CONFIG] Using cached config');
+        uploadConfig.maxFiles = parseInt(cachedConfig.REALISASI_MAX_FILES) || 10;
+        uploadConfig.maxFileSize = parseInt(cachedConfig.REALISASI_MAX_FILE_SIZE) || 10;
+        console.log('[UPLOAD_CONFIG] Configuration loaded from cache:', uploadConfig);
+        return uploadConfig;
+    }
+    
+    // ✅ Fetch if no cache
     try {
         const configData = await apiCall('getRPDConfig');
+        
+        // Update cache
+        updateLocalCache('config', configData);
         
         uploadConfig.maxFiles = parseInt(configData.REALISASI_MAX_FILES) || 10;
         uploadConfig.maxFileSize = parseInt(configData.REALISASI_MAX_FILE_SIZE) || 10;
         
-        console.log('[UPLOAD_CONFIG] Configuration loaded:', uploadConfig);
+        console.log('[UPLOAD_CONFIG] Configuration loaded from server:', uploadConfig);
         
         return uploadConfig;
     } catch (error) {
