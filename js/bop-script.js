@@ -14,6 +14,52 @@ let uploadConfig = {
     maxFileSize: 10  // MB
 };
 
+// ✅ LOCAL CACHE - persisten selama session, tidak ada timeout
+const localCache = {
+    budgets: null,
+    rpds: null,
+    realisasis: null,
+    dashboardStats: null,
+    verifikasi: null,
+    riwayat: null,
+    lastUpdate: {}
+};
+
+// ✅ Function untuk update cache dengan data baru
+function updateLocalCache(key, data) {
+    localCache[key] = data;
+    localCache.lastUpdate[key] = Date.now();
+    console.log(`[LOCAL_CACHE] Updated ${key} at ${new Date().toLocaleTimeString()}`);
+}
+
+// ✅ Function untuk get cache
+function getLocalCache(key) {
+    if (localCache[key]) {
+        console.log(`[LOCAL_CACHE] Using cached ${key}`);
+        return localCache[key];
+    }
+    console.log(`[LOCAL_CACHE] No cache for ${key}`);
+    return null;
+}
+
+// ✅ Function untuk clear specific cache
+function clearLocalCache(key) {
+    if (key) {
+        localCache[key] = null;
+        delete localCache.lastUpdate[key];
+        console.log(`[LOCAL_CACHE] Cleared ${key}`);
+    } else {
+        // Clear all
+        Object.keys(localCache).forEach(k => {
+            if (k !== 'lastUpdate') {
+                localCache[k] = null;
+            }
+        });
+        localCache.lastUpdate = {};
+        console.log(`[LOCAL_CACHE] Cleared ALL cache`);
+    }
+}
+
 // Replace function startRealisasiPolling: 
 function startRealisasiPolling() {
     // ✅ Check config dari window.CACHE_CONFIG
@@ -218,20 +264,7 @@ function isCacheValid(cacheKey) {
 }
 
 
-function invalidateCache(cacheKey) {
-    if (cacheKey) {
-        dataCache[cacheKey].data = null;
-        dataCache[cacheKey].timestamp = null;
-        console.log(`[CACHE] Invalidated cache for ${cacheKey}`);
-    } else {
-        // Invalidate all cache
-        Object.keys(dataCache).forEach(key => {
-            dataCache[key].data = null;
-            dataCache[key].timestamp = null;
-        });
-        console.log(`[CACHE] Invalidated all cache`);
-    }
-}
+
 
 // Auto-refresh status realisasi setiap 30 detik jika ada yang pending
 let realisasiStatusPoller = null;
@@ -449,9 +482,11 @@ function showPage(pageId) {
 async function loadDashboardStats(forceRefresh = false) {
     console.log('[DASHBOARD] Loading stats', { forceRefresh });
     
+    // ✅ Cek local cache dulu (kecuali force refresh)
     if (!forceRefresh) {
-        const cachedData = getCache('dashboardStats');
+        const cachedData = getLocalCache('dashboardStats');
         if (cachedData) {
+            console.log('[DASHBOARD] Using cached stats');
             displayDashboardStats(cachedData);
             return;
         }
@@ -461,16 +496,17 @@ async function loadDashboardStats(forceRefresh = false) {
         const yearFilter = document.getElementById('dashboardYearFilter');
         const year = yearFilter ? yearFilter.value : new Date().getFullYear();
         
-        // ✅ FIX: Kirim role dan kua untuk mendapatkan data yang benar
+        // ✅ Load dari server
         const stats = await apiCall('getDashboardStats', { 
             year: year,
             kua: currentUser.kua,
             role: currentUser.role
         });
         
-        console.log('[DASHBOARD] Stats received:', stats);
+        console.log('[DASHBOARD] Stats received from server:', stats);
         
-        setCache('dashboardStats', stats);
+        // ✅ Update local cache
+        updateLocalCache('dashboardStats', stats);
         displayDashboardStats(stats);
     } catch (error) {
         console.error('[DASHBOARD ERROR]', error);
@@ -576,11 +612,13 @@ function displayDashboardStats(stats) {
 
 // ===== BUDGET MANAGEMENT =====
 async function loadBudgets(forceRefresh = false) {
-    console.log('[BUDGET] Loading budgets');
+    console.log('[BUDGET] Loading budgets', { forceRefresh });
     
+    // ✅ Cek local cache dulu (kecuali force refresh)
     if (!forceRefresh) {
-        const cachedData = getCache('budgets');
+        const cachedData = getLocalCache('budgets');
         if (cachedData) {
+            console.log('[BUDGET] Using cached data');
             displayBudgets(cachedData);
             return;
         }
@@ -591,7 +629,9 @@ async function loadBudgets(forceRefresh = false) {
         const year = yearFilter ? yearFilter.value : new Date().getFullYear();
         
         const budgets = await apiCall('getBudgets', { year: year });
-        setCache('budgets', budgets);
+        
+        // ✅ Update local cache
+        updateLocalCache('budgets', budgets);
         displayBudgets(budgets);
     } catch (error) {
         console.error('[BUDGET ERROR]', error);
@@ -712,8 +752,8 @@ function showBudgetModal(budget = null) {
             editingBudget = null;
             closeModal();
             
-            invalidateCache('budgets');
-            invalidateCache('dashboardStats');
+            clearLocalCache('budgets');
+            clearLocalCache('dashboardStats');
             
             await Promise.all([
                 loadBudgets(true),
@@ -895,8 +935,8 @@ async function saveBudget(data) {
         
         // ✅ STEP 1: Hapus cache yang terkait dengan budget
         console.log('[SAVE_BUDGET] Invalidating related cache');
-        invalidateCache('budgets');        // Hapus cache budgets
-        invalidateCache('dashboardStats'); // Hapus cache dashboard stats
+        clearLocalCache('budgets');        // Hapus cache budgets
+        clearLocalCache('dashboardStats'); // Hapus cache dashboard stats
         
         // ✅ STEP 2: Tutup modal
         closeModal();
@@ -942,7 +982,7 @@ async function saveUser(data) {
         
         // ✅ STEP 1: Hapus cache users
         console.log('[SAVE_USER] Invalidating users cache');
-        invalidateCache('users');
+        clearLocalCache('users');
         
         // ✅ STEP 2: Tutup modal
         closeModal();
@@ -976,7 +1016,7 @@ async function deleteUserConfirm(userId) {
             });
             
             // ✅ Hapus cache dan reload
-            invalidateCache('users');
+            clearLocalCache('users');
             await loadUsers(true);
             
             showNotification('Pengguna berhasil dinonaktifkan', 'success');
@@ -1070,7 +1110,7 @@ async function saveRPDConfig() {
         
         // ✅ Hapus cache config
         console.log('[SAVE_CONFIG] Invalidating config cache');
-        invalidateCache('config');
+        clearLocalCache('config');
         
         showNotification('Konfigurasi berhasil disimpan', 'success');
         
@@ -1082,11 +1122,13 @@ async function saveRPDConfig() {
 
 // ===== RPD MANAGEMENT =====
 async function loadRPDs(forceRefresh = false) {
-    console.log('[RPD] Loading RPDs');
+    console.log('[RPD] Loading RPDs', { forceRefresh });
     
+    // ✅ Cek local cache dulu (kecuali force refresh)
     if (!forceRefresh) {
-        const cachedData = getCache('rpds');
+        const cachedData = getLocalCache('rpds');
         if (cachedData) {
+            console.log('[RPD] Using cached data');
             displayRPDs(cachedData);
             return;
         }
@@ -1115,7 +1157,9 @@ async function loadRPDs(forceRefresh = false) {
         }
         
         rpds = sortByMonth(rpds);
-        setCache('rpds', rpds);
+        
+        // ✅ Update local cache
+        updateLocalCache('rpds', rpds);
         displayRPDs(rpds);
     } catch (error) {
         console.error('[RPD ERROR]', error);
@@ -1468,9 +1512,9 @@ async function showRPDModal(rpd = null) {
             
             showNotification('RPD berhasil disimpan', 'success');
             
-            invalidateCache('rpds');
-            invalidateCache('budgets');
-            invalidateCache('dashboardStats');
+            clearLocalCache('rpds');
+            clearLocalCache('budgets');
+            clearLocalCache('dashboardStats');
             
             closeModal();
             
@@ -1643,12 +1687,19 @@ function editRPD(rpd) {
 
 // ===== REALISASI MANAGEMENT =====
 async function loadRealisasis(forceRefresh = false) {
-    console.log('[REALISASI] Loading realisasis');
+    console.log('[REALISASI] Loading realisasis', { forceRefresh });
     
+    // ✅ Cek local cache dulu (kecuali force refresh)
     if (!forceRefresh) {
-        const cachedData = getCache('realisasis');
+        const cachedData = getLocalCache('realisasis');
         if (cachedData) {
+            console.log('[REALISASI] Using cached data');
             displayRealisasis(cachedData);
+            
+            // Update button state jika operator
+            if (currentUser.role === 'Operator KUA') {
+                updateRealisasiButtonState();
+            }
             return;
         }
     }
@@ -1663,7 +1714,9 @@ async function loadRealisasis(forceRefresh = false) {
         
         let realisasis = await apiCall('getRealisasis', { kua: currentUser.kua, year: year });
         realisasis = sortByMonth(realisasis);
-        setCache('realisasis', realisasis);
+        
+        // ✅ Update local cache
+        updateLocalCache('realisasis', realisasis);
         displayRealisasis(realisasis);
     } catch (error) {
         console.error('[REALISASI ERROR]', error);
@@ -3048,8 +3101,8 @@ async function showRealisasiInputs(rpd, realisasi = null) {
                 
                 // ✅ STEP 1: Hapus cache yang terkait
                 console.log('[SAVE_REALISASI] Invalidating related cache');
-                invalidateCache('realisasis');     // Hapus cache realisasi
-                invalidateCache('dashboardStats'); // Hapus cache dashboard
+                clearLocalCache('realisasis');     // Hapus cache realisasi
+                clearLocalCache('dashboardStats'); // Hapus cache dashboard
                 
                 // ✅ STEP 2: Tutup modal
                 closeModal();
@@ -3208,9 +3261,13 @@ function calculateRealisasiTotal() {
     
     console.log('[CALCULATE_REALISASI_TOTAL] Total:', total);
     
-    const totalElement = document.getElementById('realisasiTotal');
+    // ✅ FIX: Update correct element ID
+    const totalElement = document.getElementById('realisasiTotalDisplay');
     if (totalElement) {
         totalElement.textContent = formatCurrency(total);
+        console.log('[CALCULATE_REALISASI_TOTAL] Display updated:', formatCurrency(total));
+    } else {
+        console.warn('[CALCULATE_REALISASI_TOTAL] Element realisasiTotalDisplay not found!');
     }
 }
 
@@ -4035,9 +4092,9 @@ function verifyRealisasi(realisasi) {
             });
             
             // Invalidate cache yang terkait
-            invalidateCache('verifikasi');
-            invalidateCache('realisasis');
-            invalidateCache('dashboardStats');
+            clearLocalCache('verifikasi');
+            clearLocalCache('realisasis');
+            clearLocalCache('dashboardStats');
             
             closeModal();
             
