@@ -122,12 +122,28 @@
     align-items: center;
 }
 
+/* ✅ FIX ISSUE #3: Better styling for toolbar selects */
 .toolbar select,
 .toolbar input {
-    padding: 8px 12px;
-    border: 1px solid #ddd;
-    border-radius: 6px;
+    padding: 10px 14px;
+    border: 2px solid #ddd;
+    border-radius: 8px;
     font-size: 14px;
+    background: white;
+    transition: all 0.3s;
+    cursor: pointer;
+}
+
+.toolbar select:hover,
+.toolbar input:hover {
+    border-color: #667eea;
+}
+
+.toolbar select:focus,
+.toolbar input:focus {
+    outline: none;
+    border-color: #667eea;
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
 }
 
 /* ===== TABLE ===== */
@@ -205,7 +221,9 @@ table tr:hover {
     color: #555;
 }
 
-.rpd-subitem input {
+.rpd-subitem input,
+.rpd-subitem select,
+.rpd-subitem textarea {
     padding: 10px;
     border: 1px solid #ddd;
     border-radius: 6px;
@@ -213,10 +231,35 @@ table tr:hover {
     text-align: right;
 }
 
-.rpd-subitem input:focus {
+.rpd-subitem input:focus,
+.rpd-subitem select:focus,
+.rpd-subitem textarea:focus {
     outline: none;
     border-color: #667eea;
     box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+/* ✅ FIX ISSUE #2: Better close button styling */
+.btn-close {
+    background: #dc3545;
+    color: white;
+    border: none;
+    border-radius: 50%;
+    width: 36px;
+    height: 36px;
+    font-size: 24px;
+    line-height: 1;
+    cursor: pointer;
+    transition: all 0.3s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+}
+
+.btn-close:hover {
+    background: #c82333;
+    transform: rotate(90deg);
 }
 
 /* ===== SUMMARY BOX ===== */
@@ -251,6 +294,50 @@ table tr:hover {
 
 .summary-item strong {
     color: #333;
+}
+
+/* ✅ FIX ISSUE #3: Better select styling for export sections */
+.summary-box select {
+    padding: 10px 14px;
+    border: 2px solid #ddd;
+    border-radius: 8px;
+    font-size: 14px;
+    background: white;
+    transition: all 0.3s;
+    cursor: pointer;
+}
+
+.summary-box select:hover {
+    border-color: #667eea;
+}
+
+.summary-box select:focus {
+    outline: none;
+    border-color: #667eea;
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+/* ✅ FIX ISSUE #4: Better textarea styling for verify notes */
+textarea.verify-notes {
+    width: 100%;
+    min-height: 100px;
+    padding: 12px;
+    border: 2px solid #ddd;
+    border-radius: 8px;
+    font-size: 14px;
+    font-family: inherit;
+    resize: vertical;
+    transition: all 0.3s;
+}
+
+textarea.verify-notes:hover {
+    border-color: #667eea;
+}
+
+textarea.verify-notes:focus {
+    outline: none;
+    border-color: #667eea;
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
 }
 
 /* ===== FILE UPLOAD ===== */

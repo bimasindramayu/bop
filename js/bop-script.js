@@ -200,17 +200,19 @@ async function preloadAllData() {
             );
         }
         
-        // 4. Realisasis
-        promises.push(
-            apiCall('getRealisasis', { 
-                kua: currentUser.kua, 
-                year: currentYear 
-            }).then(data => {
-                updateLocalCache('realisasis', sortByMonth(data));
-                console.log('[PRELOAD] ✅ Realisasis loaded:', data.length);
-                return data;
-            })
-        );
+        // 4. Realisasis (untuk Operator KUA)
+        if (currentUser.role === 'Operator KUA') {
+            promises.push(
+                apiCall('getRealisasis', { 
+                    kua: currentUser.kua, 
+                    year: currentYear 
+                }).then(data => {
+                    updateLocalCache('realisasis', sortByMonth(data));
+                    console.log('[PRELOAD] ✅ Realisasis loaded:', data.length);
+                    return data;
+                })
+            );
+        }
         
         // 5. Verifikasi (untuk Admin)
         if (currentUser.role === 'Admin') {
@@ -218,6 +220,15 @@ async function preloadAllData() {
                 apiCall('getRealisasis', { year: currentYear }).then(data => {
                     updateLocalCache('verifikasi', data);
                     console.log('[PRELOAD] ✅ Verifikasi data loaded:', data.length);
+                    return data;
+                })
+            );
+            
+            // ✅ FIX ISSUE #5: Preload RPD Config untuk Admin
+            promises.push(
+                apiCall('getRPDConfig').then(data => {
+                    updateLocalCache('config', data);
+                    console.log('[PRELOAD] ✅ RPD Config loaded');
                     return data;
                 })
             );
@@ -233,7 +244,7 @@ async function preloadAllData() {
             rpds: !!localCache.rpds,
             realisasis: !!localCache.realisasis,
             verifikasi: !!localCache.verifikasi,
-            riwayat: !!localCache.riwayat
+            config: !!localCache.config
         });
         
     } catch (error) {
@@ -540,21 +551,16 @@ function showPage(pageId) {
             loadBudgets();
             break;
         case 'rpdConfigPage':
-            // ✅ FIX ISSUE #1: Force refresh dari server, tidak pakai cache
-            console.log('[CONFIG] Force loading config from server');
-            loadRPDConfig(true);  // true = force refresh
+            // ✅ FIX ISSUE #5: Gunakan cache, tidak perlu fetch dari server lagi
+            console.log('[CONFIG] Loading config from cache');
+            loadRPDConfig(false);  // false = use cache
             break;
         case 'rpdPage':
             loadRPDs();
             break;
         case 'realisasiPage':
-            loadRealisasis();
-            if (currentUser.role === 'Operator KUA') {
-                startRealisasiPolling();
-            }
-            break;
-        case 'realisasiPage':
-            loadRealisasis();
+            // ✅ FIX ISSUE #6: Gunakan cache, tidak perlu fetch dari server lagi
+            loadRealisasis(false); // false = use cache
             if (currentUser.role === 'Operator KUA') {
                 startRealisasiPolling();
                 // ✅ Update button state saat masuk halaman
@@ -1152,30 +1158,30 @@ async function deleteUserConfirm(userId) {
 async function loadRPDConfig(forceRefresh = false) {
     console.log('[CONFIG] Loading RPD & Realisasi config', { forceRefresh });
     
-    if (!forceRefresh) {
-        const cachedData = getCache('config');
-        if (cachedData) {
-            console.log('[CONFIG] Using cached config data:', cachedData);
-            displayRPDConfig(cachedData);
-            return;
-        } else {
-            console.log('[CONFIG] No cached config found, fetching from server');
-        }
-    } else {
-        console.log('[CONFIG] Force refresh requested, fetching from server');
+    // ✅ FIX ISSUE #5: Cek local cache dulu (sudah di-preload)
+    const cachedData = getLocalCache('config');
+    if (cachedData && !forceRefresh) {
+        console.log('[CONFIG] Using cached config - NO SERVER CALL');
+        displayRPDConfig(cachedData);
+        return;
     }
     
-    try {
-        const config = await apiCall('getRPDConfig');
-        console.log('[CONFIG] Config received from server:', config);
+    // ✅ Only fetch dari server jika force refresh atau belum ada cache
+    if (forceRefresh || !cachedData) {
+        console.log('[CONFIG] Fetching from server...');
         
-        setCache('config', config);
-        console.log('[CONFIG] Config cached successfully');
-        
-        displayRPDConfig(config);
-    } catch (error) {
-        console.error('[CONFIG ERROR]', error);
-        showNotification('Gagal memuat konfigurasi', 'error');
+        try {
+            const config = await apiCall('getRPDConfig');
+            console.log('[CONFIG] Config received from server:', config);
+            
+            // ✅ Update local cache
+            updateLocalCache('config', config);
+            
+            displayRPDConfig(config);
+        } catch (error) {
+            console.error('[CONFIG ERROR]', error);
+            showNotification('Gagal memuat konfigurasi', 'error');
+        }
     }
 }
 
@@ -1548,11 +1554,17 @@ async function showRPDModal(rpd = null) {
         
         inputs.forEach((input, index) => {
             console.log('[RPD MODAL] Attaching listener to input', index + 1, ':', input.id);
-            input.addEventListener('input', calculateRPDTotal);
+            input.addEventListener('input', function() {
+                calculateRPDTotal();
+                modalHasChanges = true; // ✅ Track changes
+            });
         });
         
         calculateRPDTotal();
     }, 100);
+    
+    // ✅ Reset modalHasChanges
+    modalHasChanges = false;
     
     // Form submit handler
     document.getElementById('rpdForm').addEventListener('submit', async (e) => {
@@ -1637,7 +1649,8 @@ async function showRPDModal(rpd = null) {
             clearLocalCache('budgets');
             clearLocalCache('dashboardStats');
             
-            closeModal();
+            modalHasChanges = false; // ✅ Reset changes flag
+            closeModal(true); // ✅ Skip confirmation karena sudah saved
             
             await Promise.all([
                 loadRPDs(true),
@@ -1935,6 +1948,9 @@ function displayRealisasis(realisasis) {
 async function showRealisasiModal(realisasi = null) {
     console.log('[REALISASI MODAL] Opening modal, editing:', !!realisasi);
     console.log('[REALISASI MODAL] Realisasi data:', realisasi);
+    
+    // ✅ Reset modalHasChanges
+    modalHasChanges = false;
     
     // Check status untuk new realisasi
     if (!realisasi && currentUser.role === 'Operator KUA') {
@@ -3078,7 +3094,10 @@ async function showRealisasiInputs(rpd, realisasi = null) {
         // Re-attach all event listeners to inputs in new form
         const newInputs = newForm.querySelectorAll('.realisasi-input');
         newInputs.forEach(input => {
-            input.addEventListener('input', calculateRealisasiTotal);
+            input.addEventListener('input', function() {
+                calculateRealisasiTotal();
+                modalHasChanges = true; // ✅ Track changes
+            });
         });
         
         // Re-attach file upload listeners
@@ -3219,6 +3238,10 @@ async function showRealisasiInputs(rpd, realisasi = null) {
                 
                 // ✅ STEP 4: Notifikasi
                 showNotification('Realisasi berhasil disimpan', 'success');
+                
+                // ✅ Close modal without confirmation
+                modalHasChanges = false; // Reset changes flag
+                closeRealisasiModal(true); // Skip confirmation karena sudah saved
                 
                 console.log('[REALISASI] ========== FORM SUBMIT END ==========');
                 
@@ -4164,7 +4187,7 @@ function verifyRealisasi(realisasi) {
                 </div>
                 <div class="form-group">
                     <label>Catatan</label>
-                    <textarea id="verifyNotes" rows="4" placeholder="Tambahkan catatan jika diperlukan">${realisasi.notes || ''}</textarea>
+                    <textarea id="verifyNotes" class="verify-notes" rows="4" placeholder="Tambahkan catatan jika diperlukan">${realisasi.notes || ''}</textarea>
                 </div>
                 <button type="submit" class="btn">💾 Simpan Verifikasi</button>
             </form>
@@ -4520,12 +4543,27 @@ function downloadDriveFile(url, filename) {
     link.click();
 }
 
-function closeModal() {
+// ✅ FIX ISSUE #1: Add confirmation before closing modal
+let modalHasChanges = false;
+
+function closeModal(skipConfirmation = false) {
     const modal = document.getElementById('modal');
-    if (modal) {
-        modal.classList.remove('active');
-        modal.innerHTML = '';
+    if (!modal) return;
+    
+    // ✅ Check if modal has form
+    const hasForm = modal.querySelector('form');
+    
+    // ✅ If has form and not skipping, ask for confirmation
+    if (hasForm && !skipConfirmation && modalHasChanges) {
+        if (!confirm('Anda memiliki perubahan yang belum disimpan. Yakin ingin menutup?')) {
+            return; // User cancelled
+        }
     }
+    
+    // Close modal
+    modal.classList.remove('active');
+    modal.innerHTML = '';
+    modalHasChanges = false;
     
     // ✅ Restart polling jika masih di halaman realisasi
     if (currentPage === 'realisasiPage') {
@@ -4533,12 +4571,24 @@ function closeModal() {
     }
 }
 
-function closeRealisasiModal() {
+function closeRealisasiModal(skipConfirmation = false) {
     const modal = document.getElementById('realisasiModal');
-    if (modal) {
-        modal.classList.remove('active');
-        modal.remove(); // Remove modal from DOM
+    if (!modal) return;
+    
+    // ✅ Check if modal has form
+    const hasForm = modal.querySelector('form');
+    
+    // ✅ If has form and not skipping, ask for confirmation
+    if (hasForm && !skipConfirmation && modalHasChanges) {
+        if (!confirm('Anda memiliki perubahan yang belum disimpan. Yakin ingin menutup?')) {
+            return; // User cancelled
+        }
     }
+    
+    // Close modal
+    modal.classList.remove('active');
+    modal.remove(); // Remove modal from DOM
+    modalHasChanges = false;
     
     // Reset uploaded files
     uploadedFiles = [];
