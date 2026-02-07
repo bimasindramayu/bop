@@ -352,12 +352,68 @@ const ModalManager = {
     }
 };
 
-// Common Logout Function
-function commonLogout() {
-    if (confirm('Apakah Anda yakin ingin keluar?')) {
-        SessionManager.clearUser();
-        window.location.href = 'index.html';
+// ✅ FIX ISSUE #3: Custom Logout Confirmation Dialog
+function showLogoutConfirmDialog(onConfirm, onCancel) {
+    // Remove existing dialog if any
+    const existingDialog = document.getElementById('customConfirmDialog');
+    if (existingDialog) {
+        existingDialog.remove();
     }
+    
+    // Create dialog
+    const dialog = document.createElement('div');
+    dialog.id = 'customConfirmDialog';
+    dialog.className = 'custom-confirm-overlay';
+    dialog.innerHTML = `
+        <div class="custom-confirm-dialog logout-dialog">
+            <div class="custom-confirm-icon">🚪</div>
+            <div class="custom-confirm-message">Apakah Anda yakin ingin keluar?</div>
+            <div class="custom-confirm-buttons">
+                <button class="custom-confirm-btn custom-confirm-cancel" id="confirmCancelBtn">Batal</button>
+                <button class="custom-confirm-btn custom-confirm-yes" id="confirmYesBtn">Ya, Keluar</button>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(dialog);
+    
+    // Add event listeners
+    document.getElementById('confirmYesBtn').addEventListener('click', function() {
+        dialog.remove();
+        if (onConfirm) onConfirm();
+    });
+    
+    document.getElementById('confirmCancelBtn').addEventListener('click', function() {
+        dialog.remove();
+        if (onCancel) onCancel();
+    });
+    
+    // Close on overlay click
+    dialog.addEventListener('click', function(e) {
+        if (e.target === dialog) {
+            dialog.remove();
+            if (onCancel) onCancel();
+        }
+    });
+    
+    // Focus on Cancel button for logout
+    setTimeout(() => {
+        document.getElementById('confirmCancelBtn').focus();
+    }, 100);
+}
+
+// ✅ FIX ISSUE #3: Common Logout Function with custom dialog
+function commonLogout() {
+    showLogoutConfirmDialog(
+        function() {
+            // User confirmed logout
+            SessionManager.clearUser();
+            window.location.href = 'index.html';
+        },
+        function() {
+            // User cancelled - do nothing
+        }
+    );
 }
 
 // Back to Main Menu

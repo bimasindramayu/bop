@@ -45,7 +45,7 @@ async function handleLogin(e) {
                 CaptchaManager.refresh();
                 document.getElementById('captchaInput').value = '';
             }
-            return; // ❌ STOP LOGIN PROCESS
+            return; // ⌛ STOP LOGIN PROCESS
         }
     }
     
@@ -192,13 +192,20 @@ async function handlePasswordChange(e) {
     }
 }
 
+// ✅ FIX ISSUE #3: Logout with custom dialog
 function logout() {
-    if (confirm('Apakah Anda yakin ingin keluar?')) {
-        debugLog('MAIN', 'User logging out');
-        SessionManager.clearUser();
-        AppCache.clear(); // Clear cache on logout
-        window.location.href = 'index.html';
-    }
+    showLogoutConfirmDialog(
+        function() {
+            // User confirmed logout
+            debugLog('MAIN', 'User logging out');
+            SessionManager.clearUser();
+            AppCache.clear(); // Clear cache on logout
+            window.location.href = 'index.html';
+        },
+        function() {
+            // User cancelled - do nothing
+        }
+    );
 }
 
 // ===== AUTO INITIALIZATION =====

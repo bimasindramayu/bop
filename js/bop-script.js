@@ -4543,8 +4543,58 @@ function downloadDriveFile(url, filename) {
     link.click();
 }
 
-// ✅ FIX ISSUE #1: Add confirmation before closing modal
+// ✅ FIX ISSUE #1 & #3: Custom confirmation modal
 let modalHasChanges = false;
+
+// ✅ Create custom confirmation dialog
+function showConfirmDialog(message, onConfirm, onCancel) {
+    // Remove existing confirm dialog if any
+    const existingDialog = document.getElementById('customConfirmDialog');
+    if (existingDialog) {
+        existingDialog.remove();
+    }
+    
+    // Create dialog
+    const dialog = document.createElement('div');
+    dialog.id = 'customConfirmDialog';
+    dialog.className = 'custom-confirm-overlay';
+    dialog.innerHTML = `
+        <div class="custom-confirm-dialog">
+            <div class="custom-confirm-icon">⚠️</div>
+            <div class="custom-confirm-message">${message}</div>
+            <div class="custom-confirm-buttons">
+                <button class="custom-confirm-btn custom-confirm-cancel" id="confirmCancelBtn">Batal</button>
+                <button class="custom-confirm-btn custom-confirm-yes" id="confirmYesBtn">Ya, Tutup</button>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(dialog);
+    
+    // Add event listeners
+    document.getElementById('confirmYesBtn').addEventListener('click', function() {
+        dialog.remove();
+        if (onConfirm) onConfirm();
+    });
+    
+    document.getElementById('confirmCancelBtn').addEventListener('click', function() {
+        dialog.remove();
+        if (onCancel) onCancel();
+    });
+    
+    // Close on overlay click
+    dialog.addEventListener('click', function(e) {
+        if (e.target === dialog) {
+            dialog.remove();
+            if (onCancel) onCancel();
+        }
+    });
+    
+    // Focus on Yes button
+    setTimeout(() => {
+        document.getElementById('confirmYesBtn').focus();
+    }, 100);
+}
 
 function closeModal(skipConfirmation = false) {
     const modal = document.getElementById('modal');
@@ -4555,12 +4605,27 @@ function closeModal(skipConfirmation = false) {
     
     // ✅ If has form and not skipping, ask for confirmation
     if (hasForm && !skipConfirmation && modalHasChanges) {
-        if (!confirm('Anda memiliki perubahan yang belum disimpan. Yakin ingin menutup?')) {
-            return; // User cancelled
-        }
+        showConfirmDialog(
+            'Anda memiliki perubahan yang belum disimpan. Yakin ingin menutup?',
+            function() {
+                // User confirmed
+                modal.classList.remove('active');
+                modal.innerHTML = '';
+                modalHasChanges = false;
+                
+                // ✅ Restart polling jika masih di halaman realisasi
+                if (currentPage === 'realisasiPage') {
+                    startRealisasiPolling();
+                }
+            },
+            function() {
+                // User cancelled - do nothing
+            }
+        );
+        return;
     }
     
-    // Close modal
+    // Close modal without confirmation
     modal.classList.remove('active');
     modal.innerHTML = '';
     modalHasChanges = false;
@@ -4580,17 +4645,31 @@ function closeRealisasiModal(skipConfirmation = false) {
     
     // ✅ If has form and not skipping, ask for confirmation
     if (hasForm && !skipConfirmation && modalHasChanges) {
-        if (!confirm('Anda memiliki perubahan yang belum disimpan. Yakin ingin menutup?')) {
-            return; // User cancelled
-        }
+        showConfirmDialog(
+            'Anda memiliki perubahan yang belum disimpan. Yakin ingin menutup?',
+            function() {
+                // User confirmed
+                modal.classList.remove('active');
+                modal.remove();
+                modalHasChanges = false;
+                uploadedFiles = [];
+                
+                // Restart polling jika masih di halaman realisasi
+                if (currentPage === 'realisasiPage') {
+                    startRealisasiPolling();
+                }
+            },
+            function() {
+                // User cancelled - do nothing
+            }
+        );
+        return;
     }
     
-    // Close modal
+    // Close modal without confirmation
     modal.classList.remove('active');
-    modal.remove(); // Remove modal from DOM
+    modal.remove();
     modalHasChanges = false;
-    
-    // Reset uploaded files
     uploadedFiles = [];
     
     // Restart polling jika masih di halaman realisasi
