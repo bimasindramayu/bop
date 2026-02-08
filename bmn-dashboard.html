@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Sistem Pendataan BMN - Kemenag Indramayu</title>
     <link rel="icon" type="image/png" href="assets/coin.png">
-    <link rel="stylesheet" href="style/styles.css">
     <link rel="stylesheet" href="style/bmn-styles.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 </head>
@@ -45,9 +44,9 @@
                     <div class="stats-grid" id="statsGrid"></div>
                     
                     <!-- Chart Kondisi BMN -->
-                    <div class="chart-container">
+                    <div class="chart-container" style="margin-top: 30px;">
                         <h3>Grafik Kondisi BMN</h3>
-                        <canvas id="kondisiChart"></canvas>
+                        <canvas id="kondisiChart" style="max-height: 400px;"></canvas>
                     </div>
                 </div>
 
@@ -93,7 +92,6 @@
                                     <th>Tahun</th>
                                     <th>Kondisi</th>
                                     <th>Status</th>
-                                    <th class="th-foto" style="display: none;">Foto</th>
                                     <th>Aksi</th>
                                 </tr>
                             </thead>
@@ -102,178 +100,65 @@
                     </div>
                 </div>
 
-                <!-- Verifikasi Page (Admin) - DISABLED karena auto-approve -->
-                <div class="page" id="verifikasiBMNPage" style="display: none;">
-                    <h2 style="margin-bottom: 20px;">Verifikasi BMN</h2>
-                    <div style="padding: 40px; text-align: center; background: #f8f9fa; border-radius: 12px;">
-                        <h3 style="color: #28a745; margin-bottom: 15px;">✓ Auto-Approval Aktif</h3>
-                        <p style="color: #666; font-size: 16px;">Semua data BMN yang diinput oleh KUA langsung diverifikasi secara otomatis.</p>
-                        <p style="color: #999; font-size: 14px; margin-top: 10px;">Fitur verifikasi manual tidak diperlukan.</p>
-                    </div>
+                <!-- Riwayat Page -->
+                <div class="page" id="riwayatPage">
+                    <h2 style="margin-bottom: 20px;">Riwayat Perubahan</h2>
+                    <div id="riwayatContainer"></div>
                 </div>
 
                 <!-- Laporan Page -->
                 <div class="page" id="laporanBMNPage">
                     <h2 style="margin-bottom: 20px;">Laporan BMN</h2>
-                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 20px;">
-                        <!-- Laporan Per KUA -->
-                        <div class="summary-box">
-                            <h3 style="color: #667eea; margin-bottom: 15px;">📋 Laporan Per KUA</h3>
-                            <div style="margin-bottom: 15px; padding: 15px; background: #f8f9fa; border-radius: 8px;">
-                                <h4 style="margin-bottom: 10px; font-size: 14px;">Data BMN Per KUA</h4>
-                                <p style="font-size: 12px; color: #666; margin-bottom: 10px;">Menampilkan semua BMN di KUA tertentu</p>
-                                <select id="laporanKUA" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 6px; margin-bottom: 10px;">
-                                    <option value="">Pilih KUA</option>
-                                </select>
-                                <div style="display: flex; gap: 10px;">
-                                    <button class="btn btn-sm btn-danger" onclick="downloadLaporanKUA('pdf')" style="flex: 1;">📄 PDF</button>
-                                    <button class="btn btn-sm btn-success" onclick="downloadLaporanKUA('excel')" style="flex: 1;">📊 Excel</button>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Laporan Per Jenis -->
-                        <div class="summary-box">
-                            <h3 style="color: #667eea; margin-bottom: 15px;">🏷️ Laporan Per Jenis</h3>
-                            <div style="margin-bottom: 15px; padding: 15px; background: #f8f9fa; border-radius: 8px;">
-                                <h4 style="margin-bottom: 10px; font-size: 14px;">Data BMN Per Jenis</h4>
-                                <p style="font-size: 12px; color: #666; margin-bottom: 10px;">Menampilkan BMN berdasarkan jenis aset</p>
-                                <select id="laporanJenis" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 6px; margin-bottom: 10px;">
-                                    <option value="">Pilih Jenis</option>
-                                    <option value="Tanah">Tanah</option>
-                                    <option value="Gedung/Bangunan">Gedung/Bangunan</option>
-                                    <option value="Kendaraan">Kendaraan</option>
-                                    <option value="Peralatan & Mesin">Peralatan & Mesin</option>
-                                    <option value="Aset Lainnya">Aset Lainnya</option>
-                                </select>
-                                <div style="display: flex; gap: 10px;">
-                                    <button class="btn btn-sm btn-danger" onclick="downloadLaporanJenis('pdf')" style="flex: 1;">📄 PDF</button>
-                                    <button class="btn btn-sm btn-success" onclick="downloadLaporanJenis('excel')" style="flex: 1;">📊 Excel</button>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Rekap Kondisi -->
-                        <div class="summary-box">
-                            <h3 style="color: #667eea; margin-bottom: 15px;">🔧 Rekap Berdasarkan Kondisi</h3>
-                            <div style="margin-bottom: 15px; padding: 15px; background: #f8f9fa; border-radius: 8px;">
-                                <h4 style="margin-bottom: 10px; font-size: 14px;">BMN Berdasarkan Kondisi</h4>
-                                <p style="font-size: 12px; color: #666; margin-bottom: 10px;">Filter BMN berdasarkan kondisi fisik</p>
-                                <select id="laporanKondisi" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 6px; margin-bottom: 10px;">
-                                    <option value="">Pilih Kondisi</option>
-                                    <option value="Baik">Baik</option>
-                                    <option value="Rusak Ringan">Rusak Ringan</option>
-                                    <option value="Rusak Berat">Rusak Berat</option>
-                                </select>
-                                <div style="display: flex; gap: 10px;">
-                                    <button class="btn btn-sm btn-danger" onclick="downloadLaporanKondisi('pdf')" style="flex: 1;">📄 PDF</button>
-                                    <button class="btn btn-sm btn-success" onclick="downloadLaporanKondisi('excel')" style="flex: 1;">📊 Excel</button>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Rekap Barang Rusak -->
-                        <div class="summary-box">
-                            <h3 style="color: #667eea; margin-bottom: 15px;">⚠️ Rekap Barang Rusak</h3>
-                            <div style="padding: 15px; background: #f8f9fa; border-radius: 8px;">
-                                <h4 style="margin-bottom: 10px; font-size: 14px;">Daftar BMN Rusak (Usulan Pengadaan)</h4>
-                                <p style="font-size: 12px; color: #666; margin-bottom: 10px;">BMN kondisi Rusak Ringan & Rusak Berat</p>
-                                <div style="display: flex; gap: 10px;">
-                                    <button class="btn btn-sm btn-danger" onclick="downloadRekapRusak('pdf')" style="flex: 1;">📄 PDF</button>
-                                    <button class="btn btn-sm btn-success" onclick="downloadRekapRusak('excel')" style="flex: 1;">📊 Excel</button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Riwayat Perubahan Page -->
-                <div class="page" id="riwayatPage">
-                    <h2 style="margin-bottom: 20px;">Riwayat Perubahan</h2>
-                    <div class="toolbar">
-                        <select id="riwayatKUA" onchange="loadRiwayat()" style="display: none;">
-                            <option value="">Semua KUA</option>
-                        </select>
-                        <input type="text" id="searchRiwayat" placeholder="🔍 Cari kode/nama barang..." onkeyup="searchRiwayat()" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px;">
-                    </div>
-                    <div class="table-container">
-                        <table id="riwayatTable">
-                            <thead>
-                                <tr>
-                                    <th>No</th>
-                                    <th class="th-kua" style="display: none;">KUA</th>
-                                    <th>Kode Barang</th>
-                                    <th>Nama Barang</th>
-                                    <th>Perubahan</th>
-                                    <th>Operator</th>
-                                    <th>Tanggal</th>
-                                </tr>
-                            </thead>
-                            <tbody></tbody>
-                        </table>
-                    </div>
-                </div>
-
-                <!-- Master Data Page (Admin Only) -->
-                <div class="page" id="masterDataPage">
-                    <h2 style="margin-bottom: 20px;">Master Data BMN</h2>
-                    <div class="summary-box">
-                        <h3>Daftar KUA</h3>
-                        <p style="color: #666; margin-top: 10px;">Total: <strong>30 KUA</strong> di Kabupaten Indramayu</p>
-                        <div id="kuaList" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; margin-top: 15px;"></div>
-                    </div>
                     
+                    <div class="summary-box">
+                        <h3 style="margin-bottom: 15px; color: #28a745;">📊 Laporan Per KUA</h3>
+                        <select id="exportKUA" style="margin-bottom: 10px;">
+                            <option value="">Pilih KUA</option>
+                        </select>
+                        <div style="display: flex; gap: 10px;">
+                            <button class="btn btn-sm btn-success" onclick="exportLaporan('perKUA', 'excel')">📥 Excel</button>
+                            <button class="btn btn-sm btn-success" onclick="exportLaporan('perKUA', 'pdf')">📄 PDF</button>
+                        </div>
+                    </div>
+
                     <div class="summary-box" style="margin-top: 20px;">
-                        <h3>Konfigurasi Sistem</h3>
-                        <div class="form-group">
-                            <label>Maksimal Ukuran Foto (MB)</label>
-                            <input type="number" id="maxFotoSize" value="5" min="1" max="10">
+                        <h3 style="margin-bottom: 15px; color: #28a745;">📋 Laporan Per Jenis</h3>
+                        <select id="exportJenis" style="margin-bottom: 10px;">
+                            <option value="">Pilih Jenis</option>
+                            <option value="Tanah">Tanah</option>
+                            <option value="Gedung/Bangunan">Gedung/Bangunan</option>
+                            <option value="Kendaraan">Kendaraan</option>
+                            <option value="Peralatan & Mesin">Peralatan & Mesin</option>
+                            <option value="Aset Lainnya">Aset Lainnya</option>
+                        </select>
+                        <div style="display: flex; gap: 10px;">
+                            <button class="btn btn-sm btn-success" onclick="exportLaporan('perJenis', 'excel')">📥 Excel</button>
+                            <button class="btn btn-sm btn-success" onclick="exportLaporan('perJenis', 'pdf')">📄 PDF</button>
                         </div>
-                        <div class="form-group">
-                            <label>Maksimal Jumlah Foto per Barang</label>
-                            <input type="number" id="maxFotoCount" value="5" min="1" max="10">
+                    </div>
+
+                    <div class="summary-box" style="margin-top: 20px;">
+                        <h3 style="margin-bottom: 15px; color: #28a745;">⚠️ Laporan Barang Rusak</h3>
+                        <div style="display: flex; gap: 10px;">
+                            <button class="btn btn-sm btn-success" onclick="exportLaporan('rusak', 'excel')">📥 Excel</button>
+                            <button class="btn btn-sm btn-success" onclick="exportLaporan('rusak', 'pdf')">📄 PDF</button>
                         </div>
-                        <button class="btn" onclick="saveMasterConfig()">💾 Simpan Konfigurasi</button>
                     </div>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- Modal -->
-    <div class="modal" id="modal"></div>
-
-    <script src="js/script.js"></script>
+    <!-- Modals will be added by JavaScript -->
+    
+    <!-- Load Config & Scripts -->
+    <script src="js/config.js"></script>
     <script src="js/bmn-script.js"></script>
+    
     <script>
-        // Initialize on load
-        window.addEventListener('DOMContentLoaded', function() {
-            console.log('[BMN] Initializing...');
-            
-            const storedUser = sessionStorage.getItem('user');
-            
-            if (!storedUser) {
-                console.log('[BMN] No session found, redirecting to login');
-                window.location.href = 'index.html';
-                return;
-            }
-
-            console.log('[BMN] Session found, setting up dashboard');
-            currentUser = JSON.parse(storedUser);
-            
-            initBMNDashboard();
-        });
-
-        function backToMenu() {
-            window.location.href = 'main-menu.html';
-        }
-
+        // Logout function for BMN
         function logoutBMN() {
-            if (confirm('Apakah Anda yakin ingin keluar?')) {
-                currentUser = null;
-                sessionStorage.removeItem('user');
-                window.location.href = 'index.html';
-            }
+            commonLogout();
         }
     </script>
 </body>

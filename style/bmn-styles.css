@@ -1,10 +1,21 @@
-/* BMN Specific Styles */
+/* ===== BMN STYLES ===== */
+/* File: bmn-styles.css */
+/* Untuk: bmn-dashboard.html */
+
+/* Import main styles untuk elemen dasar */
+@import url('main-styles.css');
+
+/* Import BOP styles untuk elemen dashboard umum */
+@import url('bop-styles.css');
+
+/* ===== BMN SPECIFIC OVERRIDES ===== */
 
 /* Force hide foto column - will be controlled by JavaScript */
 .th-foto {
     display: none !important;
 }
 
+/* ===== CHART CONTAINER ===== */
 .chart-container {
     background: white;
     padding: 25px;
@@ -23,7 +34,7 @@
     max-height: 300px;
 }
 
-/* BMN Photo Gallery */
+/* ===== BMN PHOTO GALLERY ===== */
 .bmn-photo-gallery {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
@@ -68,7 +79,7 @@
     justify-content: center;
 }
 
-/* Camera Upload */
+/* ===== CAMERA UPLOAD ===== */
 .camera-upload {
     display: flex;
     gap: 10px;
@@ -90,10 +101,7 @@
     background: #e7f0ff;
 }
 
-/* BMN Detail View - REMOVED old grid style */
-/* New detail view uses inline styling for better customization */
-
-/* Status Badges - Enhanced */
+/* ===== STATUS BADGES - ENHANCED ===== */
 .badge-verifikasi {
     background: #fff3cd;
     color: #856404;
@@ -121,7 +129,7 @@
     font-weight: 600;
 }
 
-/* Riwayat Timeline */
+/* ===== RIWAYAT TIMELINE ===== */
 .riwayat-item {
     padding: 15px;
     background: #f8f9fa;
@@ -147,7 +155,7 @@
     margin-top: 5px;
 }
 
-/* Image Lightbox */
+/* ===== IMAGE LIGHTBOX ===== */
 .lightbox {
     display: none;
     position: fixed;
@@ -181,44 +189,67 @@
     cursor: pointer;
 }
 
-/* Responsive adjustments */
+/* ===== BMN FORM STYLING ===== */
+.bmn-form-section {
+    background: #f8f9fa;
+    padding: 20px;
+    border-radius: 12px;
+    margin-bottom: 20px;
+}
+
+.bmn-form-section h4 {
+    color: #333;
+    margin-bottom: 15px;
+    font-size: 16px;
+    padding-bottom: 10px;
+    border-bottom: 2px solid #28a745;
+}
+
+.bmn-form-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 15px;
+    margin-bottom: 15px;
+}
+
+/* ===== BMN TABLE ENHANCEMENTS ===== */
+#bmnTable tbody tr.highlight {
+    background-color: #fff3cd;
+}
+
+#bmnTable tbody tr.rusak-berat {
+    background-color: #f8d7da;
+}
+
+#bmnTable tbody tr.rusak-ringan {
+    background-color: #fff3cd;
+}
+
+/* ===== RESPONSIVE ADJUSTMENTS ===== */
 @media (max-width: 768px) {
     .bmn-photo-gallery {
         grid-template-columns: repeat(2, 1fr);
     }
     
-    .toolbar {
-        flex-direction: column;
-        align-items: stretch;
+    .bmn-form-row {
+        grid-template-columns: 1fr;
     }
     
-    .toolbar select,
-    .toolbar input {
-        width: 100%;
+    .chart-container {
+        padding: 15px;
     }
 }
 
-/* Print Styles */
+/* ===== PRINT STYLES FOR BMN ===== */
 @media print {
-    .header-right,
-    .nav-menu,
-    .toolbar,
-    .action-buttons,
-    .btn {
+    .photo-item .remove-photo,
+    .camera-upload,
+    .chart-container {
         display: none !important;
     }
     
-    .content-area {
-        padding: 0;
-        box-shadow: none;
-    }
-    
-    table {
-        page-break-inside: auto;
-    }
-    
-    tr {
+    .bmn-photo-gallery {
+        grid-template-columns: repeat(3, 1fr);
         page-break-inside: avoid;
-        page-break-after: auto;
     }
 }

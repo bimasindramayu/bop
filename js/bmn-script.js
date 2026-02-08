@@ -1,127 +1,45 @@
-// BMN System JavaScript
+// ===== BMN SCRIPT =====
 // File: bmn-script.js
+// Untuk: bmn-dashboard.html
+// Config & utilities dari config.js
 
-const BMN_CONFIG = {
-    SCRIPT_URL: 'https://script.google.com/macros/s/AKfycbxkODOYjlkk7mKSTU1d1uMynPog6TE6NHmZbF6m0jVV4RVXyC98ehHT4d8ndhbJhTLC/exec',
-    JENIS_BMN: ['Tanah', 'Gedung/Bangunan', 'Kendaraan', 'Peralatan & Mesin', 'Aset Lainnya'],
-    KONDISI_BMN: ['Baik', 'Rusak Ringan', 'Rusak Berat'],
-    STATUS_BMN: ['Digunakan', 'Tidak Digunakan', 'Diusulkan Penghapusan'],
-    SUMBER_PEROLEHAN: ['APBN', 'APBD', 'Hibah', 'Pembelian', 'Bantuan', 'Lainnya'],
-    MAX_PHOTO_SIZE: 5 * 1024 * 1024, // 5MB
-    MAX_PHOTOS: 5,
-    DEBUG_MODE: true,
-    KUA_CODES: {
-        'KUA Anjatan': 'AJ',
-        'KUA Arahan': 'AR',
-        'KUA Balongan': 'BA',
-        'KUA Bangodua': 'BG',
-        'KUA Bongas': 'BS',
-        'KUA Cantigi': 'CT',
-        'KUA Cikedung': 'CK',
-        'KUA Gantar': 'GT',
-        'KUA Gabuswetan': 'GB',
-        'KUA Haurgeulis': 'HG',
+// ===== STATE MANAGEMENT =====
+let currentUser = null;
+let currentBMNData = [];
+let allBMNData = [];
+let uploadedPhotos = [];
+let editingBMNId = null;
+let bmnKondisiChart = null;
 
-        'KUA Indramayu': 'IM',
-
-        'KUA Jatibarang': 'JT',
-        'KUA Juntinyuat': 'JN',
-        'KUA Kandanghaur': 'KH',
-        'KUA Karangampel': 'KA',
-        'KUA Kedokan Bunder': 'KB',
-
-        'KUA Kertasemaya': 'KS',
-        'KUA Krangkeng': 'KR',
-        'KUA Lelea': 'LL',
-        'KUA Lohbener': 'LB',
-        'KUA Losarang': 'LS',
-
-        'KUA Pasekan': 'PS',
-        'KUA Patrol': 'PT',
-        'KUA Sindang': 'SD',
-        'KUA Sliyeg': 'SL',
-        'KUA Sukagumiwang': 'SG',
-        'KUA Sukra': 'SK',
-        'KUA Terisi': 'TR',
-        'KUA Tukdana': 'TK',
-        'KUA Widasari': 'WD'
-    }
-};
-
-const JENIS_BMN_CODES = {
-    'Tanah': '01',
-    'Gedung/Bangunan': '02',
-    'Kendaraan': '03',
-    'Peralatan & Mesin': '04',
-    'Aset Lainnya': '05'
+// Cache untuk BMN
+const bmnCache = {
+    stats: null,
+    data: null,
+    lastUpdate: null
 };
 
 const CACHE_CONFIG = {
-    DURATION: 5 * 60 * 1000,
-    ENABLED: true,
+    TTL: 5 * 60 * 1000,
     KEYS: {
         STATS: 'stats',
-        DATA: 'data',
-        VERIFIKASI: 'verifikasi',
-        RIWAYAT: 'riwayat'
+        DATA: 'data'
     }
 };
 
-// Debug Logger
-function debugLog(category, message, data = null) {
-    if (!BMN_CONFIG.DEBUG_MODE) return;
+// ===== INITIALIZATION =====
+window.addEventListener('DOMContentLoaded', function() {
+    debugLog('BMN', 'Initializing BMN Dashboard');
     
-    const timestamp = new Date().toISOString();
-    const prefix = `[${timestamp}] [${category}]`;
+    currentUser = SessionManager.getCurrentUser();
     
-    if (data) {
-        console.log(prefix, message, data);
-    } else {
-        console.log(prefix, message);
+    if (!currentUser) {
+        debugLog('BMN', 'No user session, redirecting to login');
+        window.location.href = 'index.html';
+        return;
     }
-}
-
-let uploadedPhotos = [];
-let _editSourceBMN = null; // simpan data BMN saat edit dipanggil dari detail
-let currentBMNData = [];
-let allBMNData = []; // Store all data for client-side filtering
-let bmnCache = {
-    stats: null,
-    data: null,
-    verifikasi: null,
-    riwayat: null,
-    lastUpdate: {}
-};
-
-const CACHE_DURATION = 5 * 60 * 1000;
-
-function isCacheValid(cacheKey) {
-    if (!bmnCache[cacheKey] || !bmnCache.lastUpdate[cacheKey]) return false;
-    return (Date.now() - bmnCache.lastUpdate[cacheKey]) < CACHE_DURATION;
-}
-
-function updateCache(key, data) {
-    bmnCache[key] = data;
-    bmnCache.lastUpdate[key] = Date.now();
-    debugLog('CACHE', `Updated cache: ${key}`);
-}
-
-function clearCache(specificKey = null) {
-    if (specificKey) {
-        delete bmnCache[specificKey];
-        delete bmnCache.lastUpdate[specificKey];
-        debugLog('CACHE', `Cleared cache: ${specificKey}`);
-    } else {
-        bmnCache = {
-            stats: null,
-            data: null,
-            verifikasi: null,
-            riwayat: null,
-            lastUpdate: {}
-        };
-        debugLog('CACHE', 'Cleared all cache');
-    }
-}
+    
+    initBMNDashboard();
+});
 
 function initBMNDashboard() {
     console.log('═══════════════════════════════════════════════════════');
@@ -268,12 +186,6 @@ async function loadBMNDashboardStats() {
     debugLog('DASHBOARD', 'Loading dashboard stats');
     
     try {
-        if (isCacheValid(CACHE_CONFIG.KEYS.STATS)) {
-            debugLog('DASHBOARD', 'Using cached stats');
-            displayDashboardStats(bmnCache.stats);
-            return;
-        }
-        
         const filters = {
             role: currentUser.role,
             kua: currentUser.role === 'Admin' ? '' : currentUser.kua
@@ -282,7 +194,6 @@ async function loadBMNDashboardStats() {
         const stats = await apiCall('getBMNStats', filters);
         debugLog('DASHBOARD', 'Stats loaded from API', stats);
         
-        updateCache(CACHE_CONFIG.KEYS.STATS, stats);
         displayDashboardStats(stats);
     } catch (error) {
         debugLog('DASHBOARD ERROR', error.message, error);
@@ -628,7 +539,7 @@ function searchBMN() {
 }
 
 function generateKodeBarang(kua, jenis) {
-    const kuaCode = BMN_CONFIG.KUA_CODES[kua] || '00';
+    const kuaCode = APP_CONFIG.BMN.KUA_CODES[kua] || '00';
     
     const jenisCode = {
         'Tanah': '01',
@@ -693,7 +604,7 @@ function showBMNModal(bmn = null) {
                         <label>Jenis BMN *</label>
                         <select id="jenisBMN" required onchange="updateKodeBarang()" ${isEdit ? 'disabled' : ''}>
                             <option value="">Pilih Jenis</option>
-                            ${BMN_CONFIG.JENIS_BMN.map(jenis => `
+                            ${APP_CONFIG.BMN.JENIS_BMN.map(jenis => `
                                 <option value="${jenis}" ${isEdit && bmn.jenis === jenis ? 'selected' : ''}>
                                     ${jenis}
                                 </option>
@@ -719,7 +630,7 @@ function showBMNModal(bmn = null) {
                         <label>Sumber Perolehan</label>
                         <select id="sumberPerolehan">
                             <option value="">Pilih Sumber</option>
-                            ${BMN_CONFIG.SUMBER_PEROLEHAN.map(sumber => `
+                            ${APP_CONFIG.BMN.SUMBER_PEROLEHAN.map(sumber => `
                                 <option value="${sumber}" ${isEdit && bmn.sumberPerolehan === sumber ? 'selected' : ''}>
                                     ${sumber}
                                 </option>
@@ -733,7 +644,7 @@ function showBMNModal(bmn = null) {
                         <label>Kondisi *</label>
                         <select id="kondisi" required>
                             <option value="">Pilih Kondisi</option>
-                            ${BMN_CONFIG.KONDISI_BMN.map(kondisi => `
+                            ${APP_CONFIG.BMN.KONDISI_BMN.map(kondisi => `
                                 <option value="${kondisi}" ${isEdit && bmn.kondisi === kondisi ? 'selected' : ''}>
                                     ${kondisi}
                                 </option>
@@ -745,7 +656,7 @@ function showBMNModal(bmn = null) {
                         <label>Status Penggunaan *</label>
                         <select id="statusPenggunaan" required>
                             <option value="">Pilih Status</option>
-                            ${BMN_CONFIG.STATUS_BMN.map(status => `
+                            ${APP_CONFIG.BMN.STATUS_BMN.map(status => `
                                 <option value="${status}" ${isEdit && bmn.status === status ? 'selected' : ''}>
                                     ${status}
                                 </option>
@@ -772,7 +683,7 @@ function showBMNModal(bmn = null) {
                 </div>
                 
                 <div class="form-group">
-                    <label>Foto BMN (Maks ${BMN_CONFIG.MAX_PHOTOS} foto, ${BMN_CONFIG.MAX_PHOTO_SIZE / 1024 / 1024}MB/foto)</label>
+                    <label>Foto BMN (Maks ${APP_CONFIG.BMN.MAX_PHOTOS} foto, ${APP_CONFIG.BMN.MAX_PHOTO_SIZE / 1024 / 1024}MB/foto)</label>
                     <div class="camera-upload">
                         <button type="button" class="btn btn-secondary" onclick="document.getElementById('photoInput').click()">
                             📷 Pilih Foto
@@ -825,14 +736,14 @@ async function handlePhotoUpload(event) {
     
     if (!files || files.length === 0) return;
     
-    if (uploadedPhotos.length + files.length > BMN_CONFIG.MAX_PHOTOS) {
-        showNotification(`Maksimal ${BMN_CONFIG.MAX_PHOTOS} foto`, 'warning');
+    if (uploadedPhotos.length + files.length > APP_CONFIG.BMN.MAX_PHOTOS) {
+        showNotification(`Maksimal ${APP_CONFIG.BMN.MAX_PHOTOS} foto`, 'warning');
         return;
     }
     
     for (let file of files) {
-        if (file.size > BMN_CONFIG.MAX_PHOTO_SIZE) {
-            showNotification(`Ukuran ${file.name} terlalu besar (maks ${BMN_CONFIG.MAX_PHOTO_SIZE / 1024 / 1024}MB)`, 'warning');
+        if (file.size > APP_CONFIG.BMN.MAX_PHOTO_SIZE) {
+            showNotification(`Ukuran ${file.name} terlalu besar (maks ${APP_CONFIG.BMN.MAX_PHOTO_SIZE / 1024 / 1024}MB)`, 'warning');
             continue;
         }
         
@@ -1244,7 +1155,7 @@ async function loadLaporanOptions() {
     const isKUA = currentUser.role.includes('KUA');
 
     if (isAdmin) {
-        const kuaList = Object.keys(BMN_CONFIG.KUA_CODES).sort();
+        const kuaList = Object.keys(APP_CONFIG.BMN.KUA_CODES).sort();
         laporanKUA.innerHTML = '<option value="">Pilih KUA</option>' +
             kuaList.map(kua => `<option value="${kua}">${kua}</option>`).join('');
         laporanKUA.disabled = false;
@@ -1369,13 +1280,7 @@ async function loadRiwayat() {
             kua: currentUser.role === 'Admin' ? document.getElementById('riwayatKUA')?.value : currentUser.kua
         };
         
-        if (isCacheValid(CACHE_CONFIG.KEYS.RIWAYAT)) {
-            displayRiwayat(bmnCache.riwayat);
-            return;
-        }
-        
         const data = await apiCall('getBMNRiwayat', filters);
-        updateCache(CACHE_CONFIG.KEYS.RIWAYAT, data);
         displayRiwayat(data);
     } catch (error) {
         console.error('[RIWAYAT ERROR]', error);
@@ -1420,13 +1325,13 @@ function searchRiwayat() {
 }
 
 function loadMasterData() {
-    const kuaList = Object.keys(BMN_CONFIG.KUA_CODES).sort();
+    const kuaList = Object.keys(APP_CONFIG.BMN.KUA_CODES).sort();
     const kuaListEl = document.getElementById('kuaList');
     
     kuaListEl.innerHTML = kuaList.map((kua, index) => `
         <div style="padding: 10px; background: #f8f9fa; border-radius: 6px; border-left: 3px solid #667eea;">
             <strong>${index + 1}. ${kua}</strong>
-            <div style="font-size: 12px; color: #666;">Kode: ${BMN_CONFIG.KUA_CODES[kua]}</div>
+            <div style="font-size: 12px; color: #666;">Kode: ${APP_CONFIG.BMN.KUA_CODES[kua]}</div>
         </div>
     `).join('');
 }
