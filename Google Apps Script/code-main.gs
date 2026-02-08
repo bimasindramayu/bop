@@ -230,6 +230,22 @@ function initializeSheet(sheet, sheetName) {
   }
 }
 
+// ✅ HELPER: Safe date conversion
+function safeDate(value) {
+  if (!value) return '';
+  try {
+    const date = new Date(value);
+    // Check if date is valid
+    if (isNaN(date.getTime())) {
+      return '';
+    }
+    return date.toISOString();
+  } catch (error) {
+    Logger.log('[SAFE_DATE ERROR] ' + error.toString() + ' for value: ' + value);
+    return '';
+  }
+}
+
 // ===== USER MANAGEMENT =====
 function handleLogin(data) {
   Logger.log('[LOGIN] Attempting login for: ' + data.username);
@@ -295,14 +311,15 @@ function getUsers(data) {
     const users = [];
     
     for (let i = 1; i < rows.length; i++) {
+      // ✅ FIX: Use safeDate helper for date conversion
       users.push({
         id: rows[i][0],
         username: rows[i][1],
         name: rows[i][3],
         role: rows[i][4],
         kua: rows[i][5] || '',
-        created: rows[i][6] ? new Date(rows[i][6]).toISOString() : '',
-        updated: rows[i][7] ? new Date(rows[i][7]).toISOString() : ''
+        created: safeDate(rows[i][6]),
+        updated: safeDate(rows[i][7])
       });
     }
     

@@ -5,7 +5,415 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Kelola Pengguna - Sistem Kemenag</title>
     <link rel="icon" type="image/png" href="assets/coin.png">
-    <link rel="stylesheet" href="style/bop-styles.css">
+    <style>
+        /* ===== RESET & BASE ===== */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        /* ===== CONTAINER ===== */
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        /* ===== HEADER ===== */
+        .header {
+            background: white;
+            padding: 20px 30px;
+            border-radius: 15px;
+            margin-bottom: 30px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+
+        .header-left h2 {
+            color: #333;
+            font-size: 24px;
+            margin-bottom: 5px;
+        }
+
+        .header-left p {
+            color: #666;
+            font-size: 14px;
+        }
+
+        .header-right {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .user-info {
+            text-align: right;
+            margin-right: 15px;
+        }
+
+        .user-info strong {
+            display: block;
+            color: #333;
+            font-size: 14px;
+        }
+
+        .user-info small {
+            color: #666;
+            font-size: 12px;
+        }
+
+        /* ===== CONTENT AREA ===== */
+        .content-area {
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+
+        /* ===== TOOLBAR ===== */
+        .toolbar {
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        /* ===== BUTTONS ===== */
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        }
+
+        .btn-sm {
+            padding: 8px 16px;
+            font-size: 13px;
+        }
+
+        .btn-success {
+            background: #28a745;
+            color: white;
+        }
+
+        .btn-success:hover {
+            background: #218838;
+        }
+
+        .btn-info {
+            background: #17a2b8;
+            color: white;
+        }
+
+        .btn-info:hover {
+            background: #138496;
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            background: #5a6268;
+        }
+
+        .btn-danger {
+            background: #dc3545;
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: #c82333;
+        }
+
+        /* ===== TABLE ===== */
+        .table-container {
+            overflow-x: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: white;
+        }
+
+        table thead {
+            background: #f8f9fa;
+        }
+
+        table th {
+            padding: 12px;
+            text-align: left;
+            font-weight: 600;
+            color: #333;
+            border-bottom: 2px solid #dee2e6;
+        }
+
+        table td {
+            padding: 12px;
+            border-bottom: 1px solid #dee2e6;
+            color: #555;
+        }
+
+        table tbody tr:hover {
+            background: #f8f9fa;
+        }
+
+        table td button {
+            margin-right: 5px;
+        }
+
+        /* ===== BADGE ===== */
+        .badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .badge-success {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .badge-danger {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        /* ===== MODAL ===== */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal.active {
+            display: flex;
+        }
+
+        .modal-content {
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            max-width: 600px;
+            width: 90%;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .modal-header h3 {
+            color: #333;
+        }
+
+        .close-btn {
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            color: #666;
+        }
+
+        .close-btn:hover {
+            color: #333;
+        }
+
+        /* ===== FORM ===== */
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            color: #333;
+            font-weight: 500;
+        }
+
+        .form-group input,
+        .form-group select {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+
+        .form-group input:focus,
+        .form-group select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        /* ===== PASSWORD INPUT GROUP ===== */
+        .password-input-group {
+            position: relative;
+        }
+
+        .password-toggle {
+            position: absolute;
+            right: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: none;
+            border: none;
+            cursor: pointer;
+            color: #666;
+            font-size: 18px;
+            padding: 5px;
+        }
+
+        .password-toggle:hover {
+            color: #333;
+        }
+
+        /* ===== LOADING ===== */
+        .loading {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 3000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .loading.active {
+            display: flex;
+        }
+
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 5px solid #f3f3f3;
+            border-top: 5px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* ===== NOTIFICATION ===== */
+        .notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 15px 20px;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            z-index: 2000;
+            display: none;
+            max-width: 350px;
+        }
+
+        .notification.active {
+            display: block;
+            animation: slideIn 0.3s ease-out;
+        }
+
+        @keyframes slideIn {
+            from {
+                transform: translateX(400px);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+
+        .notification.error {
+            border-left: 4px solid #dc3545;
+            color: #721c24;
+        }
+
+        .notification.success {
+            border-left: 4px solid #28a745;
+            color: #155724;
+        }
+
+        .notification.warning {
+            border-left: 4px solid #ffc107;
+            color: #856404;
+        }
+
+        .notification.info {
+            border-left: 4px solid #17a2b8;
+            color: #0c5460;
+        }
+
+        /* ===== RESPONSIVE ===== */
+        @media (max-width: 768px) {
+            .header {
+                flex-direction: column;
+                text-align: center;
+            }
+
+            .header-right {
+                width: 100%;
+                justify-content: center;
+            }
+
+            .user-info {
+                text-align: center;
+                margin-right: 0;
+                margin-bottom: 10px;
+            }
+
+            table {
+                font-size: 12px;
+            }
+
+            table th,
+            table td {
+                padding: 8px;
+            }
+        }
+    </style>
 </head>
 <body>
     <!-- Loading Spinner -->
@@ -17,94 +425,52 @@
     <div class="notification" id="notification"></div>
 
     <!-- User Management Page -->
-    <div class="dashboard active">
-        <div class="container">
-            <div class="header">
-                <div class="header-left">
-                    <h2>Kelola Pengguna</h2>
-                    <p>Manajemen User dan Akses Sistem</p>
-                </div>
-                <div class="header-right">
-                    <div class="user-info">
-                        <strong id="userNameDisplay"></strong>
-                        <small id="userRoleDisplay"></small>
-                    </div>
-                    <button class="btn btn-info btn-sm" onclick="backToMenu()">← Menu Utama</button>
-                    <button class="btn btn-secondary btn-sm" onclick="logout()">Keluar</button>
-                </div>
+    <div class="container">
+        <div class="header">
+            <div class="header-left">
+                <h2>Kelola Pengguna</h2>
+                <p>Manajemen User dan Akses Sistem</p>
             </div>
-
-            <div class="content-area">
-                <div class="page active">
-                    <h2 style="margin-bottom: 20px;">Daftar Pengguna</h2>
-                    <div class="toolbar">
-                        <button class="btn btn-success btn-sm" onclick="showUserModal()">+ Tambah Pengguna</button>
-                    </div>
-                    <div class="table-container">
-                        <table id="userTable">
-                            <thead>
-                                <tr>
-                                    <th>No</th>
-                                    <th>Username</th>
-                                    <th>Nama</th>
-                                    <th>Role</th>
-                                    <th>KUA</th>
-                                    <th>Status</th>
-                                    <th>Dibuat</th>
-                                    <th>Aksi</th>
-                                </tr>
-                            </thead>
-                            <tbody></tbody>
-                        </table>
-                    </div>
+            <div class="header-right">
+                <div class="user-info">
+                    <strong id="userNameDisplay"></strong>
+                    <small id="userRoleDisplay"></small>
                 </div>
+                <button class="btn btn-info btn-sm" onclick="backToMenu()">← Menu Utama</button>
+                <button class="btn btn-secondary btn-sm" onclick="logout()">Keluar</button>
+            </div>
+        </div>
+
+        <div class="content-area">
+            <h2 style="margin-bottom: 20px;">Daftar Pengguna</h2>
+            <div class="toolbar">
+                <button class="btn btn-success btn-sm" onclick="showUserModal()">+ Tambah Pengguna</button>
+            </div>
+            <div class="table-container">
+                <table id="userTable">
+                    <thead>
+                        <tr>
+                            <th>No</th>
+                            <th>Username</th>
+                            <th>Nama</th>
+                            <th>Role</th>
+                            <th>KUA</th>
+                            <th>Status</th>
+                            <th>Aksi</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td colspan="7" style="text-align: center;">Memuat data...</td>
+                        </tr>
+                    </tbody>
+                </table>
             </div>
         </div>
     </div>
 
-    <!-- Modal will be created by JavaScript -->
-
     <!-- Load Config & Scripts -->
     <script src="js/config.js"></script>
-    <script src="js/bop-script.js"></script>
-    
-    <script>
-        // Initialize page
-        window.addEventListener('DOMContentLoaded', function() {
-            currentUser = SessionManager.getCurrentUser();
-            
-            if (!currentUser) {
-                window.location.href = 'index.html';
-                return;
-            }
-            
-            // Only Admin can access
-            if (currentUser.role !== 'Admin') {
-                showNotification('Akses ditolak. Hanya Admin yang dapat mengakses halaman ini.', 'error');
-                setTimeout(() => {
-                    window.location.href = 'main-menu.html';
-                }, 2000);
-                return;
-            }
-            
-            // Display user info
-            document.getElementById('userNameDisplay').textContent = currentUser.name;
-            document.getElementById('userRoleDisplay').textContent = currentUser.role;
-            
-            // Load users
-            loadUsers();
-        });
-        
-        function backToMenu() {
-            window.location.href = 'main-menu.html';
-        }
-        
-        function logout() {
-            if (confirm('Apakah Anda yakin ingin keluar?')) {
-                SessionManager.clearUser();
-                window.location.href = 'index.html';
-            }
-        }
-    </script>
+    <script src="js/user-management-script.js"></script>
 </body>
 </html>
