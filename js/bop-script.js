@@ -1615,25 +1615,30 @@ async function showRPDModal(rpd = null) {
         const month = document.getElementById('rpdMonth').value;
         const year = document.getElementById('rpdYear').value;
         
-        // Validasi untuk Operator
-        if (currentUser.role === 'Operator KUA') {
-            const currentDate = new Date();
-            const currentYear = currentDate.getFullYear();
-            const currentMonth = currentDate.getMonth();
-            const monthNames = APP_CONFIG.MONTHS;
-            const rpdMonthIndex = monthNames.indexOf(month);
-            const rpdYear = parseInt(year);
+        // ✅ UPDATED VALIDATION: Check for duplicate month and config status
+        if (!rpd || !rpd.id) {
+            // For NEW RPD, check duplicate month
+            const cachedRPDs = getLocalCache('rpds') || [];
+            const isDuplicate = cachedRPDs.some(existingRPD => 
+                existingRPD.month === month && 
+                existingRPD.year == year &&
+                existingRPD.kua === currentUser.kua
+            );
             
-            if (rpd && rpd.id) {
-                if (rpdYear < currentYear || (rpdYear === currentYear && rpdMonthIndex <= currentMonth)) {
-                    showNotification('RPD untuk bulan ini dan bulan sebelumnya tidak dapat diubah', 'warning');
+            if (isDuplicate) {
+                showNotification('RPD untuk bulan ' + month + ' ' + year + ' sudah ada. Tidak boleh duplicate.', 'error');
+                return;
+            }
+            
+            // Check config status
+            try {
+                const config = await apiCall('getRPDConfig');
+                if (config.RPD_STATUS === 'closed' && currentUser.role !== 'Admin') {
+                    showNotification('Pengisian RPD sedang ditutup', 'warning');
                     return;
                 }
-            } else {
-                if (rpdYear < currentYear || (rpdYear === currentYear && rpdMonthIndex < currentMonth)) {
-                    showNotification('RPD hanya dapat dibuat untuk bulan ini atau bulan yang akan datang', 'warning');
-                    return;
-                }
+            } catch (error) {
+                console.error('[RPD VALIDATION] Failed to check config', error);
             }
         }
         
@@ -2404,11 +2409,36 @@ async function showRealisasiModal(realisasi = null) {
         
         console.log('[REALISASI FORM] Data collected:', { realisasiData, total });
         
+        // ✅ VALIDASI WAJIB UPLOAD DOKUMEN LPJ
+        // Check if there are any files (existing or new)
+        let hasFiles = false;
+        
+        const existingFilesInput = document.getElementById('existingFilesData');
+        if (existingFilesInput && existingFilesInput.value) {
+            try {
+                const existing = JSON.parse(existingFilesInput.value);
+                if (Array.isArray(existing) && existing.length > 0) {
+                    hasFiles = true;
+                }
+            } catch (e) {
+                console.error('[REALISASI FORM] Error parsing existing files:', e);
+            }
+        }
+        
+        // Check new uploaded files
+        if (uploadedFiles.length > 0) {
+            hasFiles = true;
+        }
+        
+        if (!hasFiles) {
+            showNotification('Upload Dokumen LPJ wajib diisi. Silakan upload minimal 1 file.', 'error');
+            return;
+        }
+        
         // ✅ FIX ISSUE #1: Handle files properly
         let allFiles = [];
         
         // 1. Get existing files
-        const existingFilesInput = document.getElementById('existingFilesData');
         if (existingFilesInput && existingFilesInput.value) {
             try {
                 const existing = JSON.parse(existingFilesInput.value);
