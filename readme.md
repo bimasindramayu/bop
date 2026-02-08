@@ -215,7 +215,7 @@ project/
 │   └── bmn-styles.css              # ✨ BMN styles (imports bop & main)
 │
 ├── assets/
-│   └── coin.png                    # Logo
+│   └── kemenag.png                    # Logo
 │
 └── Google Apps Script/
     ├── code-main.gs                # ✨ Main handler & auth
