@@ -18,14 +18,6 @@ const bmnCache = {
     lastUpdate: null
 };
 
-const CACHE_CONFIG = {
-    TTL: 5 * 60 * 1000,
-    KEYS: {
-        STATS: 'stats',
-        DATA: 'data'
-    }
-};
-
 // ===== INITIALIZATION =====
 window.addEventListener('DOMContentLoaded', function() {
     debugLog('BMN', 'Initializing BMN Dashboard');

@@ -134,7 +134,36 @@ function handleBOPAction(action, data) {
   try {
     let result;
     
+    // ✅ Route ke enhanced functions untuk critical operations
     switch(action) {
+      // Enhanced save operations dengan locking
+      case 'saveRPD':
+        result = saveRPDWithRetry(data);
+        break;
+        
+      case 'saveRealisasi':
+        result = saveRealisasiWithRetry(data);
+        break;
+        
+      case 'verifyRealisasi':
+        result = verifyRealisasiEnhanced(data);
+        break;
+      
+      // Optimized batch operations
+      case 'getRPDs':
+        // Check if batch request
+        if (data.kuas || data.years || data.months) {
+          result = getRPDsBatch(data);
+        } else {
+          result = getRPDs(data);
+        }
+        break;
+        
+      case 'getDashboardStats':
+        result = getDashboardStatsOptimized(data);
+        break;
+      
+      // Keep existing operations untuk yang lain
       case 'getBudgets': 
         result = getBudgets(data);
         break;
@@ -144,26 +173,14 @@ function handleBOPAction(action, data) {
       case 'deleteBudget': 
         result = deleteBudget(data);
         break;
-      case 'getRPDs': 
-        result = getRPDs(data);
-        break;
-      case 'saveRPD': 
-        result = saveRPD(data);
-        break;
       case 'deleteRPD': 
         result = deleteRPD(data);
         break;
       case 'getRealisasis': 
         result = getRealisasis(data);
         break;
-      case 'saveRealisasi': 
-        result = saveRealisasi(data);
-        break;
       case 'deleteRealisasi': 
         result = deleteRealisasi(data);
-        break;
-      case 'verifyRealisasi': 
-        result = verifyRealisasi(data);
         break;
       case 'updateRealisasiStatus':
         result = updateRealisasiStatus(data);
@@ -173,9 +190,6 @@ function handleBOPAction(action, data) {
         break;
       case 'saveRPDConfig': 
         result = saveRPDConfig(data);
-        break;
-      case 'getDashboardStats': 
-        result = getDashboardStats(data);
         break;
       case 'exportRPDPerYear': 
         result = exportRPDPerYear(data);

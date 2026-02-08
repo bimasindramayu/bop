@@ -2257,7 +2257,7 @@ async function showRealisasiModal(realisasi = null) {
                     
                     <!-- ✅ FILE UPLOAD SECTION -->
                     <div class="file-upload-section">
-                        <h4 style="margin-bottom: 15px;">Lampiran Dokumen</h4>
+                        <h4 style="margin-bottom: 15px;">Lampiran Dokumen LPJ (Laporan Pertanggung Jawaban)</h4>
                         
                         <div class="upload-info" style="background: #f8f9fa; padding: 12px; border-radius: 4px; margin-bottom: 15px;">
                             <p style="margin: 0; font-size: 13px; color: #666;">
