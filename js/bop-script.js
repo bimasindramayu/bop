@@ -340,6 +340,9 @@ function getMonthIndex(monthName) {
     return APP_CONFIG.MONTHS.indexOf(monthName);
 }
 
+// Script snippet untuk memperbaiki buildNavMenu di bop-script.js
+// Ganti fungsi buildNavMenu dengan yang ini:
+
 function buildNavMenu() {
     console.log('[NAV] Building navigation menu');
     const navMenu = document.getElementById('navMenu');
@@ -349,32 +352,27 @@ function buildNavMenu() {
 
     if (currentUser.role === 'Admin') {
         menuItems = [
-            { id: 'dashboardPage', label: 'Dashboard' },
-            { id: 'budgetingPage', label: 'Budget' },
-            { id: 'rpdPage', label: 'Lihat RPD' },
-            { id: 'verifikasiPage', label: 'Verifikasi' },
-            { id: 'laporanPage', label: 'Laporan' },
-            { id: 'rpdConfigPage', label: 'Konfigurasi' }
+            { id: 'dashboardPage', label: 'Dashboard', icon: '📊' },
+            { id: 'budgetingPage', label: 'Budget', icon: '💰' },
+            { id: 'rpdPage', label: 'Lihat RPD', icon: '📋' },
+            { id: 'verifikasiPage', label: 'Verifikasi', icon: '✓' },
+            { id: 'laporanPage', label: 'Laporan', icon: '📄' },
+            { id: 'rpdConfigPage', label: 'Konfigurasi', icon: '⚙️' }
         ];
     } else {
         menuItems = [
-            { id: 'dashboardPage', label: 'Dashboard' },
-            { id: 'rpdPage', label: 'RPD' },
-            { id: 'realisasiPage', label: 'Realisasi' }
+            { id: 'dashboardPage', label: 'Dashboard', icon: '📊' },
+            { id: 'rpdPage', label: 'RPD', icon: '📋' },
+            { id: 'realisasiPage', label: 'Realisasi', icon: '💵' }
         ];
     }
 
-    navMenu.innerHTML = `
-        <ul>
-            ${menuItems.map(item => `
-                <li>
-                    <button onclick="showPage('${item.id}')" id="nav-${item.id}">
-                        ${item.label}
-                    </button>
-                </li>
-            `).join('')}
-        </ul>
-    `;
+    navMenu.innerHTML = menuItems.map(item => `
+        <button class="nav-btn" onclick="showPage('${item.id}')" id="nav-${item.id}">
+            <span class="nav-icon">${item.icon}</span>
+            <span class="nav-label">${item.label}</span>
+        </button>
+    `).join('');
 
     const firstNavBtn = document.getElementById('nav-dashboardPage');
     if (firstNavBtn) firstNavBtn.classList.add('active');
@@ -840,99 +838,116 @@ function showBudgetModal(budget = null) {
     
     editingBudget = budget;
     
-    let modal = document.getElementById('modal');
-    if (!modal) {
-        modal = document.createElement('div');
-        modal.id = 'modal';
-        modal.className = 'modal';
-        document.body.appendChild(modal);
-    }
+    // Remove existing modal
+    const existingModal = document.getElementById('budgetModal');
+    if (existingModal) existingModal.remove();
     
     const currentYear = new Date().getFullYear();
     const budgetTotal = budget ? (parseFloat(budget.total) || parseFloat(budget.budget) || 0) : 0;
     
-    modal.innerHTML = `
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3>${budget ? 'Edit Budget' : 'Tambah Budget'}</h3>
-                <button class="close-btn" onclick="closeModal()">&times;</button>
-            </div>
-            <form id="budgetForm">
-                <div class="form-group">
-                    <label>Pilih KUA</label>
-                    <select id="budgetKUA" required ${budget ? 'disabled' : ''}>
-                        <option value="">-- Pilih KUA --</option>
-                        ${APP_CONFIG.KUA_LIST.map(kua => `
-                            <option value="${kua}" ${budget && budget.kua === kua ? 'selected' : ''}>${kua}</option>
-                        `).join('')}
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label>Tahun Anggaran</label>
-                    <select id="budgetYear" required ${budget ? 'disabled' : ''}>
-                        ${[currentYear - 1, currentYear, currentYear + 1].map(year => `
-                            <option value="${year}" ${budget && budget.year == year ? 'selected' : year === currentYear ? 'selected' : ''}>${year}</option>
-                        `).join('')}
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label>Budget Tahunan (Rp)</label>
-                    <input type="text" 
-                           id="budgetAmount" 
-                           class="auto-format-number"
-                           required 
-                           value="${budgetTotal}" 
-                           placeholder="0">
-                    <small style="color: #666;">Otomatis terformat dengan separator ribuan</small>
-                </div>
-                <button type="submit" class="btn">Simpan</button>
+    const modal = createModernModal({
+        id: 'budgetModal',
+        title: budget ? 'Edit Budget' : 'Tambah Budget',
+        subtitle: budget ? `KUA ${budget.kua} - Tahun ${budget.year}` : 'Masukkan data budget KUA',
+        size: 'md',
+        body: `
+            <form id="budgetForm" onsubmit="handleSaveBudget(event)">
+                ${createFormGroup({
+                    label: 'Pilih KUA',
+                    name: 'budgetKUA',
+                    type: 'select',
+                    value: budget?.kua || '',
+                    required: true,
+                    disabled: !!budget,
+                    options: [
+                        { value: '', label: '-- Pilih KUA --' },
+                        ...APP_CONFIG.KUA_LIST.map(kua => ({
+                            value: kua,
+                            label: kua
+                        }))
+                    ]
+                })}
+                
+                ${createFormGroup({
+                    label: 'Tahun Anggaran',
+                    name: 'budgetYear',
+                    type: 'select',
+                    value: budget?.year || currentYear,
+                    required: true,
+                    disabled: !!budget,
+                    options: [currentYear - 1, currentYear, currentYear + 1].map(year => ({
+                        value: year,
+                        label: year.toString()
+                    }))
+                })}
+                
+                ${createFormGroup({
+                    label: 'Budget Tahunan (Rp)',
+                    name: 'budgetAmount',
+                    type: 'text',
+                    value: budgetTotal,
+                    required: true,
+                    placeholder: '0',
+                    hint: 'Otomatis terformat dengan separator ribuan'
+                })}
             </form>
-        </div>
-    `;
-    
-    modal.classList.add('active');
-    
-    // ✅ Setup auto-format
-    setTimeout(() => {
-        setupAllAutoFormatInputs('.auto-format-number');
-    }, 100);
-    
-    document.getElementById('budgetForm').addEventListener('submit', async (e) => {
-        e.preventDefault();
-        
-        const budgetInput = document.getElementById('budgetAmount');
-        // ✅ Parse formatted value
-        const rawValue = parseFormattedNumber(budgetInput.value);
-        
-        const budgetData = {
-            id: editingBudget?.id,
-            kua: document.getElementById('budgetKUA').value,
-            year: parseInt(document.getElementById('budgetYear').value),
-            total: rawValue
-        };
-        
-        console.log('[BUDGET FORM] Submitting:', budgetData);
-        
-        try {
-            await apiCall('saveBudget', budgetData);
-            showNotification('Budget berhasil disimpan', 'success');
-            
-            editingBudget = null;
-            closeModal();
-            
-            clearLocalCache('budgets');
-            clearLocalCache('dashboardStats');
-            
-            await Promise.all([
-                loadBudgets(true),
-                loadDashboardStats(true)
-            ]);
-            
-        } catch (error) {
-            console.error('[BUDGET FORM ERROR]', error);
-            showNotification(error.message || 'Gagal menyimpan budget', 'error');
-        }
+        `,
+        footer: `
+            <button type="button" class="btn btn-secondary" onclick="closeModernModal('budgetModal')">
+                Batal
+            </button>
+            <button type="submit" form="budgetForm" class="btn btn-primary">
+                💾 Simpan
+            </button>
+        `
     });
+    
+    document.body.appendChild(modal);
+    
+    // Setup auto-format
+    setTimeout(() => {
+        setupAllAutoFormatInputs('#budgetAmount');
+    }, 100);
+}
+
+function handleSaveBudget(event) {
+    event.preventDefault();
+    
+    const budgetInput = document.getElementById('budgetAmount');
+    const rawValue = parseFormattedNumber(budgetInput.value);
+    
+    const budgetData = {
+        id: editingBudget?.id,
+        kua: document.getElementById('budgetKUA').value,
+        year: parseInt(document.getElementById('budgetYear').value),
+        total: rawValue
+    };
+    
+    console.log('[BUDGET FORM] Submitting:', budgetData);
+    
+    saveBudgetData(budgetData);
+}
+
+async function saveBudgetData(budgetData) {
+    try {
+        await apiCall('saveBudget', budgetData);
+        showNotification('Budget berhasil disimpan', 'success');
+        
+        editingBudget = null;
+        closeModernModal('budgetModal');
+        
+        clearLocalCache('budgets');
+        clearLocalCache('dashboardStats');
+        
+        await Promise.all([
+            loadBudgets(true),
+            loadDashboardStats(true)
+        ]);
+        
+    } catch (error) {
+        console.error('[BUDGET FORM ERROR]', error);
+        showNotification(error.message || 'Gagal menyimpan budget', 'error');
+    }
 }
 
 function editBudget(budget) {
@@ -1436,273 +1451,278 @@ function onRPDKUAFilterChange() {
 async function showRPDModal(rpd = null) {
     console.log('[RPD MODAL]', rpd);
     
-    // Check if config allows RPD input (tanpa loading)
-    try {
-        const config = await apiCall('getRPDConfig');
-        if (config.RPD_STATUS === 'closed' && currentUser.role !== 'Admin') {
-            showNotification('Pengisian RPD sedang ditutup', 'warning');
-            return;
-        }
-    } catch (error) {
-        console.error('[RPD ERROR] Failed to check config', error);
-    }
-
-    // ✅ Get budget info dari CACHE, tidak perlu fetch
-    let budgetInfo = { budget: 0, totalRPD: 0, sisaRPD: 0 };
-    try {
-        const cachedBudgets = getLocalCache('budgets');
+    editingRPD = rpd;
+    
+    // Remove existing modal
+    const existingModal = document.getElementById('rpdModal');
+    if (existingModal) existingModal.remove();
+    
+    const currentUser = SessionManager.getCurrentUser();
+    const isAdmin = currentUser.role === 'Admin';
+    
+    // Dapatkan year dari existing RPD atau current year
+    const selectedYear = rpd?.year || parseInt(document.getElementById('rpdYearFilter')?.value) || new Date().getFullYear();
+    
+    // ✅ BUAT FORM INPUT UNTUK SETIAP AKUN
+    let accountInputs = '';
+    Object.keys(APP_CONFIG.BOP.RPD_PARAMETERS).forEach(code => {
+        const param = APP_CONFIG.BOP.RPD_PARAMETERS[code];
         
-        if (cachedBudgets && cachedBudgets.length > 0) {
-            const budget = cachedBudgets[0];
-            
-            const budgetTotal = parseFloat(budget.total) || parseFloat(budget.budget) || 0;
-            const totalRPD = parseFloat(budget.totalRPD) || parseFloat(budget.pagu) || 0;
-            
-            budgetInfo = {
-                budget: budgetTotal,
-                totalRPD: totalRPD,
-                sisaRPD: budgetTotal - totalRPD
-            };
-            
-            console.log('[RPD MODAL] Budget info from cache:', budgetInfo);
-        } else {
-            console.log('[RPD MODAL] No budget in cache, using default values');
-        }
-    } catch (error) {
-        console.error('[RPD ERROR] Failed to get budget:', error);
-    }
-
-    // Create modal if doesn't exist
-    let modal = document.getElementById('modal');
-    if (!modal) {
-        modal = document.createElement('div');
-        modal.id = 'modal';
-        modal.className = 'modal';
-        document.body.appendChild(modal);
-    }
-    
-    // ✅ FIX: Prepare RPD data dengan benar
-    const rpdData = rpd && rpd.data ? rpd.data : {};
-    console.log('[RPD MODAL] RPD data:', rpdData);
-    
-    const currentYear = new Date().getFullYear();
-    
-    // ✅ FIX: Build parameters HTML dengan logging detail
-    let parametersHTML = '';
-    
-    Object.entries(APP_CONFIG.BOP.RPD_PARAMETERS).forEach(([code, param]) => {
-        console.log('[RPD MODAL] Building HTML for code:', code, 'param:', param);
-        
-        parametersHTML += `
-            <div class="rpd-item">
-                <h4>${code} - ${param.name}</h4>
+        accountInputs += `
+            <div class="rpd-account-section">
+                <h4 class="rpd-account-title">${code} - ${param.name}</h4>
+                <div class="rpd-items-grid">
         `;
         
-        param.items.forEach((item, itemIndex) => {
-            // ✅ FIX: Define value BEFORE using it
-            const itemValue = rpdData[code] && rpdData[code][item] ? rpdData[code][item] : 0;
-            const inputId = `rpd_${code}_${item.replace(/\s+/g, '_')}`;
+        param.items.forEach(item => {
+            const inputId = `rpd_${code}_${item.replace(/[\s\/]/g, '_')}`;
+            const value = rpd?.data?.[code]?.[item] || 0;
             
-            console.log(`[RPD MODAL] Item ${itemIndex}: ${item}, value:`, itemValue);
-            
-            parametersHTML += `
-                <div class="rpd-subitem">
-                    <label>${item}</label>
-                    <input type="text" 
-                           id="${inputId}"
-                           class="rpd-input auto-format-number"
-                           data-code="${code}" 
-                           data-item="${item}" 
-                           value="${itemValue}" 
-                           placeholder="0">
+            accountInputs += `
+                <div class="rpd-item-input">
+                    <label for="${inputId}">${item}</label>
+                    <input 
+                        type="text" 
+                        id="${inputId}" 
+                        name="${inputId}"
+                        value="${formatNumber(value)}"
+                        data-code="${code}"
+                        data-item="${item}"
+                        class="rpd-input auto-format-number"
+                        placeholder="0"
+                        onkeyup="calculateRPDTotal()"
+                    />
                 </div>
             `;
         });
         
-        parametersHTML += `</div>`;
+        accountInputs += `
+                </div>
+            </div>
+        `;
     });
     
-    console.log('[RPD MODAL] Parameters HTML built successfully');
-    
-    modal.innerHTML = `
-        <div class="modal-content" style="max-width: 900px;">
-            <div class="modal-header">
-                <h3>${rpd ? 'Edit RPD' : 'Buat RPD Baru'}</h3>
-                <button class="close-btn" onclick="closeModal()">&times;</button>
-            </div>
-            
-            <div class="summary-box">
-                <div class="summary-item">
-                    <span>Budget Tahunan:</span>
-                    <strong>${formatCurrency(budgetInfo.budget)}</strong>
-                </div>
-                <div class="summary-item">
-                    <span>Total RPD yang Sudah Disubmit:</span>
-                    <strong>${formatCurrency(budgetInfo.totalRPD)}</strong>
-                </div>
-                <div class="summary-item">
-                    <span>Sisa Nominal RPD:</span>
-                    <strong>${formatCurrency(budgetInfo.sisaRPD)}</strong>
-                </div>
-            </div>
-            
-            <form id="rpdForm">
-                <div class="form-group">
-                    <label>Bulan</label>
-                    <select id="rpdMonth" required ${rpd ? 'disabled' : ''}>
-                        <option value="">-- Pilih Bulan --</option>
-                        ${APP_CONFIG.MONTHS.map((month, index) => `
-                            <option value="${month}" ${rpd && rpd.month === month ? 'selected' : ''}>${month}</option>
-                        `).join('')}
-                    </select>
-                </div>
-                
-                <div class="form-group">
-                    <label>Tahun</label>
-                    <select id="rpdYear" required ${rpd ? 'disabled' : ''}>
-                        ${[currentYear - 1, currentYear, currentYear + 1].map(year => `
-                            <option value="${year}" ${rpd && rpd.year == year ? 'selected' : year === currentYear ? 'selected' : ''}>${year}</option>
-                        `).join('')}
-                    </select>
-                </div>
-                
-                <div id="rpdParameters">
-                    ${parametersHTML}
-                </div>
-                
-                <div class="summary-box">
-                    <div class="summary-item">
-                        <span>Total RPD:</span>
-                        <strong id="rpdTotal">${formatCurrency(0)}</strong>
+    const modal = createModernModal({
+        id: 'rpdModal',
+        title: rpd ? 'Edit RPD' : 'Tambah RPD',
+        subtitle: rpd ? `RPD #${rpd.id}` : 'Buat Rencana Penggunaan Dana baru',
+        size: 'xl',
+        body: `
+            <form id="rpdForm" onsubmit="handleSaveRPD(event)">
+                ${createModalSection('📋', 'Informasi Dasar', `
+                    <div class="modal-form-grid cols-2">
+                        ${isAdmin ? createFormGroup({
+                            label: 'KUA',
+                            name: 'rpdKUA',
+                            type: 'select',
+                            value: rpd?.kua || '',
+                            required: true,
+                            disabled: !!rpd,
+                            options: [
+                                { value: '', label: '-- Pilih KUA --' },
+                                ...APP_CONFIG.KUA_LIST.map(kua => ({
+                                    value: kua,
+                                    label: kua
+                                }))
+                            ]
+                        }) : `
+                            <input type="hidden" id="rpdKUA" name="rpdKUA" value="${currentUser.kua}">
+                            <div class="modal-form-group">
+                                <label>KUA</label>
+                                <input type="text" value="${currentUser.kua}" disabled readonly>
+                            </div>
+                        `}
+                        
+                        ${createFormGroup({
+                            label: 'Bulan',
+                            name: 'rpdMonth',
+                            type: 'select',
+                            value: rpd?.month || '',
+                            required: true,
+                            disabled: !!rpd,
+                            options: [
+                                { value: '', label: '-- Pilih Bulan --' },
+                                ...APP_CONFIG.MONTHS.map((month, idx) => ({
+                                    value: idx + 1,
+                                    label: month
+                                }))
+                            ]
+                        })}
+                        
+                        <input type="hidden" id="rpdYear" name="rpdYear" value="${selectedYear}">
                     </div>
-                </div>
+                `)}
                 
-                <button type="submit" class="btn">Simpan RPD</button>
+                ${createModalSection('💰', 'Detail Per Akun', `
+                    <div class="rpd-accounts-container">
+                        ${accountInputs}
+                    </div>
+                    
+                    <div class="rpd-total-section">
+                        <div class="rpd-total-label">Total RPD:</div>
+                        <div class="rpd-total-value" id="rpdTotalDisplay">Rp 0</div>
+                        <input type="hidden" id="rpdTotal" name="rpdTotal" value="0">
+                    </div>
+                `)}
             </form>
-        </div>
-    `;
+        `,
+        footer: `
+            <button type="button" class="btn btn-secondary" onclick="closeModal('rpdModal')">
+                Batal
+            </button>
+            <button type="submit" form="rpdForm" class="btn btn-primary">
+                💾 Simpan RPD
+            </button>
+        `
+    });
     
-    modal.classList.add('active');
+    document.body.appendChild(modal);
     
-    // ✅ Setup auto-format untuk semua inputs
-    console.log('[RPD MODAL] Setting up auto-format for inputs...');
+    // Setup auto-format untuk semua input
     setTimeout(() => {
-        setupAllAutoFormatInputs('.auto-format-number');
-        
-        // Calculate total on input change
-        const inputs = document.querySelectorAll('.rpd-input');
-        console.log('[RPD MODAL] Found', inputs.length, 'rpd-input elements');
-        
-        inputs.forEach((input, index) => {
-            console.log('[RPD MODAL] Attaching listener to input', index + 1, ':', input.id);
-            input.addEventListener('input', function() {
-                calculateRPDTotal();
-                modalHasChanges = true; // ✅ Track changes
-            });
-        });
-        
+        setupAllAutoFormatInputs('.rpd-input');
         calculateRPDTotal();
     }, 100);
+}
+
+async function loadBudgetsForDropdown() {
+    try {
+        const response = await apiCall('getBudgets', {});
+        return response || [];
+    } catch (error) {
+        console.error('[LOAD BUDGETS FOR DROPDOWN ERROR]', error);
+        return [];
+    }
+}
+
+function handleSaveRPD(event) {
+    event.preventDefault();
     
-    // ✅ Reset modalHasChanges
-    modalHasChanges = false;
+    const currentUser = SessionManager.getCurrentUser();
     
-    // Form submit handler
-    document.getElementById('rpdForm').addEventListener('submit', async (e) => {
-        e.preventDefault();
-        console.log('[RPD] Submitting RPD form');
-        
-        const month = document.getElementById('rpdMonth').value;
-        const year = document.getElementById('rpdYear').value;
-        
-        // Validasi untuk Operator
-        if (currentUser.role === 'Operator KUA') {
-            const currentDate = new Date();
-            const currentYear = currentDate.getFullYear();
-            const currentMonth = currentDate.getMonth();
-            const monthNames = APP_CONFIG.MONTHS;
-            const rpdMonthIndex = monthNames.indexOf(month);
-            const rpdYear = parseInt(year);
-            
-            if (rpd && rpd.id) {
-                if (rpdYear < currentYear || (rpdYear === currentYear && rpdMonthIndex <= currentMonth)) {
-                    showNotification('RPD untuk bulan ini dan bulan sebelumnya tidak dapat diubah', 'warning');
-                    return;
-                }
-            } else {
-                if (rpdYear < currentYear || (rpdYear === currentYear && rpdMonthIndex < currentMonth)) {
-                    showNotification('RPD hanya dapat dibuat untuk bulan ini atau bulan yang akan datang', 'warning');
-                    return;
-                }
+    // Collect data per akun
+    const rpdData = {};
+    Object.keys(APP_CONFIG.BOP.RPD_PARAMETERS).forEach(code => {
+        rpdData[code] = {};
+        APP_CONFIG.BOP.RPD_PARAMETERS[code].items.forEach(item => {
+            const inputId = `rpd_${code}_${item.replace(/[\s\/]/g, '_')}`;
+            const input = document.getElementById(inputId);
+            if (input) {
+                rpdData[code][item] = parseFormattedNumber(input.value);
             }
-        }
+        });
+    });
+    
+    const submitData = {
+        id: editingRPD?.id,
+        kua: document.getElementById('rpdKUA')?.value || currentUser.kua,
+        month: parseInt(document.getElementById('rpdMonth').value),
+        year: parseInt(document.getElementById('rpdYear').value),
+        data: rpdData,
+        total: parseFloat(document.getElementById('rpdTotal').value)
+    };
+    
+    console.log('[RPD FORM] Submitting:', submitData);
+    
+    saveRPDData(submitData);
+}
+
+async function saveRPDData(rpdData) {
+    try {
+        await apiCall('saveRPD', rpdData);
+        showNotification('RPD berhasil disimpan', 'success');
         
-        // ✅ Kumpulkan data RPD dengan parse formatted values
-        const rpdData = {};
-        let total = 0;
+        editingRPD = null;
+        closeModal('rpdModal');
         
-        console.log('[RPD] Collecting data from inputs...');
+        clearLocalCache('rpds');
         
-        Object.keys(APP_CONFIG.BOP.RPD_PARAMETERS).forEach(code => {
-            rpdData[code] = {};
-            const items = document.querySelectorAll(`.rpd-input[data-code="${code}"]`);
+        await loadRPDs(true);
+        
+    } catch (error) {
+        console.error('[RPD FORM ERROR]', error);
+        showNotification(error.message || 'Gagal menyimpan RPD', 'error');
+    }
+}
+
+function showDetailRPD(rpd) {
+    console.log('[DETAIL RPD]', rpd);
+    
+    // Remove existing modal
+    const existingModal = document.getElementById('detailRPDModal');
+    if (existingModal) existingModal.remove();
+    
+    // ✅ BUAT TABEL DETAIL PER AKUN
+    let accountDetails = '';
+    let grandTotal = 0;
+    
+    Object.keys(APP_CONFIG.BOP.RPD_PARAMETERS).forEach(code => {
+        const param = APP_CONFIG.BOP.RPD_PARAMETERS[code];
+        let accountTotal = 0;
+        
+        accountDetails += `
+            <div class="rpd-account-detail">
+                <h4 class="rpd-account-title">${code} - ${param.name}</h4>
+                <table class="modal-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 60%;">Item</th>
+                            <th style="width: 40%; text-align: right;">Jumlah</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+        `;
+        
+        param.items.forEach(item => {
+            const value = rpd.data?.[code]?.[item] || 0;
+            accountTotal += value;
             
-            console.log(`[RPD] Processing code ${code}, found ${items.length} inputs`);
-            
-            items.forEach((input, index) => {
-                const item = input.dataset.item;
-                // ✅ Parse formatted value
-                const value = parseFormattedNumber(input.value);
-                rpdData[code][item] = value;
-                total += value;
-                
-                console.log(`[RPD] ${code} - ${item}: ${input.value} → ${value}`);
-            });
+            accountDetails += `
+                <tr>
+                    <td>${item}</td>
+                    <td style="text-align: right;">${formatCurrency(value)}</td>
+                </tr>
+            `;
         });
         
-        console.log('[RPD] Final data collected:', rpdData);
-        console.log('[RPD] Total:', total);
+        accountDetails += `
+                        <tr class="table-subtotal">
+                            <td><strong>Subtotal ${code}</strong></td>
+                            <td style="text-align: right;"><strong>${formatCurrency(accountTotal)}</strong></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        `;
         
-        if (total === 0) {
-            showNotification('Total RPD tidak boleh 0. Silakan isi nominal untuk minimal satu item.', 'warning');
-            return;
-        }
-        
-        try {
-            const submitData = {
-                id: rpd?.id || null,
-                kua: currentUser.kua,
-                month: month,
-                year: parseInt(year),
-                total: total,
-                data: rpdData,
-                userId: currentUser.id,
-                username: currentUser.username
-            };
-            
-            console.log('[RPD FORM] Submitting to API:', submitData);
-            
-            await apiCall('saveRPD', submitData);
-            
-            showNotification('RPD berhasil disimpan', 'success');
-            
-            clearLocalCache('rpds');
-            clearLocalCache('budgets');
-            clearLocalCache('dashboardStats');
-            
-            modalHasChanges = false; // ✅ Reset changes flag
-            closeModal(true); // ✅ Skip confirmation karena sudah saved
-            
-            await Promise.all([
-                loadRPDs(true),
-                loadDashboardStats(true)
-            ]);
-            
-        } catch (error) {
-            console.error('[RPD FORM ERROR]', error);
-            showNotification(error.message, 'error');
-        }
+        grandTotal += accountTotal;
     });
+    
+    const modal = createModernModal({
+        id: 'detailRPDModal',
+        title: 'Detail RPD',
+        subtitle: `${rpd.kua} - ${APP_CONFIG.MONTHS[rpd.month - 1]} ${rpd.year}`,
+        size: 'xl',
+        body: `
+            ${createModalSection('📋', 'Informasi RPD', `
+                <div class="budget-details-grid">
+                    ${createBudgetDetail('KUA', rpd.kua)}
+                    ${createBudgetDetail('Bulan', APP_CONFIG.MONTHS[rpd.month - 1])}
+                    ${createBudgetDetail('Tahun', rpd.year)}
+                    ${createBudgetDetail('Total RPD', formatCurrency(rpd.total || grandTotal))}
+                </div>
+            `)}
+            
+            ${createModalSection('📊', 'Rincian Per Akun', accountDetails)}
+        `,
+        footer: `
+            <button type="button" class="btn btn-secondary" onclick="closeModal('detailRPDModal')">
+                Tutup
+            </button>
+        `
+    });
+    
+    document.body.appendChild(modal);
 }
 
 // Find rpdForm submit handler
@@ -1750,26 +1770,15 @@ async function submitRPD(e) {
 function calculateRPDTotal() {
     let total = 0;
     
-    console.log('[CALCULATE_RPD_TOTAL] Starting calculation...');
-    
-    Object.keys(APP_CONFIG.BOP.RPD_PARAMETERS).forEach(code => {
-        const items = document.querySelectorAll(`.rpd-input[data-code="${code}"]`);
-        
-        items.forEach(input => {
-            // ✅ Parse formatted value
-            const value = parseFormattedNumber(input.value);
-            total += value;
-            
-            console.log(`[CALCULATE_RPD_TOTAL] ${input.id}: ${input.value} → ${value}`);
-        });
+    document.querySelectorAll('.rpd-input').forEach(input => {
+        const value = parseFormattedNumber(input.value);
+        total += value;
     });
     
-    console.log('[CALCULATE_RPD_TOTAL] Total:', total);
+    document.getElementById('rpdTotalDisplay').textContent = formatCurrency(total);
+    document.getElementById('rpdTotal').value = total;
     
-    const totalElement = document.getElementById('rpdTotal');
-    if (totalElement) {
-        totalElement.textContent = formatCurrency(total);
-    }
+    console.log('[RPD TOTAL]', total);
 }
 
 function viewRPD(rpd) {
@@ -1988,538 +1997,473 @@ function displayRealisasis(realisasis) {
 }
 
 async function showRealisasiModal(realisasi = null) {
-    console.log('[REALISASI MODAL] Opening modal, editing:', !!realisasi);
-    console.log('[REALISASI MODAL] Realisasi data:', realisasi);
+    console.log('[REALISASI MODAL]', realisasi);
     
-    // ✅ Reset modalHasChanges
-    modalHasChanges = false;
+    editingRealisasi = realisasi;
     
-    // Check status untuk new realisasi
-    if (!realisasi && currentUser.role === 'Operator KUA') {
-        const status = await checkRealisasiStatus();
+    // Remove existing modal
+    const existingModal = document.getElementById('realisasiModal');
+    if (existingModal) existingModal.remove();
+    
+    // Load RPDs untuk dropdown
+    const rpds = await loadRPDsForDropdown();
+    const currentUser = SessionManager.getCurrentUser();
+    const isAdmin = currentUser.role === 'Admin';
+    
+    // Filter RPD berdasarkan role
+    const availableRPDs = isAdmin ? rpds : rpds.filter(r => r.kua === currentUser.kua);
+    
+    // Dapatkan RPD yang dipilih (jika edit)
+    const selectedRPD = realisasi ? rpds.find(r => r.id === realisasi.rpdId) : null;
+    
+    // ✅ BUAT FORM INPUT UNTUK SETIAP AKUN (sama seperti RPD)
+    let accountInputs = '';
+    Object.keys(APP_CONFIG.BOP.RPD_PARAMETERS).forEach(code => {
+        const param = APP_CONFIG.BOP.RPD_PARAMETERS[code];
         
-        if (status === 'closed') {
-            showNotification('Pengisian Realisasi saat ini ditutup oleh Admin', 'warning');
-            return;
-        }
-    }
-    
-    // ✅ Load upload config
-    await loadUploadConfig();
-    
-    // ✅ PERBAIKAN: Reset uploadedFiles (harus pakai 'let' di global, bukan 'const')
-    uploadedFiles = [];
-    
-    // Get modal - FIXED: menggunakan let agar bisa di-reassign
-    let modal = document.getElementById('realisasiModal');
-    if (!modal) {
-        modal = document.createElement('div');
-        modal.id = 'realisasiModal';
-        modal.className = 'modal';
-        document.body.appendChild(modal);
-    }
-    
-    // ✅ Get budget info dari CACHE, tidak fetch dari server
-    let realisasiBudgetInfo = { budget: 0, totalRealisasi: 0, sisaBudget: 0 };
-    
-    try {
-        const cachedBudgets = getLocalCache('budgets');
-        const cachedRealisasis = getLocalCache('realisasis');
+        accountInputs += `
+            <div class="rpd-account-section">
+                <h4 class="rpd-account-title">${code} - ${param.name}</h4>
+                <div class="rpd-items-grid">
+        `;
         
-        if (cachedBudgets && cachedBudgets.length > 0) {
-            const yearFilter = document.getElementById('realisasiYearFilter');
-            const year = yearFilter ? yearFilter.value : new Date().getFullYear();
+        param.items.forEach(item => {
+            const inputId = `realisasi_${code}_${item.replace(/[\s\/]/g, '_')}`;
+            const value = realisasi?.data?.[code]?.[item] || 0;
             
-            const currentBudget = cachedBudgets.find(b => b.year == year);
-            const budgetTotal = currentBudget ? currentBudget.budget : 0;
-            
-            // Hitung total realisasi dari cache
-            const totalRealisasi = cachedRealisasis
-                ? cachedRealisasis
-                    .filter(r => r.status === 'Diterima' && r.id !== realisasi?.id)
-                    .reduce((sum, r) => sum + (parseFloat(r.total) || 0), 0)
-                : 0;
-            
-            realisasiBudgetInfo = {
-                budget: budgetTotal,
-                totalRealisasi: totalRealisasi,
-                sisaBudget: budgetTotal - totalRealisasi
-            };
-            
-            console.log('[REALISASI MODAL] Budget info from cache:', realisasiBudgetInfo);
-        } else {
-            console.warn('[REALISASI MODAL] No budget in cache');
-        }
-    } catch (error) {
-        console.error('[REALISASI MODAL ERROR]', error);
-        showNotification('Gagal memuat data budget', 'error');
-    }
-    
-    // ✅ Get available RPDs dari CACHE, tidak fetch dari server
-    let availableRPDs = [];
-    try {
-        const cachedRPDs = getLocalCache('rpds');
-        const cachedRealisasis = getLocalCache('realisasis');
-        
-        console.log('[REALISASI MODAL] Loading RPDs from cache');
-        
-        if (Array.isArray(cachedRPDs)) {
-            // Filter RPDs yang valid
-            let validRPDs = cachedRPDs.filter(rpd => rpd && rpd.month && rpd.year);
-            
-            // ✅ FILTER OUT bulan yang sudah ada realisasinya (untuk tambah baru)
-            if (!realisasi && cachedRealisasis) {
-                const yearFilter = document.getElementById('realisasiYearFilter');
-                const year = yearFilter ? yearFilter.value : new Date().getFullYear();
-                
-                console.log('[REALISASI MODAL] Existing realisasis from cache:', cachedRealisasis.length);
-                
-                // Buat set dari bulan yang sudah ada realisasinya
-                const usedMonths = new Set(
-                    cachedRealisasis.map(r => `${r.month}-${r.year}`)
-                );
-                
-                console.log('[REALISASI MODAL] Used months:', Array.from(usedMonths));
-                
-                // Filter out RPD yang bulannya sudah ada realisasi
-                availableRPDs = validRPDs.filter(rpd => {
-                    const monthKey = `${rpd.month}-${rpd.year}`;
-                    const isAvailable = !usedMonths.has(monthKey);
-                    
-                    if (!isAvailable) {
-                        console.log('[REALISASI MODAL] Filtering out month:', monthKey, '- already has realisasi');
-                    }
-                    
-                    return isAvailable;
-                });
-                
-                console.log('[REALISASI MODAL] Available RPDs after filtering:', availableRPDs.length);
-            } else {
-                // Untuk edit, pakai semua RPD
-                availableRPDs = validRPDs;
-            }
-            
-            console.log('[REALISASI MODAL] Found RPDs:', availableRPDs.length);
-        } else {
-            console.warn('[REALISASI MODAL] RPDs not in cache');
-            availableRPDs = [];
-        }
-                    
-        
-    } catch (error) {
-        console.error('[REALISASI MODAL ERROR]', error);
-        showNotification('Gagal memuat data RPD: ' + error.message, 'warning');
-    }
-    
-    if (!realisasi && availableRPDs.length === 0) {
-        showNotification('Belum ada RPD yang dibuat untuk tahun ini. Silakan buat RPD terlebih dahulu.', 'warning');
-        return;
-    }
-    
-    // Build Modal HTML
-    const currentYear = new Date().getFullYear();
-    let monthOptions = '';
-    
-    if (realisasi) {
-        // ✅ Untuk edit, cari RPD yang sesuai dengan bulan realisasi
-        const matchingRPD = availableRPDs.find(rpd => 
-            rpd.month === realisasi.month && rpd.year == realisasi.year
-        );
-        
-        if (matchingRPD) {
-            // Gunakan data dari RPD
-            monthOptions = `<option value="${matchingRPD.id}" data-month="${matchingRPD.month}" data-year="${matchingRPD.year}" data-rpd-data='${JSON.stringify(matchingRPD.data)}' selected>${matchingRPD.month} ${matchingRPD.year}</option>`;
-        } else {
-            // Fallback: gunakan data dari realisasi itu sendiri
-            monthOptions = `<option value="${realisasi.rpdId || ''}" data-month="${realisasi.month}" data-year="${realisasi.year}" data-rpd-data='${JSON.stringify(realisasi.data)}' selected>${realisasi.month} ${realisasi.year}</option>`;
-        }
-    } else {
-        // Untuk tambah baru, tampilkan daftar RPD yang tersedia (yang belum ada realisasinya)
-        if (availableRPDs.length > 0) {
-            monthOptions = availableRPDs.map(rpd => 
-                `<option value="${rpd.id}" data-month="${rpd.month}" data-year="${rpd.year}" data-rpd-data='${JSON.stringify(rpd.data)}'>${rpd.month} ${rpd.year}</option>`
-            ).join('');
-        } else {
-            monthOptions = '<option value="">Tidak ada RPD tersedia</option>';
-        }
-    }
-    
-    // ✅ FIX #1: Build parameters HTML with auto-format-number class
-    let parametersHTML = '';
-    const realisasiData = realisasi ? realisasi.data : {};
-    
-    if (realisasi && realisasi.data) {
-        Object.entries(APP_CONFIG.BOP.RPD_PARAMETERS).forEach(([code, param]) => {
-            parametersHTML += `
-                <div class="rpd-item">
-                    <h4>${code} - ${param.name}</h4>
+            accountInputs += `
+                <div class="rpd-item-input">
+                    <label for="${inputId}">${item}</label>
+                    <input 
+                        type="text" 
+                        id="${inputId}" 
+                        name="${inputId}"
+                        value="${formatNumber(value)}"
+                        data-code="${code}"
+                        data-item="${item}"
+                        class="realisasi-input auto-format-number"
+                        placeholder="0"
+                        onkeyup="calculateRealisasiTotal()"
+                    />
+                </div>
             `;
-            
-            param.items.forEach(item => {
-                const inputId = `realisasi_${code}_${item.replace(/\s+/g, '_')}`;
-                const value = realisasiData[code] && realisasiData[code][item] ? realisasiData[code][item] : 0;
-                
-                parametersHTML += `
-                    <div class="rpd-subitem">
-                        <label>${item}</label>
-                        <input type="text" 
-                            id="${inputId}"
-                            class="realisasi-input auto-format-number"
-                            data-code="${code}"
-                            data-item="${item}"
-                            value="${value}" 
-                            placeholder="0">
-                    </div>
-                `;
-            });
-            
-            parametersHTML += `</div>`;
         });
-    }
-    
-    // ✅ Get existing files
-    let existingFiles = [];
-    
-    if (realisasi && realisasi.files) {
-        console.log('[REALISASI MODAL] Raw files data:', realisasi.files);
-        console.log('[REALISASI MODAL] Files type:', typeof realisasi.files);
         
-        if (Array.isArray(realisasi.files)) {
-            existingFiles = realisasi.files;
-        } else if (typeof realisasi.files === 'string') {
-            try {
-                existingFiles = JSON.parse(realisasi.files);
-            } catch (e) {
-                console.error('[REALISASI MODAL] Error parsing files:', e);
-            }
-        }
-        
-        // Filter valid files
-        existingFiles = existingFiles.filter(f => f && f.fileName && f.fileUrl);
-        
-        console.log('[REALISASI MODAL] Final existingFiles:', existingFiles);
-        console.log('[REALISASI MODAL] Existing files count:', existingFiles.length);
-    }
-    
-    console.log('[REALISASI MODAL] Final existingFiles:', existingFiles);
-    console.log('[REALISASI MODAL] Existing files count:', existingFiles.length);
-    
-    modal.innerHTML = `
-        <div class="modal-content" style="max-width: 900px; max-height: 90vh; overflow-y: auto;">
-            <div class="modal-header">
-                <h3>${realisasi ? 'Edit' : 'Tambah'} Realisasi</h3>
-                <button class="btn-close" onclick="closeRealisasiModal()">×</button>
+        accountInputs += `
+                </div>
             </div>
-            
-            <form id="realisasiForm">
-                <div class="modal-body">
-                    
-                    <!-- Info Budget -->
-                    <div class="info-box">
-                        <div class="info-item">
-                            <span>Anggaran:</span>
-                            <strong id="budgetInfo">${formatCurrency(realisasiBudgetInfo.budget)}</strong>
-                        </div>
-                        <div class="info-item">
-                            <span>Total Realisasi:</span>
-                            <strong id="totalRealisasiInfo">${formatCurrency(realisasiBudgetInfo.totalRealisasi)}</strong>
-                        </div>
-                        <div class="info-item">
-                            <span>Sisa Budget:</span>
-                            <strong id="sisaBudgetInfo">${formatCurrency(realisasiBudgetInfo.sisaBudget)}</strong>
-                        </div>
-                    </div>
-                    
-                    <!-- Pilih RPD (WAJIB) -->
-                    <div class="form-group">
-                        <label>Pilih RPD <span class="required">*</span></label>
-                        <select id="realisasiRPD" required onchange="loadRPDDataFromSelect()" ${realisasi ? 'disabled' : ''}>
-                            <option value="">-- Pilih RPD Bulan --</option>
-                            ${monthOptions}
-                        </select>
-                        ${realisasi ? '<input type="hidden" id="realisasiRPDValue" value="' + (realisasi.rpdId || '') + '">' : ''}
-                        <small style="color: #666; display: block; margin-top: 5px;">
-                            ${realisasi ? 'Bulan tidak dapat diubah saat edit realisasi' : 'Pilih RPD bulan untuk menampilkan form input realisasi'}
-                        </small>
-                    </div>
-                    
-                    <!-- Hidden fields for month/year (akan diisi otomatis dari RPD) -->
-                    <input type="hidden" id="realisasiMonth" value="">
-                    <input type="hidden" id="realisasiYear" value="">
-                    
-                    <!-- Realisasi Items (will be populated when RPD selected) -->
-                    <div id="realisasiParameters"></div>
-                    
-                    <!-- Total -->
-                    <div class="total-section">
-                        <h4>Total Realisasi: <span id="realisasiTotalDisplay">Rp 0</span></h4>
-                    </div>
-                    
-                    <!-- ✅ FILE UPLOAD SECTION -->
-                    <div class="file-upload-section">
-                        <h4 style="margin-bottom: 15px;">Lampiran Dokumen</h4>
-                        
-                        <div class="upload-info" style="background: #f8f9fa; padding: 12px; border-radius: 4px; margin-bottom: 15px;">
-                            <p style="margin: 0; font-size: 13px; color: #666;">
-                                <i class="fas fa-info-circle"></i>
-                                Maksimal <strong>${uploadConfig.maxFiles} file</strong>, 
-                                ukuran per file maksimal <strong>${uploadConfig.maxFileSize} MB</strong>.
-                                Format yang didukung: PDF, JPG, PNG, GIF.
-                                <span id="fileCount" style="float: right; font-weight: bold;">0 / ${uploadConfig.maxFiles} file</span>
-                            </p>
-                        </div>
-                        
-                        <!-- Existing Files (for edit) -->
-                        <div id="existingFilesContainer"></div>
-                        
-                        <!-- File Input -->
-                        <div class="form-group">
-                            <label>
-                                <i class="fas fa-upload"></i> Upload File Baru
-                            </label>
-                            <input 
-                                type="file" 
-                                id="realisasiFileInput" 
-                                accept=".pdf,.jpg,.jpeg,.png,.gif"
-                                multiple
-                                onchange="handleFileInputChange(event)"
-                                style="display: block; width: 100%; padding: 10px; border: 2px dashed #ddd; border-radius: 4px; cursor: pointer;">
-                            <small style="color: #999; display: block; margin-top: 5px;">
-                                Klik atau drag & drop file untuk upload (bisa pilih multiple files)
-                            </small>
-                        </div>
-                        
-                        <!-- Uploaded Files Display -->
-                        <div id="uploadedFilesContainer" style="margin-top: 15px;">
-                            <p style="color: #999; font-size: 14px;">Belum ada file yang dipilih</p>
-                        </div>
-                    </div>
-                    
-                    <!-- Hidden input untuk existing files -->
-                    <input type="hidden" id="existingFilesData" value='${JSON.stringify(existingFiles)}'>
-                    
-                </div>
-                
-                <div class="modal-footer">
-                    <button type="button" class="btn" onclick="closeRealisasiModal()">Batal</button>
-                    <button type="submit" class="btn btn-success">Simpan</button>
-                </div>
-            </form>
-        </div>
-    `;
-    
-    modal.classList.add('active');
-
-    // ✅ FIX #1: Build existing files HTML dengan preview dan tombol hapus
-    if (existingFiles.length > 0) {
-        displayExistingFiles(existingFiles);
-    }
-
-    updateFileCount();
-
-    // ✅ FIX #1: Setup auto-format untuk semua input
-    setTimeout(() => {
-        console.log('[REALISASI MODAL] ========== SETUP AUTO-FORMAT START ==========');
-        setupAllAutoFormatInputs('.auto-format-number');
-        
-        const inputs = document.querySelectorAll('.realisasi-input');
-        inputs.forEach(input => {
-            input.addEventListener('input', calculateRealisasiTotal);
-        });
-        
-        calculateRealisasiTotal();
-    }, 150);
-
-    
-    // Event Handlers
-    if (realisasi) {
-        // Untuk edit: load RPD data langsung
-        setTimeout(() => {
-            loadRPDDataFromSelect();
-            
-            // Populate existing realisasi values
-            if (realisasi.data) {
-                Object.entries(realisasi.data).forEach(([code, items]) => {
-                    Object.entries(items).forEach(([item, value]) => {
-                        const inputId = `realisasi_${code}_${item.replace(/\s+/g, '_')}`;
-                        const input = document.getElementById(inputId);
-                        if (input) {
-                            input.value = value;
-                            // Trigger format
-                            input.dispatchEvent(new Event('input'));
-                        }
-                    });
-                });
-            }
-        }, 200);
-    } else if (availableRPDs.length > 0) {
-        // Untuk tambah baru: select RPD pertama otomatis
-        setTimeout(() => {
-            const selectRPD = document.getElementById('realisasiRPD');
-            if (selectRPD && selectRPD.options.length > 1) {
-                selectRPD.selectedIndex = 1; // Select first RPD
-                loadRPDDataFromSelect();
-            }
-        }, 100);
-    }
-    
-    // ✅ FIX #1: Updated form submit handler dengan existing files
-    const form = document.getElementById('realisasiForm');
-    form.addEventListener('submit', async function(e) {
-        e.preventDefault();
-        
-        console.log('[REALISASI FORM] Form submitted');
-        
-        const monthSelect = document.getElementById('realisasiMonth');
-        const yearInput = document.getElementById('realisasiYear');
-        
-        const month = monthSelect.value;
-        const year = parseInt(yearInput.value);
-        
-        console.log('[REALISASI FORM] Month:', month, 'Year:', year);
-        
-        if (!month || !year) {
-            showNotification('Bulan dan Tahun harus diisi', 'error');
-            return;
-        }
-        
-        // Collect data
-        const realisasiData = {};
-        let total = 0;
-        
-        Object.entries(APP_CONFIG.BOP.RPD_PARAMETERS).forEach(([code, param]) => {
-            realisasiData[code] = {};
-            
-            param.items.forEach(item => {
-                const inputId = `realisasi_${code}_${item.replace(/\s+/g, '_')}`;
-                const input = document.getElementById(inputId);
-                
-                if (input) {
-                    const value = parseFormattedNumber(input.value);
-                    realisasiData[code][item] = value;
-                    total += value;
-                }
-            });
-        });
-        
-        console.log('[REALISASI FORM] Data collected:', { realisasiData, total });
-        
-        // ✅ FIX ISSUE #1: Handle files properly
-        let allFiles = [];
-        
-        // 1. Get existing files
-        const existingFilesInput = document.getElementById('existingFilesData');
-        if (existingFilesInput && existingFilesInput.value) {
-            try {
-                const existing = JSON.parse(existingFilesInput.value);
-                if (Array.isArray(existing)) {
-                    allFiles = [...existing];
-                    console.log('[REALISASI FORM] Keeping existing files:', allFiles.length);
-                }
-            } catch (e) {
-                console.error('[REALISASI FORM] Error parsing existing files:', e);
-            }
-        }
-        
-        // 2. Upload new files
-        if (uploadedFiles.length > 0) {
-            console.log('[REALISASI FORM] Uploading new files:', uploadedFiles.length);
-            
-            for (let i = 0; i < uploadedFiles.length; i++) {
-                const file = uploadedFiles[i];
-                console.log('[REALISASI FORM] Uploading file', (i + 1), ':', file.fileName);
-                
-                try {
-                    const uploadResult = await apiCall('uploadFile', {
-                        filename: file.fileName,
-                        fileData: file.fileData,
-                        mimeType: file.mimeType
-                    });
-                    
-                    console.log('[REALISASI FORM] File uploaded:', uploadResult);
-                    
-                    // ✅ Build proper file object
-                    const fileObj = {
-                        fileId: uploadResult.id || uploadResult.fileId || '',
-                        fileName: uploadResult.originalName || file.fileName,
-                        uniqueName: uploadResult.name || file.fileName,
-                        fileUrl: uploadResult.url || uploadResult.fileUrl || '',
-                        mimeType: uploadResult.mimeType || file.mimeType,
-                        size: uploadResult.fileSize || file.fileSize || 0,
-                        uploadPath: uploadResult.uploadPath || ''
-                    };
-                    
-                    console.log('[REALISASI FORM] File object:', fileObj);
-                    
-                    // Validate
-                    if (fileObj.fileName && fileObj.fileUrl) {
-                        allFiles.push(fileObj);
-                        console.log('[REALISASI FORM] File added to array');
-                    } else {
-                        console.error('[REALISASI FORM] Invalid file object:', fileObj);
-                    }
-                    
-                } catch (error) {
-                    console.error('[REALISASI FORM] Upload error:', error);
-                    showNotification('Gagal upload file: ' + file.fileName, 'error');
-                    return;
-                }
-            }
-        }
-        
-        console.log('[REALISASI FORM] Total files to submit:', allFiles.length);
-        console.log('[REALISASI FORM] Files array:', allFiles);
-        
-        // ✅ CRITICAL: Validate all files have required fields
-        const validFiles = allFiles.filter(f => {
-            const isValid = f && f.fileName && f.fileUrl;
-            if (!isValid) {
-                console.error('[REALISASI FORM] Invalid file filtered out:', f);
-            }
-            return isValid;
-        });
-        
-        if (validFiles.length !== allFiles.length) {
-            console.warn('[REALISASI FORM] Some files were invalid and filtered out');
-            console.warn('[REALISASI FORM] Valid files:', validFiles.length, '/ Total:', allFiles.length);
-        }
-        
-        // Prepare submission data
-        const submissionData = {
-            id: realisasi ? realisasi.id : null,
-            kua: currentUser.kua,
-            month: month,
-            year: year,
-            data: realisasiData,
-            total: total,
-            files: allFiles,  // ✅ Send all files
-            userId: currentUser.id,
-            username: currentUser.username
-        };
-        
-        console.log('[REALISASI FORM] Submitting:', submissionData);
-        console.log('[REALISASI FORM] Files count:', submissionData.files.length);
-        
-        try {
-            await apiCall('saveRealisasi', submissionData);
-            
-            showNotification('Realisasi berhasil disimpan', 'success');
-            
-            // Reset
-            uploadedFiles = [];
-            
-            // Close modal dengan benar
-            closeRealisasiModal();
-            
-            // Reload data
-            await loadRealisasis(true);
-            await loadDashboardStats(true);
-            
-        } catch (error) {
-            console.error('[REALISASI FORM ERROR]', error);
-            showNotification('Gagal menyimpan: ' + error.message, 'error');
-        }
+        `;
     });
+    
+    const modal = createModernModal({
+        id: 'realisasiModal',
+        title: realisasi ? 'Edit Realisasi' : 'Tambah Realisasi',
+        subtitle: realisasi ? `Realisasi #${realisasi.id}` : 'Input realisasi penggunaan dana',
+        size: 'xl',
+        body: `
+            <form id="realisasiForm" onsubmit="handleSaveRealisasi(event)">
+                ${createModalSection('📋', 'Pilih RPD', `
+                    ${createFormGroup({
+                        label: 'RPD',
+                        name: 'realisasiRPDId',
+                        type: 'select',
+                        value: realisasi?.rpdId || '',
+                        required: true,
+                        disabled: !!realisasi,
+                        options: [
+                            { value: '', label: '-- Pilih RPD --' },
+                            ...availableRPDs.map(r => ({
+                                value: r.id,
+                                label: `${r.kua} - ${APP_CONFIG.MONTHS[r.month - 1]} ${r.year} (${formatCurrency(r.total || 0)})`
+                            }))
+                        ]
+                    })}
+                    
+                    ${createFormGroup({
+                        label: 'Tanggal Realisasi',
+                        name: 'realisasiDate',
+                        type: 'date',
+                        value: realisasi?.date || new Date().toISOString().split('T')[0],
+                        required: true
+                    })}
+                `)}
+                
+                ${createModalSection('💰', 'Detail Per Akun', `
+                    <div class="rpd-accounts-container">
+                        ${accountInputs}
+                    </div>
+                    
+                    <div class="rpd-total-section">
+                        <div class="rpd-total-label">Total Realisasi:</div>
+                        <div class="rpd-total-value" id="realisasiTotalDisplay">Rp 0</div>
+                        <input type="hidden" id="realisasiTotal" name="realisasiTotal" value="0">
+                    </div>
+                `)}
+                
+                ${createModalSection('📎', 'Upload File Pendukung', `
+                    <div class="file-upload-section">
+                        <input 
+                            type="file" 
+                            id="realisasiFiles" 
+                            name="realisasiFiles" 
+                            multiple 
+                            accept=".pdf,.jpg,.jpeg,.png"
+                            onchange="handleFileSelection(event)"
+                            style="display: none;"
+                        />
+                        <button 
+                            type="button" 
+                            class="btn btn-secondary btn-sm" 
+                            onclick="document.getElementById('realisasiFiles').click()"
+                        >
+                            📎 Pilih File
+                        </button>
+                        <small class="form-hint">Format: PDF, JPG, PNG. Max 5MB per file, max 10 file</small>
+                        <div id="fileList" class="file-list"></div>
+                    </div>
+                `)}
+                
+                ${createFormGroup({
+                    label: 'Keterangan',
+                    name: 'realisasiDescription',
+                    type: 'textarea',
+                    value: realisasi?.description || '',
+                    required: true,
+                    placeholder: 'Jelaskan realisasi penggunaan dana...'
+                })}
+            </form>
+        `,
+        footer: `
+            <button type="button" class="btn btn-secondary" onclick="closeModal('realisasiModal')">
+                Batal
+            </button>
+            <button type="submit" form="realisasiForm" class="btn btn-primary">
+                💾 Simpan Realisasi
+            </button>
+        `
+    });
+    
+    document.body.appendChild(modal);
+    
+    // Setup auto-format untuk semua input
+    setTimeout(() => {
+        setupAllAutoFormatInputs('.realisasi-input');
+        calculateRealisasiTotal();
+    }, 100);
+}
+
+async function loadRPDsForDropdown() {
+    try {
+        const response = await apiCall('getRPDs', {});
+        return response || [];
+    } catch (error) {
+        console.error('[LOAD RPDs FOR DROPDOWN ERROR]', error);
+        return [];
+    }
+}
+
+function handleFileSelection(event) {
+    const files = event.target.files;
+    const fileList = document.getElementById('fileList');
+    
+    fileList.innerHTML = '';
+    
+    Array.from(files).forEach((file, index) => {
+        const fileItem = document.createElement('div');
+        fileItem.className = 'file-item';
+        fileItem.innerHTML = `
+            <span class="file-name">📄 ${file.name}</span>
+            <span class="file-size">${(file.size / 1024 / 1024).toFixed(2)} MB</span>
+        `;
+        fileList.appendChild(fileItem);
+    });
+}
+
+function handleSaveRealisasi(event) {
+    event.preventDefault();
+    
+    const currentUser = SessionManager.getCurrentUser();
+    
+    // Collect data per akun
+    const realisasiData = {};
+    Object.keys(APP_CONFIG.BOP.RPD_PARAMETERS).forEach(code => {
+        realisasiData[code] = {};
+        APP_CONFIG.BOP.RPD_PARAMETERS[code].items.forEach(item => {
+            const inputId = `realisasi_${code}_${item.replace(/[\s\/]/g, '_')}`;
+            const input = document.getElementById(inputId);
+            if (input) {
+                realisasiData[code][item] = parseFormattedNumber(input.value);
+            }
+        });
+    });
+    
+    const submitData = {
+        id: editingRealisasi?.id,
+        rpdId: document.getElementById('realisasiRPDId').value,
+        date: document.getElementById('realisasiDate').value,
+        data: realisasiData,
+        total: parseFloat(document.getElementById('realisasiTotal').value),
+        description: document.getElementById('realisasiDescription').value
+    };
+    
+    console.log('[REALISASI FORM] Submitting:', submitData);
+    
+    saveRealisasiData(submitData);
+}
+
+async function saveRealisasiData(realisasiData) {
+    try {
+        await apiCall('saveRealisasi', realisasiData);
+        showNotification('Realisasi berhasil disimpan', 'success');
+        
+        editingRealisasi = null;
+        closeModal('realisasiModal');
+        
+        clearLocalCache('realisasis');
+        
+        await loadRealisasis(true);
+        
+    } catch (error) {
+        console.error('[REALISASI FORM ERROR]', error);
+        showNotification(error.message || 'Gagal menyimpan realisasi', 'error');
+    }
+}
+
+// ===== DETAIL REALISASI MODAL =====
+function showDetailRealisasi(realisasi) {
+    console.log('[DETAIL REALISASI]', realisasi);
+    
+    // Remove existing modal
+    const existingModal = document.getElementById('detailRealisasiModal');
+    if (existingModal) existingModal.remove();
+    
+    const statusBadge = realisasi.status === 'Approved' ? 'approved' : 
+                        realisasi.status === 'Rejected' ? 'rejected' : 'pending';
+    
+    // ✅ BUAT TABEL DETAIL PER AKUN
+    let accountDetails = '';
+    let grandTotal = 0;
+    
+    Object.keys(APP_CONFIG.BOP.RPD_PARAMETERS).forEach(code => {
+        const param = APP_CONFIG.BOP.RPD_PARAMETERS[code];
+        let accountTotal = 0;
+        
+        accountDetails += `
+            <div class="rpd-account-detail">
+                <h4 class="rpd-account-title">${code} - ${param.name}</h4>
+                <table class="modal-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 60%;">Item</th>
+                            <th style="width: 40%; text-align: right;">Jumlah</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+        `;
+        
+        param.items.forEach(item => {
+            const value = realisasi.data?.[code]?.[item] || 0;
+            accountTotal += value;
+            
+            accountDetails += `
+                <tr>
+                    <td>${item}</td>
+                    <td style="text-align: right;">${formatCurrency(value)}</td>
+                </tr>
+            `;
+        });
+        
+        accountDetails += `
+                        <tr class="table-subtotal">
+                            <td><strong>Subtotal ${code}</strong></td>
+                            <td style="text-align: right;"><strong>${formatCurrency(accountTotal)}</strong></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        `;
+        
+        grandTotal += accountTotal;
+    });
+    
+    const modal = createModernModal({
+        id: 'detailRealisasiModal',
+        title: 'Detail Realisasi',
+        subtitle: `${realisasi.kua} - ${APP_CONFIG.MONTHS[realisasi.month - 1]} ${realisasi.year}`,
+        size: 'xl',
+        body: `
+            ${createModalSection('📋', 'Informasi Realisasi', `
+                <div class="budget-details-grid">
+                    ${createBudgetDetail('KUA', realisasi.kua)}
+                    ${createBudgetDetail('Bulan', APP_CONFIG.MONTHS[realisasi.month - 1])}
+                    ${createBudgetDetail('Tahun', realisasi.year)}
+                    ${createBudgetDetail('Tanggal', new Date(realisasi.date).toLocaleDateString('id-ID'))}
+                    ${createBudgetDetail('Status', `<span class="modal-status-badge ${statusBadge}">${realisasi.status}</span>`)}
+                    ${createBudgetDetail('Total Realisasi', formatCurrency(realisasi.total || grandTotal))}
+                </div>
+            `)}
+            
+            ${createModalSection('📊', 'Rincian Per Akun', accountDetails)}
+            
+            ${createModalSection('📝', 'Keterangan', `
+                <p style="color: #475569; line-height: 1.6; white-space: pre-wrap;">${realisasi.description || '-'}</p>
+            `)}
+            
+            ${realisasi.notes ? createModalSection('💬', 'Catatan Verifikasi', `
+                <p style="color: #475569; line-height: 1.6; white-space: pre-wrap;">${realisasi.notes}</p>
+            `) : ''}
+        `,
+        footer: `
+            <button type="button" class="btn btn-secondary" onclick="closeModal('detailRealisasiModal')">
+                Tutup
+            </button>
+        `
+    });
+    
+    document.body.appendChild(modal);
+}
+
+// ===== VERIFIKASI MODAL =====
+function showVerifikasiModal(realisasi) {
+    console.log('[VERIFIKASI MODAL]', realisasi);
+    
+    // Remove existing modal
+    const existingModal = document.getElementById('verifikasiModal');
+    if (existingModal) existingModal.remove();
+    
+    // ✅ BUAT TABEL DETAIL PER AKUN
+    let accountDetails = '';
+    let grandTotal = 0;
+    
+    Object.keys(APP_CONFIG.BOP.RPD_PARAMETERS).forEach(code => {
+        const param = APP_CONFIG.BOP.RPD_PARAMETERS[code];
+        let accountTotal = 0;
+        
+        accountDetails += `
+            <div class="rpd-account-detail">
+                <h4 class="rpd-account-title">${code} - ${param.name}</h4>
+                <table class="modal-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 60%;">Item</th>
+                            <th style="width: 40%; text-align: right;">Jumlah</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+        `;
+        
+        param.items.forEach(item => {
+            const value = realisasi.data?.[code]?.[item] || 0;
+            accountTotal += value;
+            
+            accountDetails += `
+                <tr>
+                    <td>${item}</td>
+                    <td style="text-align: right;">${formatCurrency(value)}</td>
+                </tr>
+            `;
+        });
+        
+        accountDetails += `
+                        <tr class="table-subtotal">
+                            <td><strong>Subtotal ${code}</strong></td>
+                            <td style="text-align: right;"><strong>${formatCurrency(accountTotal)}</strong></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        `;
+        
+        grandTotal += accountTotal;
+    });
+    
+    const modal = createModernModal({
+        id: 'verifikasiModal',
+        title: 'Verifikasi Realisasi',
+        subtitle: `${realisasi.kua} - ${APP_CONFIG.MONTHS[realisasi.month - 1]} ${realisasi.year}`,
+        size: 'xl',
+        body: `
+            ${createModalSection('📋', 'Informasi Realisasi', `
+                <div class="budget-details-grid">
+                    ${createBudgetDetail('KUA', realisasi.kua)}
+                    ${createBudgetDetail('Periode', `${APP_CONFIG.MONTHS[realisasi.month - 1]} ${realisasi.year}`)}
+                    ${createBudgetDetail('Tanggal', new Date(realisasi.date).toLocaleDateString('id-ID'))}
+                    ${createBudgetDetail('Total Realisasi', formatCurrency(realisasi.total || grandTotal))}
+                </div>
+            `)}
+            
+            ${createModalSection('📊', 'Rincian Per Akun', accountDetails)}
+            
+            ${createModalSection('📝', 'Keterangan', `
+                <p style="color: #475569; line-height: 1.6; white-space: pre-wrap;">${realisasi.description || '-'}</p>
+            `)}
+            
+            ${createModalSection('✓', 'Keputusan Verifikasi', `
+                <form id="verifikasiForm" onsubmit="handleVerifikasi(event, '${realisasi.id}')">
+                    ${createFormGroup({
+                        label: 'Status',
+                        name: 'verifikasiStatus',
+                        type: 'select',
+                        required: true,
+                        options: [
+                            { value: '', label: '-- Pilih Status --' },
+                            { value: 'Approved', label: '✓ Setuju/Approve' },
+                            { value: 'Rejected', label: '✗ Tolak/Reject' }
+                        ]
+                    })}
+                    
+                    ${createFormGroup({
+                        label: 'Catatan',
+                        name: 'verifikasiNotes',
+                        type: 'textarea',
+                        placeholder: 'Tambahkan catatan verifikasi (opsional)'
+                    })}
+                </form>
+            `)}
+        `,
+        footer: `
+            <button type="button" class="btn btn-secondary" onclick="closeModal('verifikasiModal')">
+                Batal
+            </button>
+            <button type="submit" form="verifikasiForm" class="btn btn-primary">
+                💾 Simpan Verifikasi
+            </button>
+        `
+    });
+    
+    document.body.appendChild(modal);
+}
+
+function handleVerifikasi(event, realisasiId) {
+    event.preventDefault();
+    
+    const verifikasiData = {
+        id: realisasiId,
+        status: document.getElementById('verifikasiStatus').value,
+        notes: document.getElementById('verifikasiNotes').value
+    };
+    
+    console.log('[VERIFIKASI FORM] Submitting:', verifikasiData);
+    
+    saveVerifikasi(verifikasiData);
+}
+
+async function saveVerifikasi(verifikasiData) {
+    try {
+        await apiCall('verifyRealisasi', verifikasiData);
+        showNotification('Verifikasi berhasil disimpan', 'success');
+        
+        closeModernModal('verifikasiModal');
+        
+        clearLocalCache('verifikasi');
+        clearLocalCache('realisasis');
+        
+        await loadVerifikasiData(true);
+        
+    } catch (error) {
+        console.error('[VERIFIKASI ERROR]', error);
+        showNotification(error.message || 'Gagal menyimpan verifikasi', 'error');
+    }
 }
 
 function removeExistingFile(index) {
@@ -3418,27 +3362,15 @@ function displayUploadedFilesWithPreview() {
 function calculateRealisasiTotal() {
     let total = 0;
     
-    console.log('[CALCULATE_REALISASI_TOTAL] Starting calculation...');
-    
-    const inputs = document.querySelectorAll('.realisasi-input');
-    inputs.forEach((input, index) => {
-        // ✅ Parse formatted value
+    document.querySelectorAll('.realisasi-input').forEach(input => {
         const value = parseFormattedNumber(input.value);
         total += value;
-        
-        console.log(`[CALCULATE_REALISASI_TOTAL] Input ${index + 1} (${input.id}): ${input.value} → ${value}`);
     });
     
-    console.log('[CALCULATE_REALISASI_TOTAL] Total:', total);
+    document.getElementById('realisasiTotalDisplay').textContent = formatCurrency(total);
+    document.getElementById('realisasiTotal').value = total;
     
-    // ✅ FIX: Update correct element ID
-    const totalElement = document.getElementById('realisasiTotalDisplay');
-    if (totalElement) {
-        totalElement.textContent = formatCurrency(total);
-        console.log('[CALCULATE_REALISASI_TOTAL] Display updated:', formatCurrency(total));
-    } else {
-        console.warn('[CALCULATE_REALISASI_TOTAL] Element realisasiTotalDisplay not found!');
-    }
+    console.log('[REALISASI TOTAL]', total);
 }
 
 async function handleFileUpload(e) {
@@ -4420,81 +4352,84 @@ function downloadBase64File(base64Data, fileName, mimeType) {
 
 // Show Export Modal (untuk Admin)
 function showExportModal(type) {
-    console.log(`[EXPORT MODAL] Type: ${type}`);
+    console.log('[EXPORT MODAL]', type);
     
-    let modal = document.getElementById('modal');
-
+    // Remove existing modal
+    const existingModal = document.getElementById('exportModal');
+    if (existingModal) existingModal.remove();
     
-    if (!modal) {
-
-    
-        modal = document.createElement('div');
-
-    
-        modal.id = 'modal';
-
-    
-        modal.className = 'modal';
-
-    
-        document.body.appendChild(modal);
-
-    
-    }
-    const currentYear = new Date().getFullYear();
-    const years = [];
-    for (let i = currentYear - 2; i <= currentYear + 1; i++) {
-        years.push(i);
-    }
-    
-    modal.innerHTML = `
-        <div class="modal-content" style="max-width: 500px;">
-            <div class="modal-header">
-                <h3>Export ${type.toUpperCase()}</h3>
-                <button class="close-btn" onclick="closeModal()">&times;</button>
-            </div>
-            
-            <form id="exportForm">
-                <div class="form-group">
-                    <label>Tahun</label>
-                    <select id="${type}YearFilterExport" required>
-                        ${years.map(year => `
-                            <option value="${year}" ${year === currentYear ? 'selected' : ''}>${year}</option>
-                        `).join('')}
-                    </select>
-                </div>
+    const modal = createModernModal({
+        id: 'exportModal',
+        title: 'Export Data BOP',
+        subtitle: 'Pilih periode dan format export',
+        size: 'sm',
+        body: `
+            <form id="exportForm" onsubmit="handleExport(event, '${type}')">
+                ${createFormGroup({
+                    label: 'Tahun',
+                    name: 'exportYear',
+                    type: 'select',
+                    required: true,
+                    options: [2024, 2025, 2026, 2027].map(year => ({
+                        value: year,
+                        label: year.toString()
+                    }))
+                })}
                 
-                <div class="form-group">
-                    <label>KUA (Opsional - Kosongkan untuk semua KUA)</label>
-                    <select id="${type}KUAFilterExport">
-                        <option value="">Semua KUA</option>
-                        ${APP_CONFIG.KUA_LIST.map(kua => `
-                            <option value="${kua}">${kua}</option>
-                        `).join('')}
-                    </select>
-                </div>
+                ${createFormGroup({
+                    label: 'Bulan',
+                    name: 'exportMonth',
+                    type: 'select',
+                    required: true,
+                    options: [
+                        { value: '', label: 'Semua Bulan' },
+                        ...APP_CONFIG.MONTHS.map((month, idx) => ({
+                            value: idx + 1,
+                            label: month
+                        }))
+                    ]
+                })}
                 
-                <div class="form-group">
-                    <label>Format</label>
-                    <select id="exportFormat" required>
-                        <option value="excel">Excel (.xlsx)</option>
-                        <option value="pdf">PDF (.pdf)</option>
-                    </select>
-                </div>
-                
-                <button type="submit" class="btn">Download</button>
+                ${type === 'rpd' || type === 'realisasi' ? createFormGroup({
+                    label: 'KUA',
+                    name: 'exportKUA',
+                    type: 'select',
+                    options: [
+                        { value: '', label: 'Semua KUA' },
+                        ...APP_CONFIG.KUA_LIST.map(kua => ({
+                            value: kua,
+                            label: kua
+                        }))
+                    ]
+                }) : ''}
             </form>
-        </div>
-    `;
-    
-    modal.classList.add('active');
-    
-    document.getElementById('exportForm').addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const format = document.getElementById('exportFormat').value;
-        closeModal();
-        await exportDataEnhanced(type, format);
+        `,
+        footer: `
+            <button type="button" class="btn btn-secondary" onclick="closeModernModal('exportModal')">
+                Batal
+            </button>
+            <button type="submit" form="exportForm" class="btn btn-success">
+                📥 Download Excel
+            </button>
+        `
     });
+    
+    document.body.appendChild(modal);
+}
+
+function handleExport(event, type) {
+    event.preventDefault();
+    
+    const year = document.getElementById('exportYear').value;
+    const month = document.getElementById('exportMonth').value;
+    const kua = document.getElementById('exportKUA')?.value || '';
+    
+    console.log('[EXPORT]', { type, year, month, kua });
+    
+    closeModernModal('exportModal');
+    
+    // Call your existing export function
+    performExport(type, year, month, kua);
 }
 
 // ===== MODAL HELPERS =====
@@ -4638,44 +4573,12 @@ function showConfirmDialog(message, onConfirm, onCancel) {
     }, 100);
 }
 
-function closeModal(skipConfirmation = false) {
-    const modal = document.getElementById('modal');
-    if (!modal) return;
-    
-    // ✅ Check if modal has form
-    const hasForm = modal.querySelector('form');
-    
-    // ✅ If has form and not skipping, ask for confirmation
-    if (hasForm && !skipConfirmation && modalHasChanges) {
-        showConfirmDialog(
-            'Anda memiliki perubahan yang belum disimpan. Yakin ingin menutup?',
-            function() {
-                // User confirmed
-                modal.classList.remove('active');
-                modal.innerHTML = '';
-                modalHasChanges = false;
-                
-                // ✅ Restart polling jika masih di halaman realisasi
-                if (currentPage === 'realisasiPage') {
-                    startRealisasiPolling();
-                }
-            },
-            function() {
-                // User cancelled - do nothing
-            }
-        );
-        return;
-    }
-    
-    // Close modal without confirmation
-    modal.classList.remove('active');
-    modal.innerHTML = '';
-    modalHasChanges = false;
-    
-    // ✅ Restart polling jika masih di halaman realisasi
-    if (currentPage === 'realisasiPage') {
-        startRealisasiPolling();
-    }
+function closeModal() {
+    closeModernModal('budgetModal');
+    closeModernModal('rpdModal');
+    closeModernModal('realisasiModal');
+    closeModernModal('verifikasiModal');
+    closeModernModal('exportModal');
 }
 
 function closeRealisasiModal(skipConfirmation = false) {
@@ -5674,6 +5577,191 @@ function removeUploadedFile(index) {
     // Update UI
     displayUploadedFiles();
 }
+
+// ===== MODAL HELPER FUNCTIONS - FIXED VERSION =====
+// Add this to your JavaScript files (bop-script.js, bmn-script.js, nikah-script.js)
+
+/**
+ * Create a modern modal structure
+ * @param {Object} options - Modal configuration
+ * @returns {HTMLElement} - Modal element
+ */
+function createModernModal(options) {
+    const {
+        id = 'modernModal',
+        title = 'Modal Title',
+        subtitle = '',
+        size = 'md', // sm, md, lg, xl
+        body = '',
+        footer = '',
+        onClose = null
+    } = options;
+    
+    const modal = document.createElement('div');
+    modal.id = id;
+    modal.className = 'modal-overlay';
+    
+    const sizeClass = size !== 'md' ? `modal-${size}` : '';
+    
+    modal.innerHTML = `
+        <div class="modal-dialog ${sizeClass}">
+            <div class="modal-header-modern">
+                <h3>${title}</h3>
+                ${subtitle ? `<p class="modal-subtitle">${subtitle}</p>` : ''}
+                <button type="button" class="modal-close" onclick="closeModal('${id}')">&times;</button>
+            </div>
+            <div class="modal-body-modern">
+                ${body}
+            </div>
+            ${footer ? `<div class="modal-footer-modern">${footer}</div>` : ''}
+        </div>
+    `;
+    
+    // Close on overlay click
+    modal.addEventListener('click', function(e) {
+        if (e.target === modal) {
+            closeModal(id);
+            if (onClose) onClose();
+        }
+    });
+    
+    // Close on ESC key
+    const handleEsc = function(e) {
+        if (e.key === 'Escape' && document.getElementById(id)) {
+            closeModal(id);
+            if (onClose) onClose();
+            document.removeEventListener('keydown', handleEsc);
+        }
+    };
+    document.addEventListener('keydown', handleEsc);
+    
+    return modal;
+}
+
+/**
+ * ✅ FIXED: Close and remove modal
+ * @param {string} modalId - ID of the modal to close
+ */
+function closeModernModal(modalId) {
+    const modal = document.getElementById(modalId);
+    if (modal) {
+        // Add fade out animation
+        modal.style.opacity = '0';
+        setTimeout(() => {
+            modal.remove();
+        }, 200);
+    }
+}
+
+/**
+ * Create form group for modal
+ */
+function createFormGroup(options) {
+    const {
+        label = '',
+        name = '',
+        type = 'text',
+        value = '',
+        required = false,
+        disabled = false,
+        placeholder = '',
+        hint = '',
+        options: selectOptions = []
+    } = options;
+    
+    const requiredClass = required ? 'required' : '';
+    
+    let inputHtml = '';
+    
+    if (type === 'select') {
+        inputHtml = `
+            <select name="${name}" id="${name}" ${required ? 'required' : ''} ${disabled ? 'disabled' : ''}>
+                ${selectOptions.map(opt => `
+                    <option value="${opt.value}" ${opt.value === value ? 'selected' : ''}>
+                        ${opt.label}
+                    </option>
+                `).join('')}
+            </select>
+        `;
+    } else if (type === 'textarea') {
+        inputHtml = `
+            <textarea 
+                name="${name}" 
+                id="${name}" 
+                ${required ? 'required' : ''} 
+                ${disabled ? 'disabled' : ''}
+                placeholder="${placeholder}"
+            >${value}</textarea>
+        `;
+    } else {
+        inputHtml = `
+            <input 
+                type="${type}" 
+                name="${name}" 
+                id="${name}" 
+                value="${value}"
+                ${required ? 'required' : ''} 
+                ${disabled ? 'disabled' : ''}
+                placeholder="${placeholder}"
+            />
+        `;
+    }
+    
+    return `
+        <div class="modal-form-group">
+            <label for="${name}" class="${requiredClass}">${label}</label>
+            ${inputHtml}
+            ${hint ? `<span class="form-hint">${hint}</span>` : ''}
+        </div>
+    `;
+}
+
+/**
+ * Create modal section with title
+ */
+function createModalSection(icon, title, content) {
+    return `
+        <div class="modal-section">
+            <div class="modal-section-title">
+                ${icon ? `<span class="section-icon">${icon}</span>` : ''}
+                <span>${title}</span>
+            </div>
+            ${content}
+        </div>
+    `;
+}
+
+/**
+ * Create info box in modal
+ */
+function createInfoBox(type, title, message) {
+    return `
+        <div class="modal-info-box ${type}">
+            ${title ? `<h4>${title}</h4>` : ''}
+            <p>${message}</p>
+        </div>
+    `;
+}
+
+/**
+ * Create budget detail item
+ */
+function createBudgetDetail(label, value) {
+    return `
+        <div class="budget-detail-item">
+            <div class="budget-detail-label">${label}</div>
+            <div class="budget-detail-value">${value}</div>
+        </div>
+    `;
+}
+
+// Expose functions globally
+window.createModernModal = createModernModal;
+window.closeModal = closeModal;
+window.createFormGroup = createFormGroup;
+window.createModalSection = createModalSection;
+window.createInfoBox = createInfoBox;
+window.createBudgetDetail = createBudgetDetail;
 
 // Expose to window
 window.downloadRPDPerYear = downloadRPDPerYear;

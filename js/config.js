@@ -4,7 +4,7 @@
 
 const APP_CONFIG = {
     // API Configuration
-    SCRIPT_URL: 'https://script.google.com/macros/s/AKfycbxHGsjKUeIk8saYlUfL5nm1Uy-WcYxUYo24xK2id8FNJ2ltk9o6nNyVLw16GVEZrrm4/exec',
+    SCRIPT_URL: 'https://script.google.com/macros/s/AKfycbzdugEdHB6qP3jwBH1JIXjFZXQXW9DtMbDKE5CID0_1f7VLfqeSVeAc07A1orIkHbV3/exec',
 
     // KUA List
     KUA_LIST: [
@@ -551,3 +551,194 @@ const CaptchaManager = {
         this.generate();
     }
 };
+
+// ===== CUSTOM CONFIRMATION DIALOG =====
+function showCustomConfirm(message, onConfirm, onCancel) {
+    // Create overlay
+    const overlay = document.createElement('div');
+    overlay.className = 'custom-confirm-overlay';
+    
+    // Create dialog
+    const dialog = document.createElement('div');
+    dialog.className = 'custom-confirm-dialog';
+    
+    dialog.innerHTML = `
+        <div class="custom-confirm-icon">⚠️</div>
+        <div class="custom-confirm-message">${message}</div>
+        <div class="custom-confirm-buttons">
+            <button class="custom-confirm-btn custom-confirm-cancel">Batal</button>
+            <button class="custom-confirm-btn custom-confirm-yes">Ya, Hapus</button>
+        </div>
+    `;
+    
+    overlay.appendChild(dialog);
+    document.body.appendChild(overlay);
+    
+    // Handle buttons
+    const cancelBtn = dialog.querySelector('.custom-confirm-cancel');
+    const confirmBtn = dialog.querySelector('.custom-confirm-yes');
+    
+    cancelBtn.addEventListener('click', function() {
+        document.body.removeChild(overlay);
+        if (onCancel) onCancel();
+    });
+    
+    confirmBtn.addEventListener('click', function() {
+        document.body.removeChild(overlay);
+        if (onConfirm) onConfirm();
+    });
+    
+    // Close on overlay click
+    overlay.addEventListener('click', function(e) {
+        if (e.target === overlay) {
+            document.body.removeChild(overlay);
+            if (onCancel) onCancel();
+        }
+    });
+}
+
+// Expose to global
+window.showCustomConfirm = showCustomConfirm;
+
+// ===== MODERN MODAL HELPER FUNCTIONS =====
+
+/**
+ * Create a modern modal structure
+ * @param {Object} options - Modal configuration
+ * @returns {HTMLElement} - Modal element
+ */
+function createModernModal(options) {
+    const {
+        id = 'modernModal',
+        title = 'Modal Title',
+        subtitle = '',
+        size = 'md', // sm, md, lg, xl
+        body = '',
+        footer = '',
+        onClose = null
+    } = options;
+    
+    const modal = document.createElement('div');
+    modal.id = id;
+    modal.className = 'modal-overlay';
+    
+    const sizeClass = size !== 'md' ? `modal-${size}` : '';
+    
+    modal.innerHTML = `
+        <div class="modal-dialog ${sizeClass}">
+            <div class="modal-header-modern">
+                <h3>${title}</h3>
+                ${subtitle ? `<p class="modal-subtitle">${subtitle}</p>` : ''}
+                <button type="button" class="modal-close" onclick="closeModernModal('${id}')">&times;</button>
+            </div>
+            <div class="modal-body-modern">
+                ${body}
+            </div>
+            ${footer ? `<div class="modal-footer-modern">${footer}</div>` : ''}
+        </div>
+    `;
+    
+    // Close on overlay click
+    modal.addEventListener('click', function(e) {
+        if (e.target === modal) {
+            closeModernModal(id);
+            if (onClose) onClose();
+        }
+    });
+    
+    return modal;
+}
+
+/**
+ * Close and remove modal
+ */
+function closeModernModal(modalId) {
+    const modal = document.getElementById(modalId);
+    if (modal) {
+        modal.remove();
+    }
+}
+
+/**
+ * Create form group for modal
+ */
+function createFormGroup(options) {
+    const {
+        label = '',
+        name = '',
+        type = 'text',
+        value = '',
+        required = false,
+        disabled = false,
+        placeholder = '',
+        hint = '',
+        options: selectOptions = []
+    } = options;
+    
+    const requiredClass = required ? 'required' : '';
+    
+    let inputHtml = '';
+    
+    if (type === 'select') {
+        inputHtml = `
+            <select name="${name}" id="${name}" ${required ? 'required' : ''} ${disabled ? 'disabled' : ''}>
+                ${selectOptions.map(opt => `
+                    <option value="${opt.value}" ${opt.value === value ? 'selected' : ''}>
+                        ${opt.label}
+                    </option>
+                `).join('')}
+            </select>
+        `;
+    } else if (type === 'textarea') {
+        inputHtml = `
+            <textarea 
+                name="${name}" 
+                id="${name}" 
+                ${required ? 'required' : ''} 
+                ${disabled ? 'disabled' : ''}
+                placeholder="${placeholder}"
+            >${value}</textarea>
+        `;
+    } else {
+        inputHtml = `
+            <input 
+                type="${type}" 
+                name="${name}" 
+                id="${name}" 
+                value="${value}"
+                ${required ? 'required' : ''} 
+                ${disabled ? 'disabled' : ''}
+                placeholder="${placeholder}"
+            />
+        `;
+    }
+    
+    return `
+        <div class="modal-form-group">
+            <label for="${name}" class="${requiredClass}">${label}</label>
+            ${inputHtml}
+            ${hint ? `<span class="form-hint">${hint}</span>` : ''}
+        </div>
+    `;
+}
+
+/**
+ * Create modal section with title
+ */
+function createModalSection(icon, title, content) {
+    return `
+        <div class="modal-section">
+            <div class="modal-section-title">
+                ${icon ? `<span class="section-icon">${icon}</span>` : ''}
+                <span>${title}</span>
+            </div>
+            ${content}
+        </div>
+    `;
+}
+
+// Expose modal helpers globally
+window.createModernModal = createModernModal;
+window.closeModernModal = closeModernModal;
+window.createFormGroup = createFormGroup;
+window.createModalSection = createModalSection;

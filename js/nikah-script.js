@@ -416,15 +416,61 @@ async function handleSaveKUAInfo(event) {
 
 // ===== MONTH STATUS MANAGEMENT (Modal Admin) =====
 function showMonthStatusModal() {
-    ModalManager.show('monthStatusModal');
-    const sel = document.getElementById('monthStatusYear');
-    if (sel) sel.value = currentYear;
-    modalStatusYear = currentYear;
-    loadAndDisplayModalStatuses(modalStatusYear);
+    // Remove existing modal if any
+    const existingModal = document.getElementById('monthStatusModal');
+    if (existingModal) existingModal.remove();
+    
+    const currentYear = new Date().getFullYear();
+    
+    const modal = createModernModal({
+        id: 'monthStatusModal',
+        title: 'Status Bulan',
+        subtitle: 'Klik bulan untuk membuka/mengunci input data',
+        size: 'lg',
+        body: `
+            <div class="modal-form-grid cols-1">
+                ${createFormGroup({
+                    label: 'Tahun',
+                    name: 'monthStatusYear',
+                    type: 'select',
+                    value: currentYear,
+                    options: [2024, 2025, 2026, 2027].map(year => ({
+                        value: year,
+                        label: year.toString()
+                    }))
+                })}
+            </div>
+            
+            <div class="modal-section">
+                <div class="modal-section-title">
+                    <span class="section-icon">📅</span>
+                    <span>Status Per Bulan</span>
+                </div>
+                <div class="month-grid" id="monthStatusGrid">
+                    <!-- Will be populated by JS -->
+                </div>
+            </div>
+        `,
+        footer: `
+            <button type="button" class="btn btn-secondary" onclick="closeModernModal('monthStatusModal')">
+                Tutup
+            </button>
+        `
+    });
+    
+    document.body.appendChild(modal);
+    
+    // Load month status
+    loadMonthStatus(currentYear);
+    
+    // Add event listener for year change
+    document.getElementById('monthStatusYear').addEventListener('change', function() {
+        loadMonthStatus(this.value);
+    });
 }
 
 function closeMonthStatusModal() {
-    ModalManager.hide('monthStatusModal');
+    closeModernModal('monthStatusModal');
 }
 
 async function loadAndDisplayModalStatuses(year) {
@@ -489,11 +535,85 @@ async function toggleMonthStatus(month) {
 
 // ===== EXPORT =====
 function showExportModal() {
-    ModalManager.show('exportModal');
+    // Remove existing modal if any
+    const existingModal = document.getElementById('exportModal');
+    if (existingModal) existingModal.remove();
+    
+    const modal = createModernModal({
+        id: 'exportModal',
+        title: 'Export Data Pernikahan',
+        subtitle: 'Pilih jenis dan periode export yang diinginkan',
+        size: 'sm',
+        body: `
+            <form id="exportForm" onsubmit="handleExport(event)">
+                ${createFormGroup({
+                    label: 'Jenis Export',
+                    name: 'exportType',
+                    type: 'select',
+                    required: true,
+                    options: [
+                        { value: 'monthly', label: 'Bulanan' },
+                        { value: 'yearly', label: 'Tahunan' }
+                    ],
+                    hint: 'Pilih apakah ingin export data bulanan atau tahunan'
+                })}
+                
+                <div id="monthFieldGroup">
+                    ${createFormGroup({
+                        label: 'Bulan',
+                        name: 'exportMonth',
+                        type: 'select',
+                        required: true,
+                        options: APP_CONFIG.MONTHS.map((month, idx) => ({
+                            value: idx + 1,
+                            label: month
+                        }))
+                    })}
+                </div>
+                
+                ${createFormGroup({
+                    label: 'Tahun',
+                    name: 'exportYear',
+                    type: 'select',
+                    required: true,
+                    options: [2024, 2025, 2026, 2027].map(year => ({
+                        value: year,
+                        label: year.toString()
+                    }))
+                })}
+            </form>
+        `,
+        footer: `
+            <button type="button" class="btn btn-secondary" onclick="closeModernModal('exportModal')">
+                Batal
+            </button>
+            <button type="submit" form="exportForm" class="btn btn-success">
+                📥 Download Excel
+            </button>
+        `
+    });
+    
+    document.body.appendChild(modal);
+    
+    // Add event listener for export type change
+    const exportTypeSelect = document.getElementById('exportType');
+    const monthFieldGroup = document.getElementById('monthFieldGroup');
+    
+    if (exportTypeSelect && monthFieldGroup) {
+        exportTypeSelect.addEventListener('change', function() {
+            if (this.value === 'yearly') {
+                monthFieldGroup.style.display = 'none';
+                document.getElementById('exportMonth').required = false;
+            } else {
+                monthFieldGroup.style.display = 'block';
+                document.getElementById('exportMonth').required = true;
+            }
+        });
+    }
 }
 
 function closeExportModal() {
-    ModalManager.hide('exportModal');
+    closeModernModal('exportModal');
 }
 
 function handleExportTypeChange() {

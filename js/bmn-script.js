@@ -18,14 +18,6 @@ const bmnCache = {
     lastUpdate: null
 };
 
-const CACHE_CONFIG = {
-    TTL: 5 * 60 * 1000,
-    KEYS: {
-        STATS: 'stats',
-        DATA: 'data'
-    }
-};
-
 // ===== INITIALIZATION =====
 window.addEventListener('DOMContentLoaded', function() {
     debugLog('BMN', 'Initializing BMN Dashboard');
@@ -109,27 +101,31 @@ function controlColumnVisibility() {
     console.log('═══════════════════════════════════════════════════════');
 }
 
+// Script snippet untuk memperbaiki renderNavMenu di bmn-script.js
+// Ganti fungsi renderNavMenu dengan yang ini:
+
 function renderNavMenu() {
     const navMenu = document.getElementById('navMenu');
     const isAdmin = currentUser.role === 'Admin';
     
     const menuItems = [
-        { id: 'dashboardPage', label: '📊 Dashboard', show: true },
-        { id: 'dataBMNPage', label: '📋 Data BMN', show: true },
-        { id: 'laporanBMNPage', label: '📑 Laporan', show: true },
-        { id: 'riwayatPage', label: '🕒 Riwayat', show: true },
-        { id: 'masterDataPage', label: '⚙️ Master Data', show: isAdmin }
+        { id: 'dashboardPage', label: 'Dashboard', icon: '📊', show: true },
+        { id: 'dataBMNPage', label: 'Data BMN', icon: '📋', show: true },
+        { id: 'laporanBMNPage', label: 'Laporan', icon: '📑', show: true },
+        { id: 'riwayatPage', label: 'Riwayat', icon: '🕒', show: true },
+        { id: 'masterDataPage', label: 'Master Data', icon: '⚙️', show: isAdmin }
     ];
     
-    navMenu.innerHTML = `
-        <ul>
-            ${menuItems.filter(item => item.show).map(item => `
-                <li>
-                    <button onclick="navigateTo('${item.id}')">${item.label}</button>
-                </li>
-            `).join('')}
-        </ul>
-    `;
+    navMenu.innerHTML = menuItems.filter(item => item.show).map(item => `
+        <button class="nav-btn" onclick="navigateTo('${item.id}')" id="nav-${item.id}">
+            <span class="nav-icon">${item.icon}</span>
+            <span class="nav-label">${item.label}</span>
+        </button>
+    `).join('');
+    
+    // Set first button as active
+    const firstBtn = navMenu.querySelector('.nav-btn');
+    if (firstBtn) firstBtn.classList.add('active');
 }
 
 function navigateTo(pageId) {

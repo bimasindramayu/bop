@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Menu Utama - Sistem Kemenag</title>
     <link rel="icon" type="image/png" href="assets/coin.png">
-    <link rel="stylesheet" href="style/main-styles.css">
+    <link rel="stylesheet" href="style/menu-styles.css">
 </head>
 <body>
     <!-- Loading Spinner -->
@@ -16,91 +16,187 @@
     <!-- Notification -->
     <div class="notification" id="notification"></div>
 
-    <!-- Main Menu -->
-    <div class="main-container">
-        <div class="header">
-            <h1>Sistem Informasi Kemenag Indramayu</h1>
-            <div class="user-info">
-                <strong id="userName"></strong>
-                <small id="userRole"></small>
+    <!-- Main Container -->
+    <div class="main-wrapper">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-content">
+                <div class="header-left">
+                    <div class="logo-section">
+                        <img src="assets/coin.png" alt="Logo" class="header-logo" onerror="this.style.display='none'">
+                        <div class="header-text">
+                            <h1>Sistem Informasi Kemenag</h1>
+                            <p>Kabupaten Indramayu</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="header-right">
+                    <div class="user-profile">
+                        <div class="user-avatar">
+                            <span id="userInitials"></span>
+                        </div>
+                        <div class="user-details">
+                            <strong id="userName"></strong>
+                            <small id="userRole"></small>
+                        </div>
+                    </div>
+                </div>
             </div>
-        </div>
+        </header>
 
-        <div class="menu-grid">
-            <div class="menu-card" onclick="window.location.href='bop-dashboard.html'">
-                <div class="menu-icon">💰</div>
-                <h3>BOP Management</h3>
-                <p>Kelola Budget, RPD, dan Realisasi</p>
-            </div>
+        <!-- Main Content -->
+        <main class="main-content">
+            <div class="container">
+                <!-- Welcome Section -->
+                <div class="welcome-section">
+                    <div class="welcome-content">
+                        <h2 class="welcome-title">Selamat Datang! 👋</h2>
+                        <p class="welcome-subtitle">Pilih menu di bawah untuk mengakses sistem</p>
+                    </div>
+                    <div class="quick-actions">
+                        <button class="quick-btn" onclick="showPasswordModal()">
+                            <span class="quick-icon">🔑</span>
+                            <span>Ubah Password</span>
+                        </button>
+                        <button class="quick-btn logout-btn" onclick="logout()">
+                            <span class="quick-icon">🚪</span>
+                            <span>Keluar</span>
+                        </button>
+                    </div>
+                </div>
 
-            <div class="menu-card" onclick="window.location.href='bmn-dashboard.html'">
-                <div class="menu-icon">📦</div>
-                <h3>BMN Management</h3>
-                <p>Kelola Barang Milik Negara</p>
-            </div>
+                <!-- Menu Grid -->
+                <div class="menu-grid">
+                    <!-- BOP Management -->
+                    <div class="menu-card bop" onclick="navigateToModule('bop-dashboard.html')">
+                        <div class="card-icon-wrapper">
+                            <div class="card-icon">💰</div>
+                        </div>
+                        <div class="card-content">
+                            <h3>BOP Management</h3>
+                            <p>Kelola Budget, RPD, dan Realisasi anggaran operasional</p>
+                        </div>
+                        <div class="card-arrow">→</div>
+                    </div>
 
-            <div class="menu-card" onclick="window.location.href='nikah-dashboard.html'">
-                <div class="menu-icon">💍</div>
-                <h3>Data Pernikahan</h3>
-                <p>Pendataan Peristiwa Nikah KUA</p>
-            </div>
+                    <!-- BMN Management -->
+                    <div class="menu-card bmn" onclick="navigateToModule('bmn-dashboard.html')">
+                        <div class="card-icon-wrapper">
+                            <div class="card-icon">📦</div>
+                        </div>
+                        <div class="card-content">
+                            <h3>BMN Management</h3>
+                            <p>Kelola inventaris Barang Milik Negara</p>
+                        </div>
+                        <div class="card-arrow">→</div>
+                    </div>
 
-            <div class="menu-card" id="menuKelolInfoKUA" style="display: none;" onclick="window.location.href='nikah-dashboard.html?action=kuainfo'">
-                <div class="menu-icon">📋</div>
-                <h3>Kelola Info KUA</h3>
-                <p>Update Kepala KUA &amp; NIP</p>
-            </div>
+                    <!-- Data Pernikahan -->
+                    <div class="menu-card nikah" onclick="navigateToModule('nikah-dashboard.html')">
+                        <div class="card-icon-wrapper">
+                            <div class="card-icon">💍</div>
+                        </div>
+                        <div class="card-content">
+                            <h3>Data Pernikahan</h3>
+                            <p>Pendataan peristiwa nikah di seluruh KUA</p>
+                        </div>
+                        <div class="card-arrow">→</div>
+                    </div>
 
-            <div class="menu-card" id="menuPengguna" style="display: none;" onclick="window.location.href='user-management.html'">
-                <div class="menu-icon">👥</div>
-                <h3>Kelola Pengguna</h3>
-                <p>Manajemen user dan akses</p>
-            </div>
+                    <!-- Kelola Info KUA (Admin Only) -->
+                    <div class="menu-card kua" id="menuKelolInfoKUA" style="display: none;" onclick="navigateToModule('nikah-dashboard.html?action=kuainfo')">
+                        <div class="card-icon-wrapper">
+                            <div class="card-icon">📋</div>
+                        </div>
+                        <div class="card-content">
+                            <h3>Kelola Info KUA</h3>
+                            <p>Update informasi Kepala KUA dan NIP</p>
+                        </div>
+                        <div class="card-arrow">→</div>
+                    </div>
 
-            <div class="menu-card" onclick="showPasswordModal()">
-                <div class="menu-icon">🔑</div>
-                <h3>Ubah Password</h3>
-                <p>Ganti password akun Anda</p>
-            </div>
+                    <!-- Kelola Pengguna (Admin Only) -->
+                    <div class="menu-card users" id="menuPengguna" style="display: none;" onclick="navigateToModule('user-management.html')">
+                        <div class="card-icon-wrapper">
+                            <div class="card-icon">👥</div>
+                        </div>
+                        <div class="card-content">
+                            <h3>Kelola Pengguna</h3>
+                            <p>Manajemen user dan kontrol akses sistem</p>
+                        </div>
+                        <div class="card-arrow">→</div>
+                    </div>
+                </div>
 
-            <div class="menu-card" onclick="logout()">
-                <div class="menu-icon">🚪</div>
-                <h3>Keluar</h3>
-                <p>Logout dari sistem</p>
+                <!-- Info Cards -->
+                <div class="info-section">
+                    <div class="info-card">
+                        <div class="info-icon">ℹ️</div>
+                        <div class="info-content">
+                            <h4>Bantuan & Dukungan</h4>
+                            <p>Jika mengalami kendala, hubungi administrator sistem</p>
+                        </div>
+                    </div>
+                </div>
             </div>
-        </div>
+        </main>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <div class="footer-content">
+                <p>&copy; 2026 Kementerian Agama Kabupaten Indramayu</p>
+                <p class="footer-version">v1.0.0</p>
+            </div>
+        </footer>
     </div>
 
     <!-- Password Change Modal -->
     <div class="modal" id="changePasswordModal">
-        <div class="modal-content">
+        <div class="modal-content password-modal">
             <div class="modal-header">
+                <div class="modal-icon">🔐</div>
                 <h3>Ubah Password</h3>
+                <p class="modal-subtitle">Pastikan password baru Anda kuat dan mudah diingat</p>
                 <button class="close-btn" onclick="closePasswordModal()">&times;</button>
             </div>
             <form id="changePasswordForm">
                 <div class="form-group">
-                    <label>Password Lama</label>
-                    <div class="password-input">
-                        <input type="password" id="oldPassword" required>
-                        <button type="button" class="toggle-password" onclick="togglePassword('oldPassword')">👁️</button>
+                    <label for="oldPassword">
+                        <span class="label-icon">🔑</span>
+                        Password Lama
+                    </label>
+                    <div class="password-input-group">
+                        <input type="password" id="oldPassword" placeholder="Masukkan password lama" required autocomplete="current-password">
+                        <button type="button" class="password-toggle" onclick="togglePassword('oldPassword')">👁️</button>
                     </div>
                 </div>
                 <div class="form-group">
-                    <label>Password Baru</label>
-                    <div class="password-input">
-                        <input type="password" id="newPassword" required minlength="6">
-                        <button type="button" class="toggle-password" onclick="togglePassword('newPassword')">👁️</button>
+                    <label for="newPassword">
+                        <span class="label-icon">🔒</span>
+                        Password Baru
+                    </label>
+                    <div class="password-input-group">
+                        <input type="password" id="newPassword" placeholder="Minimal 6 karakter" required minlength="6" autocomplete="new-password">
+                        <button type="button" class="password-toggle" onclick="togglePassword('newPassword')">👁️</button>
                     </div>
+                    <small class="form-hint">Password minimal 6 karakter</small>
                 </div>
                 <div class="form-group">
-                    <label>Konfirmasi Password Baru</label>
-                    <div class="password-input">
-                        <input type="password" id="confirmPassword" required minlength="6">
-                        <button type="button" class="toggle-password" onclick="togglePassword('confirmPassword')">👁️</button>
+                    <label for="confirmPassword">
+                        <span class="label-icon">✓</span>
+                        Konfirmasi Password Baru
+                    </label>
+                    <div class="password-input-group">
+                        <input type="password" id="confirmPassword" placeholder="Ketik ulang password baru" required minlength="6" autocomplete="new-password">
+                        <button type="button" class="password-toggle" onclick="togglePassword('confirmPassword')">👁️</button>
                     </div>
                 </div>
-                <button type="submit" class="btn">Ubah Password</button>
+                <div class="modal-actions">
+                    <button type="button" class="btn btn-secondary" onclick="closePasswordModal()">Batal</button>
+                    <button type="submit" class="btn btn-primary">
+                        <span>💾</span> Simpan Password
+                    </button>
+                </div>
             </form>
         </div>
     </div>
@@ -108,5 +204,23 @@
     <!-- Load Config & Scripts -->
     <script src="js/config.js"></script>
     <script src="js/main-script.js"></script>
+    
+    <script>
+        function navigateToModule(url) {
+            window.location.href = url;
+        }
+        
+        // Set user initials in avatar
+        window.addEventListener('DOMContentLoaded', function() {
+            const user = SessionManager.getCurrentUser();
+            if (user && user.name) {
+                const initials = user.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
+                const initialsEl = document.getElementById('userInitials');
+                if (initialsEl) {
+                    initialsEl.textContent = initials;
+                }
+            }
+        });
+    </script>
 </body>
 </html>

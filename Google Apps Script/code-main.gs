@@ -295,14 +295,40 @@ function getUsers(data) {
     const users = [];
     
     for (let i = 1; i < rows.length; i++) {
+      // ✅ FIX: Safely handle date conversion
+      let createdDate = '';
+      let updatedDate = '';
+      
+      try {
+        if (rows[i][6] && rows[i][6] !== '') {
+          const created = new Date(rows[i][6]);
+          if (!isNaN(created.getTime())) {
+            createdDate = created.toISOString();
+          }
+        }
+      } catch (e) {
+        Logger.log('[GET_USERS] Invalid created date for user: ' + rows[i][1]);
+      }
+      
+      try {
+        if (rows[i][7] && rows[i][7] !== '') {
+          const updated = new Date(rows[i][7]);
+          if (!isNaN(updated.getTime())) {
+            updatedDate = updated.toISOString();
+          }
+        }
+      } catch (e) {
+        Logger.log('[GET_USERS] Invalid updated date for user: ' + rows[i][1]);
+      }
+      
       users.push({
         id: rows[i][0],
         username: rows[i][1],
         name: rows[i][3],
         role: rows[i][4],
         kua: rows[i][5] || '',
-        created: rows[i][6] ? new Date(rows[i][6]).toISOString() : '',
-        updated: rows[i][7] ? new Date(rows[i][7]).toISOString() : ''
+        created: createdDate,
+        updated: updatedDate
       });
     }
     
