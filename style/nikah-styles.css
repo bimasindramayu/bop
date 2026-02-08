@@ -568,7 +568,9 @@ h4 {
     margin: 0;
 }
 .inline-input[type=number] {
-    -moz-appearance: textfield;
+    appearance: textfield;        /* standard */
+    -webkit-appearance: textfield; /* Chrome, Safari */
+    -moz-appearance: textfield;   /* Firefox */
 }
 
 .save-cell {
