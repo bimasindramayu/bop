@@ -774,6 +774,67 @@ function displayDashboardStats(stats) {
     }
 }
 
+// ⭐ NEW: Update dashboard stats by calculating from cache (no API call)
+function updateDashboardFromCache() {
+    console.log('[DASHBOARD] Recalculating stats from cache - NO API CALL');
+    
+    try {
+        const cachedBudgets = getLocalCache('budgets');
+        const cachedRPDs = getLocalCache('rpds');
+        const cachedRealisasi = getLocalCache('realisasis');
+        
+        if (!cachedBudgets || cachedBudgets.length === 0) {
+            console.warn('[DASHBOARD] No budget in cache, cannot recalculate');
+            return;
+        }
+        
+        // Calculate from cache
+        const budget = cachedBudgets[0];
+        const budgetTotal = parseFloat(budget.total) || parseFloat(budget.budget) || 0;
+        
+        // Calculate total RPD from cache
+        const currentYear = new Date().getFullYear();
+        const filteredRPDs = cachedRPDs ? cachedRPDs.filter(r => {
+            const yearMatch = r.year == currentYear;
+            const kuaMatch = currentUser.role === 'Admin' || r.kua === currentUser.kua;
+            return yearMatch && kuaMatch;
+        }) : [];
+        
+        const totalRPD = filteredRPDs.reduce((sum, r) => sum + (parseFloat(r.total) || 0), 0);
+        
+        // Calculate total realisasi from cache
+        const filteredRealisasi = cachedRealisasi ? cachedRealisasi.filter(r => {
+            const yearMatch = r.year == currentYear;
+            const kuaMatch = currentUser.role === 'Admin' || r.kua === currentUser.kua;
+            return yearMatch && kuaMatch;
+        }) : [];
+        
+        const totalRealisasi = filteredRealisasi.reduce((sum, r) => sum + (parseFloat(r.total) || 0), 0);
+        
+        // Count pending verifikasi
+        const pendingCount = filteredRealisasi.filter(r => r.status === 'Menunggu Verifikasi').length;
+        
+        const calculatedStats = {
+            budget: budgetTotal,
+            totalBudget: budgetTotal,
+            totalRPD: totalRPD,
+            pagu: totalRPD,
+            totalRealisasi: totalRealisasi,
+            realisasi: totalRealisasi,
+            pendingVerifikasi: pendingCount,
+            menungguVerifikasi: pendingCount
+        };
+        
+        console.log('[DASHBOARD] Calculated stats from cache:', calculatedStats);
+        
+        // Display the calculated stats
+        displayDashboardStats(calculatedStats);
+        
+    } catch (error) {
+        console.error('[DASHBOARD] Error recalculating from cache:', error);
+    }
+}
+
 // ===== BUDGET MANAGEMENT =====
 async function loadBudgets(forceRefresh = false) {
     console.log('[BUDGET] Loading budgets', { forceRefresh });
@@ -1452,24 +1513,8 @@ async function showRPDModal(rpd = null) {
     try {
         console.log('[RPD MODAL] Getting budget info from cache...');
         
-        // Get budget dari cache
-        let cachedBudgets = getLocalCache('budgets');
-        
-        // ⭐ FALLBACK: Jika budget cache kosong, fetch dari server
-        if (!cachedBudgets || cachedBudgets.length === 0) {
-            console.log('[RPD MODAL] Budget cache empty, fetching from server...');
-            try {
-                const budgetData = await apiCall('getBudgets', 
-                    currentUser.role === 'Admin' 
-                        ? { year: new Date().getFullYear() }
-                        : { kua: currentUser.kua }
-                );
-                cachedBudgets = budgetData || [];
-                console.log('[RPD MODAL] Budget fetched:', cachedBudgets.length, 'records');
-            } catch (err) {
-                console.error('[RPD MODAL] Failed to fetch budget:', err);
-            }
-        }
+        // Get budget dari cache (budget NEVER changes, always in cache)
+        const cachedBudgets = getLocalCache('budgets');
         
         if (cachedBudgets && cachedBudgets.length > 0) {
             const budget = cachedBudgets[0];
@@ -1507,7 +1552,7 @@ async function showRPDModal(rpd = null) {
             
             console.log('[RPD MODAL] Budget info from cache + calculated RPD:', budgetInfo);
         } else {
-            console.warn('[RPD MODAL] No budget available, using defaults');
+            console.warn('[RPD MODAL] No budget in cache - budget should have been loaded at startup!');
         }
     } catch (error) {
         console.error('[RPD ERROR] Failed to get budget:', error);
@@ -1732,27 +1777,24 @@ async function showRPDModal(rpd = null) {
             
             showNotification('RPD berhasil disimpan', 'success');
             
-            // ⭐ PERBAIKAN CRITICAL: Clear BOTH local cache AND Smart Cache
+            // ⭐ OPTIMIZED: Only clear RPD cache (budget never changes!)
             clearLocalCache('rpds');
-            clearLocalCache('budgets');
-            clearLocalCache('dashboardStats');
             
-            // Clear Smart Cache untuk ensure fetch fresh data
+            // Clear Smart Cache untuk RPD saja
             if (window.SmartCacheManager) {
                 SmartCacheManager.invalidateType('RPDS');
-                SmartCacheManager.invalidateType('BUDGETS');
-                SmartCacheManager.invalidateType('DASHBOARD_STATS');
+                // Budget TIDAK di-invalidate karena tidak berubah
+                // Dashboard stats akan di-recalculate dari cache
             }
             
             modalHasChanges = false; // ✅ Reset changes flag
             closeModal(true); // ✅ Skip confirmation karena sudah saved
             
-            // ✅ FIX: Reload budgets agar cache ter-update setelah save RPD
-            await Promise.all([
-                loadRPDs(true),
-                loadDashboardStats(true),
-                loadBudgets(true) // ⭐ PERBAIKAN: Reload budget cache
-            ]);
+            // ✅ OPTIMIZED: Hanya reload RPDs, dashboard akan recalculate
+            await loadRPDs(true);
+            
+            // ⭐ PENTING: Recalculate dashboard stats dari cache tanpa API call
+            updateDashboardFromCache();
             
         } catch (error) {
             console.error('[RPD FORM ERROR]', error);
