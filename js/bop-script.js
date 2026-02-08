@@ -1447,7 +1447,7 @@ async function showRPDModal(rpd = null) {
         console.error('[RPD ERROR] Failed to check config', error);
     }
 
-    // ✅ Get budget info dari CACHE, tidak perlu fetch
+    // ✅ Get budget info - fetch dari server jika cache kosong atau 0
     let budgetInfo = { budget: 0, totalRPD: 0, sisaRPD: 0 };
     try {
         const cachedBudgets = getLocalCache('budgets');
@@ -1465,8 +1465,32 @@ async function showRPDModal(rpd = null) {
             };
             
             console.log('[RPD MODAL] Budget info from cache:', budgetInfo);
-        } else {
-            console.log('[RPD MODAL] No budget in cache, using default values');
+        }
+        
+        // ✅ PERBAIKAN: Jika cache kosong atau budget = 0, fetch dari server
+        if (!cachedBudgets || cachedBudgets.length === 0 || budgetInfo.budget === 0) {
+            console.log('[RPD MODAL] Cache empty or budget = 0, fetching fresh data...');
+            
+            const freshBudgets = currentUser.role === 'Admin' 
+                ? await apiCall('getBudgets', { year: new Date().getFullYear() })
+                : await apiCall('getBudgets', { kua: currentUser.kua });
+            
+            if (freshBudgets && freshBudgets.length > 0) {
+                // Update cache
+                updateLocalCache('budgets', freshBudgets);
+                
+                const budget = freshBudgets[0];
+                const budgetTotal = parseFloat(budget.total) || parseFloat(budget.budget) || 0;
+                const totalRPD = parseFloat(budget.totalRPD) || parseFloat(budget.pagu) || 0;
+                
+                budgetInfo = {
+                    budget: budgetTotal,
+                    totalRPD: totalRPD,
+                    sisaRPD: budgetTotal - totalRPD
+                };
+                
+                console.log('[RPD MODAL] Budget info from fresh fetch:', budgetInfo);
+            }
         }
     } catch (error) {
         console.error('[RPD ERROR] Failed to get budget:', error);
@@ -1542,11 +1566,11 @@ async function showRPDModal(rpd = null) {
                 </div>
                 <div class="summary-item">
                     <span>Sisa Nominal RPD:</span>
-                    <strong>${formatCurrency(budgetInfo.sisaRPD)}</strong>
+                    <strong style="color: #28a745;">${formatCurrency(budgetInfo.sisaRPD)}</strong>
                 </div>
             </div>
             
-            <form id="rpdForm">
+            <form id="rpdForm" data-edit-mode="${rpd ? 'true' : 'false'}" data-existing-rpd-total="${rpd ? (rpd.total || 0) : 0}">
                 <div class="form-group">
                     <label>Bulan</label>
                     <select id="rpdMonth" required ${rpd ? 'disabled' : ''}>
@@ -1774,6 +1798,88 @@ function calculateRPDTotal() {
     const totalElement = document.getElementById('rpdTotal');
     if (totalElement) {
         totalElement.textContent = formatCurrency(total);
+    }
+    
+    // ✅ UPDATE SUMMARY BOX - Update sisa nominal RPD secara real-time
+    updateRPDSummaryBox(total);
+}
+
+// ✅ NEW FUNCTION: Update summary box dengan total RPD yang sedang diinput
+function updateRPDSummaryBox(currentTotal) {
+    const budgetTahunanEl = document.querySelector('.summary-box .summary-item:nth-child(1) strong');
+    const totalRPDEl = document.querySelector('.summary-box .summary-item:nth-child(2) strong');
+    const sisaNominalEl = document.querySelector('.summary-box .summary-item:nth-child(3) strong');
+    
+    if (!budgetTahunanEl || !totalRPDEl || !sisaNominalEl) {
+        console.log('[UPDATE_SUMMARY] Summary elements not found');
+        return;
+    }
+    
+    // Get current budget tahunan (tetap)
+    const budgetTahunanText = budgetTahunanEl.textContent.replace(/[^\d]/g, '');
+    const budgetTahunan = parseFloat(budgetTahunanText) || 0;
+    
+    // Get form data
+    const form = document.getElementById('rpdForm');
+    const isEdit = form?.dataset?.editMode === 'true';
+    const existingRPDTotal = parseFloat(form?.dataset?.existingRpdTotal || 0);
+    
+    console.log('[UPDATE_SUMMARY] Form data:', { isEdit, existingRPDTotal });
+    
+    // Get budget info dari cache untuk hitung total RPD yang sudah disubmit
+    const cachedBudgets = getLocalCache('budgets');
+    let baselineTotalRPD = 0;
+    
+    if (cachedBudgets && cachedBudgets.length > 0) {
+        baselineTotalRPD = parseFloat(cachedBudgets[0].totalRPD) || parseFloat(cachedBudgets[0].pagu) || 0;
+        console.log('[UPDATE_SUMMARY] Baseline total RPD from cache:', baselineTotalRPD);
+    }
+    
+    // ✅ Calculate new total RPD
+    let newTotalRPD;
+    if (isEdit) {
+        // Edit mode: totalRPD = baseline - existing + current
+        newTotalRPD = baselineTotalRPD - existingRPDTotal + currentTotal;
+        console.log('[UPDATE_SUMMARY] EDIT MODE:', {
+            baselineTotalRPD,
+            existingRPDTotal,
+            currentTotal,
+            calculation: `${baselineTotalRPD} - ${existingRPDTotal} + ${currentTotal} = ${newTotalRPD}`
+        });
+    } else {
+        // New mode: totalRPD = baseline + current
+        newTotalRPD = baselineTotalRPD + currentTotal;
+        console.log('[UPDATE_SUMMARY] NEW MODE:', {
+            baselineTotalRPD,
+            currentTotal,
+            calculation: `${baselineTotalRPD} + ${currentTotal} = ${newTotalRPD}`
+        });
+    }
+    
+    // Calculate sisa
+    const sisaNominal = budgetTahunan - newTotalRPD;
+    
+    console.log('[UPDATE_SUMMARY] Final:', {
+        budgetTahunan,
+        newTotalRPD,
+        sisaNominal
+    });
+    
+    // Update display dengan warna
+    totalRPDEl.textContent = formatCurrency(newTotalRPD);
+    sisaNominalEl.textContent = formatCurrency(sisaNominal);
+    
+    // ✅ Add visual feedback jika melebihi budget
+    if (sisaNominal < 0) {
+        sisaNominalEl.style.color = '#dc3545'; // Red
+        totalRPDEl.style.color = '#dc3545'; // Red
+    } else if (sisaNominal < budgetTahunan * 0.1) {
+        // Warning jika sisa < 10%
+        sisaNominalEl.style.color = '#ffc107'; // Yellow
+        totalRPDEl.style.color = '#333'; // Default
+    } else {
+        sisaNominalEl.style.color = '#28a745'; // Green
+        totalRPDEl.style.color = '#333'; // Default
     }
 }
 
@@ -2024,7 +2130,7 @@ async function showRealisasiModal(realisasi = null) {
         document.body.appendChild(modal);
     }
     
-    // ✅ Get budget info dari CACHE, tidak fetch dari server
+    // ✅ Get budget info - fetch dari server jika cache kosong atau 0
     let realisasiBudgetInfo = { budget: 0, totalRealisasi: 0, sisaBudget: 0 };
     
     try {
@@ -2052,21 +2158,81 @@ async function showRealisasiModal(realisasi = null) {
             };
             
             console.log('[REALISASI MODAL] Budget info from cache:', realisasiBudgetInfo);
-        } else {
-            console.warn('[REALISASI MODAL] No budget in cache');
+        }
+        
+        // ✅ PERBAIKAN: Jika cache kosong atau budget = 0, fetch dari server
+        if (!cachedBudgets || cachedBudgets.length === 0 || realisasiBudgetInfo.budget === 0) {
+            console.log('[REALISASI MODAL] Cache empty or budget = 0, fetching fresh data...');
+            
+            const freshBudgets = currentUser.role === 'Admin' 
+                ? await apiCall('getBudgets', { year: new Date().getFullYear() })
+                : await apiCall('getBudgets', { kua: currentUser.kua });
+            
+            if (freshBudgets && freshBudgets.length > 0) {
+                // Update cache
+                updateLocalCache('budgets', freshBudgets);
+                
+                const yearFilter = document.getElementById('realisasiYearFilter');
+                const year = yearFilter ? yearFilter.value : new Date().getFullYear();
+                
+                const currentBudget = freshBudgets.find(b => b.year == year);
+                const budgetTotal = currentBudget ? (parseFloat(currentBudget.budget) || parseFloat(currentBudget.total) || 0) : 0;
+                
+                // Fetch realisasis juga jika cache kosong
+                let freshRealisasis = cachedRealisasis;
+                if (!cachedRealisasis || cachedRealisasis.length === 0) {
+                    freshRealisasis = currentUser.role === 'Admin'
+                        ? await apiCall('getRealisasis', { year: new Date().getFullYear() })
+                        : await apiCall('getRealisasis', { kua: currentUser.kua, year: new Date().getFullYear() });
+                    
+                    if (freshRealisasis) {
+                        updateLocalCache('realisasis', freshRealisasis);
+                    }
+                }
+                
+                // Hitung total realisasi
+                const totalRealisasi = freshRealisasis
+                    ? freshRealisasis
+                        .filter(r => r.status === 'Diterima' && r.id !== realisasi?.id)
+                        .reduce((sum, r) => sum + (parseFloat(r.total) || 0), 0)
+                    : 0;
+                
+                realisasiBudgetInfo = {
+                    budget: budgetTotal,
+                    totalRealisasi: totalRealisasi,
+                    sisaBudget: budgetTotal - totalRealisasi
+                };
+                
+                console.log('[REALISASI MODAL] Budget info from fresh fetch:', realisasiBudgetInfo);
+            }
         }
     } catch (error) {
         console.error('[REALISASI MODAL ERROR]', error);
         showNotification('Gagal memuat data budget', 'error');
     }
     
-    // ✅ Get available RPDs dari CACHE, tidak fetch dari server
+    // ✅ Get available RPDs - fetch dari server jika cache kosong
     let availableRPDs = [];
     try {
-        const cachedRPDs = getLocalCache('rpds');
-        const cachedRealisasis = getLocalCache('realisasis');
+        let cachedRPDs = getLocalCache('rpds');
+        let cachedRealisasis = getLocalCache('realisasis');
         
-        console.log('[REALISASI MODAL] Loading RPDs from cache');
+        // ✅ PERBAIKAN: Jika cache RPD kosong, fetch dari server
+        if (!cachedRPDs || cachedRPDs.length === 0) {
+            console.log('[REALISASI MODAL] RPD cache empty, fetching fresh data...');
+            
+            const freshRPDs = currentUser.role === 'Admin'
+                ? await apiCall('getRPDs', { year: new Date().getFullYear() })
+                : await apiCall('getRPDs', { kua: currentUser.kua, year: new Date().getFullYear() });
+            
+            if (freshRPDs && freshRPDs.length > 0) {
+                cachedRPDs = freshRPDs;
+                updateLocalCache('rpds', sortByMonth(freshRPDs));
+                console.log('[REALISASI MODAL] Fresh RPDs fetched:', freshRPDs.length);
+            }
+        }
+        
+        console.log('[REALISASI MODAL] Loading RPDs from cache/fresh');
         
         if (Array.isArray(cachedRPDs)) {
             // Filter RPDs yang valid
