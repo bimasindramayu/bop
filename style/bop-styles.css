@@ -527,6 +527,140 @@ textarea.verify-notes:focus {
     box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
 }
 
+/* ===== VERIFY MODAL SIDE-BY-SIDE LAYOUT ===== */
+.verify-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 25px;
+    margin: 20px 0;
+}
+
+.verify-left,
+.verify-right {
+    display: flex;
+    flex-direction: column;
+}
+
+.verify-left {
+    /* Data pos & nominal di kiri */
+    border-right: 2px solid #e9ecef;
+    padding-right: 20px;
+}
+
+.verify-right {
+    /* Preview dokumen di kanan */
+    padding-left: 20px;
+    max-height: 700px;
+    overflow-y: auto;
+}
+
+/* Scrollbar styling untuk verify-right */
+.verify-right::-webkit-scrollbar {
+    width: 8px;
+}
+
+.verify-right::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 4px;
+}
+
+.verify-right::-webkit-scrollbar-thumb {
+    background: #888;
+    border-radius: 4px;
+}
+
+.verify-right::-webkit-scrollbar-thumb:hover {
+    background: #555;
+}
+
+/* ===== IMAGE VIEWER (ZOOM, ROTATE, PAN) ===== */
+.image-viewer-container {
+    width: 100%;
+    margin-top: 10px;
+    border: 2px solid #e9ecef;
+    border-radius: 12px;
+    overflow: hidden;
+    background: #f8f9fa;
+}
+
+.image-viewer-controls {
+    display: flex;
+    gap: 8px;
+    padding: 12px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-bottom: 2px solid #e9ecef;
+    align-items: center;
+}
+
+.viewer-btn {
+    background: rgba(255, 255, 255, 0.9);
+    border: none;
+    padding: 8px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.3s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 40px;
+    font-weight: 600;
+}
+
+.viewer-btn:hover {
+    background: white;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.viewer-btn:active {
+    transform: translateY(0);
+}
+
+.zoom-level {
+    margin-left: auto;
+    padding: 6px 12px;
+    background: rgba(255, 255, 255, 0.9);
+    border-radius: 6px;
+    font-weight: 600;
+    color: #667eea;
+    font-size: 14px;
+}
+
+.image-viewer-wrapper {
+    width: 100%;
+    height: 500px;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #fff;
+    position: relative;
+}
+
+.image-viewer-img {
+    max-width: 100%;
+    max-height: 100%;
+    transition: transform 0.2s ease-out;
+    cursor: grab;
+    user-select: none;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+}
+
+.image-viewer-img:active {
+    cursor: grabbing;
+}
+
+.image-viewer-hint {
+    padding: 10px;
+    text-align: center;
+    font-size: 12px;
+    color: #666;
+    background: #f8f9fa;
+    border-top: 1px solid #e9ecef;
+}
+
 /* ===== RESPONSIVE ===== */
 @media (max-width: 768px) {
     .nav-menu ul {
@@ -557,6 +691,11 @@ textarea.verify-notes:focus {
 
     .rpd-subitem {
         grid-template-columns: 1fr;
+    }
+    
+    /* Responsive untuk verify grid */
+    .verify-grid {
+        grid-template-columns: 1fr !important;
     }
 }
 

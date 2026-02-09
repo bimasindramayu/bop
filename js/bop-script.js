@@ -4422,16 +4422,41 @@ function verifyRealisasi(realisasi) {
                                 </div>
                             </div>
                             ${isImage ? `
-                                <div style="width: 100%; text-align: center;">
-                                    <img src="${previewUrl}" 
-                                        alt="${file.fileName}" 
-                                        style="max-width: 100%; max-height: 400px; border-radius: 8px; margin-top: 10px; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.1);"
-                                        onclick="window.open('${file.fileUrl}', '_blank')"
-                                        onerror="this.onerror=null; this.src='https://drive.google.com/uc?export=view&id=${fileId}'; if(this.complete && this.naturalHeight === 0) { this.style.display='none'; this.nextElementSibling.style.display='block'; }">
-                                    <div style="display: none; margin-top: 10px; padding: 15px; background: #e3f2fd; border-radius: 8px; text-align: center;">
-                                        <p style="color: #1976d2; margin: 0 0 10px 0;">🖼️ Gambar sedang dimuat atau tidak dapat ditampilkan</p>
-                                        <button type="button" class="btn btn-sm btn-info" onclick="window.open('${file.fileUrl}', '_blank')">Buka di Google Drive</button>
+                                <div class="image-viewer-container" id="viewer-${index}">
+                                    <div class="image-viewer-controls">
+                                        <button type="button" class="viewer-btn" onclick="zoomIn('viewer-${index}')" title="Zoom In">
+                                            <span style="font-size: 18px;">➕</span>
+                                        </button>
+                                        <button type="button" class="viewer-btn" onclick="zoomOut('viewer-${index}')" title="Zoom Out">
+                                            <span style="font-size: 18px;">➖</span>
+                                        </button>
+                                        <button type="button" class="viewer-btn" onclick="rotateImage('viewer-${index}')" title="Rotate">
+                                            <span style="font-size: 18px;">↻</span>
+                                        </button>
+                                        <button type="button" class="viewer-btn" onclick="resetImage('viewer-${index}')" title="Reset">
+                                            <span style="font-size: 16px;">⟲</span>
+                                        </button>
+                                        <span class="zoom-level" id="zoom-level-${index}">100%</span>
                                     </div>
+                                    <div class="image-viewer-wrapper" id="wrapper-${index}">
+                                        <img src="${previewUrl}" 
+                                            alt="${file.fileName}" 
+                                            class="image-viewer-img"
+                                            id="img-${index}"
+                                            data-zoom="1"
+                                            data-rotation="0"
+                                            data-pan-x="0"
+                                            data-pan-y="0"
+                                            draggable="false"
+                                            onerror="this.onerror=null; this.src='https://drive.google.com/uc?export=view&id=${fileId}'; if(this.complete && this.naturalHeight === 0) { this.closest('.image-viewer-container').style.display='none'; this.closest('.image-viewer-container').nextElementSibling.style.display='block'; }">
+                                    </div>
+                                    <div class="image-viewer-hint">
+                                        💡 Gunakan scroll mouse untuk zoom, drag untuk panning
+                                    </div>
+                                </div>
+                                <div style="display: none; margin-top: 10px; padding: 15px; background: #e3f2fd; border-radius: 8px; text-align: center;">
+                                    <p style="color: #1976d2; margin: 0 0 10px 0;">🖼️ Gambar sedang dimuat atau tidak dapat ditampilkan</p>
+                                    <button type="button" class="btn btn-sm btn-info" onclick="window.open('${file.fileUrl}', '_blank')">Buka di Google Drive</button>
                                 </div>
                             ` : isPDF ? `
                                 <div style="width: 100%; margin-top: 10px;">
@@ -4467,7 +4492,7 @@ function verifyRealisasi(realisasi) {
     }
     
     modal.innerHTML = `
-       <div class="modal-content" style="max-width: 900px;">
+       <div class="modal-content" style="max-width: 1400px;">
             <div class="modal-header">
                 <h3>Verifikasi Realisasi - ${realisasi.month || 'Unknown'} ${realisasi.year || ''}</h3>
                 <button class="close-btn" onclick="closeModal()">&times;</button>
@@ -4488,17 +4513,27 @@ function verifyRealisasi(realisasi) {
                 </div>
             </div>
             
-            ${detailHTML}
-            ${filesHTML}
-            
-            <div class="summary-box">
-                <div class="summary-item">
-                    <span>Total Realisasi:</span>
-                    <strong>${formatCurrency(realisasi.total)}</strong>
+            <!-- Layout Side-by-Side: Pos/Nominal (kiri) dan Preview Dokumen (kanan) -->
+            <div class="verify-grid">
+                <div class="verify-left">
+                    <h3 style="color: #667eea; margin-bottom: 15px; font-size: 18px;">📊 Data Pos & Nominal</h3>
+                    ${detailHTML}
+                    
+                    <div class="summary-box" style="margin-top: 20px;">
+                        <div class="summary-item">
+                            <span>Total Realisasi:</span>
+                            <strong>${formatCurrency(realisasi.total)}</strong>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="verify-right">
+                    <h3 style="color: #667eea; margin-bottom: 15px; font-size: 18px;">📁 Preview Dokumen</h3>
+                    ${filesHTML}
                 </div>
             </div>
             
-            <form id="verifyForm">
+            <form id="verifyForm" style="margin-top: 30px;">
                 <div class="form-group">
                     <label>Status Verifikasi</label>
                     <select id="verifyStatus" required>
@@ -4517,6 +4552,11 @@ function verifyRealisasi(realisasi) {
     `;
     
     modal.classList.add('active');
+    
+    // Initialize image viewers
+    setTimeout(() => {
+        initAllImageViewers();
+    }, 100);
     
     document.getElementById('verifyForm').addEventListener('submit', async (e) => {
         e.preventDefault();
@@ -5955,6 +5995,218 @@ function removeUploadedFile(index) {
     displayUploadedFiles();
 }
 
+// ===== IMAGE VIEWER FUNCTIONS (ZOOM, ROTATE, PAN) =====
+
+/**
+ * Initialize image viewer with pan and zoom capabilities
+ */
+function initImageViewer(viewerId) {
+    const wrapper = document.getElementById(`wrapper-${viewerId.replace('viewer-', '')}`);
+    const img = document.getElementById(`img-${viewerId.replace('viewer-', '')}`);
+    
+    if (!wrapper || !img) return;
+    
+    let isPanning = false;
+    let startX = 0, startY = 0;
+    let currentX = 0, currentY = 0;
+    
+    // Mouse wheel zoom
+    wrapper.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        const delta = e.deltaY > 0 ? -0.1 : 0.1;
+        adjustZoom(viewerId, delta);
+    }, { passive: false });
+    
+    // Touch/trackpad zoom (pinch gesture)
+    let initialDistance = 0;
+    wrapper.addEventListener('touchstart', (e) => {
+        if (e.touches.length === 2) {
+            const touch1 = e.touches[0];
+            const touch2 = e.touches[1];
+            initialDistance = Math.hypot(
+                touch2.clientX - touch1.clientX,
+                touch2.clientY - touch1.clientY
+            );
+        }
+    });
+    
+    wrapper.addEventListener('touchmove', (e) => {
+        if (e.touches.length === 2) {
+            e.preventDefault();
+            const touch1 = e.touches[0];
+            const touch2 = e.touches[1];
+            const currentDistance = Math.hypot(
+                touch2.clientX - touch1.clientX,
+                touch2.clientY - touch1.clientY
+            );
+            
+            const delta = (currentDistance - initialDistance) * 0.01;
+            adjustZoom(viewerId, delta);
+            initialDistance = currentDistance;
+        }
+    }, { passive: false });
+    
+    // Pan with mouse
+    img.addEventListener('mousedown', (e) => {
+        isPanning = true;
+        startX = e.clientX - currentX;
+        startY = e.clientY - currentY;
+        img.style.cursor = 'grabbing';
+        e.preventDefault();
+    });
+    
+    document.addEventListener('mousemove', (e) => {
+        if (!isPanning) return;
+        
+        currentX = e.clientX - startX;
+        currentY = e.clientY - startY;
+        
+        img.setAttribute('data-pan-x', currentX);
+        img.setAttribute('data-pan-y', currentY);
+        updateImageTransform(viewerId);
+    });
+    
+    document.addEventListener('mouseup', () => {
+        if (isPanning) {
+            isPanning = false;
+            img.style.cursor = 'grab';
+        }
+    });
+    
+    // Pan with touch
+    let touchStartX = 0, touchStartY = 0;
+    img.addEventListener('touchstart', (e) => {
+        if (e.touches.length === 1) {
+            touchStartX = e.touches[0].clientX - currentX;
+            touchStartY = e.touches[0].clientY - currentY;
+        }
+    });
+    
+    img.addEventListener('touchmove', (e) => {
+        if (e.touches.length === 1) {
+            e.preventDefault();
+            currentX = e.touches[0].clientX - touchStartX;
+            currentY = e.touches[0].clientY - touchStartY;
+            
+            img.setAttribute('data-pan-x', currentX);
+            img.setAttribute('data-pan-y', currentY);
+            updateImageTransform(viewerId);
+        }
+    }, { passive: false });
+    
+    // Set initial cursor
+    img.style.cursor = 'grab';
+}
+
+/**
+ * Zoom in image
+ */
+function zoomIn(viewerId) {
+    adjustZoom(viewerId, 0.25);
+}
+
+/**
+ * Zoom out image
+ */
+function zoomOut(viewerId) {
+    adjustZoom(viewerId, -0.25);
+}
+
+/**
+ * Adjust zoom level
+ */
+function adjustZoom(viewerId, delta) {
+    const img = document.getElementById(`img-${viewerId.replace('viewer-', '')}`);
+    if (!img) return;
+    
+    let currentZoom = parseFloat(img.getAttribute('data-zoom')) || 1;
+    currentZoom += delta;
+    
+    // Limit zoom range: 0.25x to 5x
+    currentZoom = Math.max(0.25, Math.min(5, currentZoom));
+    
+    img.setAttribute('data-zoom', currentZoom);
+    updateImageTransform(viewerId);
+    updateZoomLevel(viewerId, currentZoom);
+}
+
+/**
+ * Rotate image 90 degrees clockwise
+ */
+function rotateImage(viewerId) {
+    const img = document.getElementById(`img-${viewerId.replace('viewer-', '')}`);
+    if (!img) return;
+    
+    let currentRotation = parseFloat(img.getAttribute('data-rotation')) || 0;
+    currentRotation += 90;
+    if (currentRotation >= 360) currentRotation = 0;
+    
+    img.setAttribute('data-rotation', currentRotation);
+    updateImageTransform(viewerId);
+}
+
+/**
+ * Reset image to original state
+ */
+function resetImage(viewerId) {
+    const img = document.getElementById(`img-${viewerId.replace('viewer-', '')}`);
+    if (!img) return;
+    
+    img.setAttribute('data-zoom', '1');
+    img.setAttribute('data-rotation', '0');
+    img.setAttribute('data-pan-x', '0');
+    img.setAttribute('data-pan-y', '0');
+    
+    updateImageTransform(viewerId);
+    updateZoomLevel(viewerId, 1);
+}
+
+/**
+ * Update image transform based on current zoom, rotation, and pan
+ */
+function updateImageTransform(viewerId) {
+    const img = document.getElementById(`img-${viewerId.replace('viewer-', '')}`);
+    if (!img) return;
+    
+    const zoom = parseFloat(img.getAttribute('data-zoom')) || 1;
+    const rotation = parseFloat(img.getAttribute('data-rotation')) || 0;
+    const panX = parseFloat(img.getAttribute('data-pan-x')) || 0;
+    const panY = parseFloat(img.getAttribute('data-pan-y')) || 0;
+    
+    img.style.transform = `translate(${panX}px, ${panY}px) scale(${zoom}) rotate(${rotation}deg)`;
+}
+
+/**
+ * Update zoom level display
+ */
+function updateZoomLevel(viewerId, zoom) {
+    const zoomLabel = document.getElementById(`zoom-level-${viewerId.replace('viewer-', '')}`);
+    if (zoomLabel) {
+        zoomLabel.textContent = Math.round(zoom * 100) + '%';
+    }
+}
+
+/**
+ * Initialize all image viewers in modal
+ */
+function initAllImageViewers() {
+    // Find all image viewer containers
+    const viewers = document.querySelectorAll('.image-viewer-container');
+    viewers.forEach((viewer) => {
+        initImageViewer(viewer.id);
+    });
+}
+
+// Auto-initialize viewers when modal is shown
+// This is called after modal content is set
+const originalShowModal = typeof showModal !== 'undefined' ? showModal : null;
+if (originalShowModal) {
+    window.showModal = function(...args) {
+        originalShowModal.apply(this, args);
+        setTimeout(initAllImageViewers, 100);
+    };
+}
+
 // Expose to window
 window.downloadRPDPerYear = downloadRPDPerYear;
 window.downloadRPDDetailYear = downloadRPDDetailYear;
@@ -5965,3 +6217,11 @@ window.closeRealisasiModal = closeRealisasiModal;
 window.removeUploadedFile = removeUploadedFile;
 window.removeExistingFile = removeExistingFile;
 window.handleFileInputChange = handleFileInputChange;
+
+// Image Viewer Functions
+window.zoomIn = zoomIn;
+window.zoomOut = zoomOut;
+window.rotateImage = rotateImage;
+window.resetImage = resetImage;
+window.initImageViewer = initImageViewer;
+window.initAllImageViewers = initAllImageViewers;
