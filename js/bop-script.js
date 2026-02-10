@@ -4517,16 +4517,45 @@ function verifyRealisasi(realisasi) {
                                     <button type="button" class="btn btn-sm btn-info" onclick="window.open('${file.fileUrl}', '_blank')">Buka di Google Drive</button>
                                 </div>
                             ` : isPDF ? `
-                                <div style="width: 100%; margin-top: 10px;">
-                                    <iframe src="${previewUrl}" 
-                                            style="width: 100%; height: 500px; border: 1px solid #ddd; border-radius: 8px;"
-                                            onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
-                                    </iframe>
-                                    <div style="display: none; background: #f8f9fa; padding: 15px; border-radius: 8px; text-align: center;">
-                                        <p style="color: #666; margin: 0 0 10px 0;">📄 File PDF</p>
-                                        <p style="color: #999; font-size: 12px; margin: 0 0 15px 0;">Jika preview tidak muncul, silakan buka di tab baru</p>
-                                        <button type="button" class="btn btn-sm" onclick="window.open('${file.fileUrl}', '_blank')">Buka PDF di Tab Baru</button>
+                                <div class="pdf-viewer-container" id="pdf-viewer-${index}">
+                                    <div class="image-viewer-controls">
+                                        <button type="button" class="viewer-btn" onclick="zoomInPDF('pdf-viewer-${index}')" title="Zoom In">
+                                            <span style="font-size: 18px;">➕</span>
+                                        </button>
+                                        <button type="button" class="viewer-btn" onclick="zoomOutPDF('pdf-viewer-${index}')" title="Zoom Out">
+                                            <span style="font-size: 18px;">➖</span>
+                                        </button>
+                                        <button type="button" class="viewer-btn" onclick="rotatePDF('pdf-viewer-${index}')" title="Rotate">
+                                            <span style="font-size: 18px;">↻</span>
+                                        </button>
+                                        <button type="button" class="viewer-btn" onclick="resetPDF('pdf-viewer-${index}')" title="Reset">
+                                            <span style="font-size: 16px;">⟲</span>
+                                        </button>
+                                        <span class="zoom-level" id="zoom-level-pdf-${index}">100%</span>
                                     </div>
+                                    <div class="pdf-viewer-wrapper" id="pdf-wrapper-${index}">
+                                        <div class="pdf-content" 
+                                             id="pdf-content-${index}"
+                                             data-zoom="1"
+                                             data-rotation="0"
+                                             data-pan-x="0"
+                                             data-pan-y="0"
+                                             style="transform-origin: center center; transition: transform 0.2s ease-out; cursor: grab;">
+                                            <iframe src="${previewUrl}" 
+                                                    id="pdf-iframe-${index}"
+                                                    style="width: 100%; height: 600px; border: 1px solid #ddd; border-radius: 8px; pointer-events: auto;"
+                                                    onerror="this.style.display='none'; this.closest('.pdf-viewer-container').nextElementSibling.style.display='block';">
+                                            </iframe>
+                                        </div>
+                                    </div>
+                                    <div class="image-viewer-hint">
+                                        💡 Gunakan scroll mouse untuk zoom, drag untuk panning, klik tombol untuk rotate
+                                    </div>
+                                </div>
+                                <div style="display: none; background: #f8f9fa; padding: 15px; border-radius: 8px; text-align: center;">
+                                    <p style="color: #666; margin: 0 0 10px 0;">📄 File PDF</p>
+                                    <p style="color: #999; font-size: 12px; margin: 0 0 15px 0;">Jika preview tidak muncul, silakan buka di tab baru</p>
+                                    <button type="button" class="btn btn-sm" onclick="window.open('${file.fileUrl}', '_blank')">Buka PDF di Tab Baru</button>
                                 </div>
                             ` : `
                                 <p style="color: #666; font-style: italic; margin-top: 10px;">
@@ -4623,9 +4652,10 @@ function verifyRealisasi(realisasi) {
     
     modal.classList.add('active');
     
-    // Initialize image viewers
+    // Initialize image and PDF viewers
     setTimeout(() => {
         initAllImageViewers();
+        initAllPDFViewers();
     }, 100);
     
     document.getElementById('verifyForm').addEventListener('submit', async (e) => {
@@ -6295,3 +6325,186 @@ window.rotateImage = rotateImage;
 window.resetImage = resetImage;
 window.initImageViewer = initImageViewer;
 window.initAllImageViewers = initAllImageViewers;
+
+// ===== PDF VIEWER FUNCTIONS =====
+
+/**
+ * Zoom in PDF
+ */
+function zoomInPDF(viewerId) {
+    adjustZoomPDF(viewerId, 0.25);
+}
+
+/**
+ * Zoom out PDF
+ */
+function zoomOutPDF(viewerId) {
+    adjustZoomPDF(viewerId, -0.25);
+}
+
+/**
+ * Adjust PDF zoom level
+ */
+function adjustZoomPDF(viewerId, delta) {
+    const pdfContent = document.getElementById(`${viewerId.replace('pdf-viewer-', 'pdf-content-').replace('view-pdf-viewer-', 'view-pdf-content-')}`);
+    if (!pdfContent) return;
+    
+    let currentZoom = parseFloat(pdfContent.getAttribute('data-zoom')) || 1;
+    currentZoom += delta;
+    
+    // Limit zoom range: 0.5x to 3x
+    currentZoom = Math.max(0.5, Math.min(3, currentZoom));
+    
+    pdfContent.setAttribute('data-zoom', currentZoom);
+    updatePDFTransform(viewerId);
+    updateZoomLevelPDF(viewerId, currentZoom);
+}
+
+/**
+ * Rotate PDF 90 degrees clockwise
+ */
+function rotatePDF(viewerId) {
+    const pdfContent = document.getElementById(`${viewerId.replace('pdf-viewer-', 'pdf-content-').replace('view-pdf-viewer-', 'view-pdf-content-')}`);
+    if (!pdfContent) return;
+    
+    let currentRotation = parseFloat(pdfContent.getAttribute('data-rotation')) || 0;
+    currentRotation += 90;
+    if (currentRotation >= 360) currentRotation = 0;
+    
+    pdfContent.setAttribute('data-rotation', currentRotation);
+    updatePDFTransform(viewerId);
+}
+
+/**
+ * Reset PDF to original state
+ */
+function resetPDF(viewerId) {
+    const pdfContent = document.getElementById(`${viewerId.replace('pdf-viewer-', 'pdf-content-').replace('view-pdf-viewer-', 'view-pdf-content-')}`);
+    if (!pdfContent) return;
+    
+    pdfContent.setAttribute('data-zoom', '1');
+    pdfContent.setAttribute('data-rotation', '0');
+    pdfContent.setAttribute('data-pan-x', '0');
+    pdfContent.setAttribute('data-pan-y', '0');
+    
+    updatePDFTransform(viewerId);
+    updateZoomLevelPDF(viewerId, 1);
+}
+
+/**
+ * Update PDF transform based on current zoom, rotation, and pan
+ */
+function updatePDFTransform(viewerId) {
+    const pdfContent = document.getElementById(`${viewerId.replace('pdf-viewer-', 'pdf-content-').replace('view-pdf-viewer-', 'view-pdf-content-')}`);
+    if (!pdfContent) return;
+    
+    const zoom = parseFloat(pdfContent.getAttribute('data-zoom')) || 1;
+    const rotation = parseFloat(pdfContent.getAttribute('data-rotation')) || 0;
+    const panX = parseFloat(pdfContent.getAttribute('data-pan-x')) || 0;
+    const panY = parseFloat(pdfContent.getAttribute('data-pan-y')) || 0;
+    
+    pdfContent.style.transform = `translate(${panX}px, ${panY}px) scale(${zoom}) rotate(${rotation}deg)`;
+}
+
+/**
+ * Update zoom level display for PDF
+ */
+function updateZoomLevelPDF(viewerId, zoom) {
+    const zoomLabel = document.getElementById(`zoom-level-${viewerId.replace('pdf-viewer-', 'pdf-').replace('view-pdf-viewer-', 'view-pdf-')}`);
+    if (zoomLabel) {
+        zoomLabel.textContent = Math.round(zoom * 100) + '%';
+    }
+}
+
+/**
+ * Initialize PDF viewer with pan and zoom support
+ */
+function initPDFViewer(viewerId) {
+    const wrapper = document.getElementById(`${viewerId.replace('pdf-viewer-', 'pdf-wrapper-').replace('view-pdf-viewer-', 'view-pdf-wrapper-')}`);
+    const pdfContent = document.getElementById(`${viewerId.replace('pdf-viewer-', 'pdf-content-').replace('view-pdf-viewer-', 'view-pdf-content-')}`);
+    
+    if (!wrapper || !pdfContent) return;
+    
+    let isPanning = false;
+    let startX = 0, startY = 0;
+    let currentX = 0, currentY = 0;
+    
+    // Mouse wheel zoom
+    wrapper.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        const delta = e.deltaY > 0 ? -0.1 : 0.1;
+        adjustZoomPDF(viewerId, delta);
+    }, { passive: false });
+    
+    // Pan with mouse (on PDF content wrapper, not iframe)
+    pdfContent.addEventListener('mousedown', (e) => {
+        // Only allow panning if not clicking on iframe itself
+        if (e.target === pdfContent) {
+            isPanning = true;
+            startX = e.clientX - currentX;
+            startY = e.clientY - currentY;
+            pdfContent.style.cursor = 'grabbing';
+            e.preventDefault();
+        }
+    });
+    
+    document.addEventListener('mousemove', (e) => {
+        if (!isPanning) return;
+        
+        currentX = e.clientX - startX;
+        currentY = e.clientY - startY;
+        
+        pdfContent.setAttribute('data-pan-x', currentX);
+        pdfContent.setAttribute('data-pan-y', currentY);
+        updatePDFTransform(viewerId);
+    });
+    
+    document.addEventListener('mouseup', () => {
+        if (isPanning) {
+            isPanning = false;
+            pdfContent.style.cursor = 'grab';
+        }
+    });
+    
+    // Pan with touch
+    let touchStartX = 0, touchStartY = 0;
+    pdfContent.addEventListener('touchstart', (e) => {
+        if (e.touches.length === 1) {
+            touchStartX = e.touches[0].clientX - currentX;
+            touchStartY = e.touches[0].clientY - currentY;
+        }
+    });
+    
+    pdfContent.addEventListener('touchmove', (e) => {
+        if (e.touches.length === 1) {
+            e.preventDefault();
+            currentX = e.touches[0].clientX - touchStartX;
+            currentY = e.touches[0].clientY - touchStartY;
+            
+            pdfContent.setAttribute('data-pan-x', currentX);
+            pdfContent.setAttribute('data-pan-y', currentY);
+            updatePDFTransform(viewerId);
+        }
+    }, { passive: false });
+    
+    // Set initial cursor
+    pdfContent.style.cursor = 'grab';
+}
+
+/**
+ * Initialize all PDF viewers in modal
+ */
+function initAllPDFViewers() {
+    const viewers = document.querySelectorAll('.pdf-viewer-container');
+    viewers.forEach((viewer) => {
+        initPDFViewer(viewer.id);
+    });
+}
+
+// PDF Viewer Functions
+window.zoomInPDF = zoomInPDF;
+window.zoomOutPDF = zoomOutPDF;
+window.rotatePDF = rotatePDF;
+window.resetPDF = resetPDF;
+window.initPDFViewer = initPDFViewer;
+window.initAllPDFViewers = initAllPDFViewers;
