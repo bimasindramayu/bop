@@ -4332,6 +4332,31 @@ function verifyRealisasi(realisasi) {
     console.log('[VERIFIKASI] Verifying realisasi:', realisasi);
     console.log('[VERIFIKASI] Files in realisasi:', realisasi.files);
     
+    // ✅ Ambil data RPD dari local cache (tidak perlu API call lagi)
+    let rpdData = null;
+    let rpdTotal = 0;
+    
+    const cachedRPDs = getLocalCache('rpds');
+    if (cachedRPDs && Array.isArray(cachedRPDs)) {
+        console.log('[VERIFIKASI] Using cached RPDs:', cachedRPDs.length, 'records');
+        
+        // Cari RPD dengan KUA, bulan, dan tahun yang sama
+        rpdData = cachedRPDs.find(rpd => 
+            rpd.kua === realisasi.kua &&
+            rpd.month === realisasi.month && 
+            rpd.year == realisasi.year
+        );
+        
+        if (rpdData) {
+            rpdTotal = parseFloat(rpdData.total || 0);
+            console.log('[VERIFIKASI] Found matching RPD from cache:', rpdData);
+        } else {
+            console.log('[VERIFIKASI] No matching RPD found in cache for', realisasi.kua, realisasi.month, realisasi.year);
+        }
+    } else {
+        console.log('[VERIFIKASI] No cached RPDs available');
+    }
+    
     let modal = document.getElementById('modal');
     if (!modal) {
         modal = document.createElement('div');
@@ -4345,12 +4370,45 @@ function verifyRealisasi(realisasi) {
         const param = APP_CONFIG.BOP.RPD_PARAMETERS[code];
         detailHTML += `<div class="rpd-item">
             <h4>${code} - ${param.name}</h4>`;
-        Object.entries(items).forEach(([item, value]) => {
-            detailHTML += `<div class="rpd-subitem">
+        
+        Object.entries(items).forEach(([item, realisasiValue]) => {
+            // ✅ Cari nilai RPD untuk item yang sama (dari cache)
+            let rpdValue = 0;
+            let rpdHTML = '';
+            
+            if (rpdData && rpdData.data && rpdData.data[code] && rpdData.data[code][item]) {
+                rpdValue = parseFloat(rpdData.data[code][item]) || 0;
+            }
+            
+            // Hitung selisih
+            const diff = rpdValue - realisasiValue;
+            const diffColor = diff >= 0 ? '#28a745' : '#dc3545';
+            
+            rpdHTML = `
+                <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 4px;">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <small style="color: #666; font-size: 11px;">Realisasi:</small>
+                        <strong style="color: #333;">${formatCurrency(realisasiValue)}</strong>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <small style="color: #666; font-size: 11px;">RPD:</small>
+                        <strong style="color: #667eea;">${formatCurrency(rpdValue)}</strong>
+                    </div>
+                    ${diff !== 0 ? `
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <small style="color: #666; font-size: 11px;">Selisih:</small>
+                        <strong style="color: ${diffColor}; font-size: 13px;">${formatCurrency(diff)}</strong>
+                    </div>
+                    ` : ''}
+                </div>
+            `;
+            
+            detailHTML += `<div class="rpd-subitem" style="align-items: flex-start;">
                 <span>${item}</span>
-                <strong>${formatCurrency(value)}</strong>
+                ${rpdHTML}
             </div>`;
         });
+        
         detailHTML += `</div>`;
     });
     
@@ -4521,9 +4579,21 @@ function verifyRealisasi(realisasi) {
                     
                     <div class="summary-box" style="margin-top: 20px;">
                         <div class="summary-item">
+                            <span>Total RPD:</span>
+                            <strong>${rpdData ? formatCurrency(rpdTotal) : '<span style="color: #999;">Data RPD tidak tersedia</span>'}</strong>
+                        </div>
+                        <div class="summary-item">
                             <span>Total Realisasi:</span>
                             <strong>${formatCurrency(realisasi.total)}</strong>
                         </div>
+                        ${rpdData ? `
+                        <div class="summary-item" style="border-top: 2px solid #dee2e6; padding-top: 10px; margin-top: 10px;">
+                            <span>Selisih (RPD - Realisasi):</span>
+                            <strong style="color: ${rpdTotal >= realisasi.total ? '#28a745' : '#dc3545'}">
+                                ${formatCurrency(rpdTotal - realisasi.total)}
+                            </strong>
+                        </div>
+                        ` : ''}
                     </div>
                 </div>
                 
