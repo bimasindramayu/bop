@@ -6624,36 +6624,47 @@ const AUTOPAY_OPERATIONS = [
 
 // Wrapper untuk autopay API calls yang bypass cache
 async function autopayApiCall(action, data = {}) {
-    console.log('[AUTOPAY_API]', action, data);
+    console.log('[AUTOPAY_API_DIRECT]', action, data);
     
-    // Check if apiCall exists and supports bypass
-    if (typeof apiCall === 'function') {
-        try {
-            // Try to call with cache bypass if supported
-            return await apiCall(action, data, { bypassCache: true });
-        } catch (error) {
-            console.warn('[AUTOPAY_API] Cache bypass not supported, using direct call');
+    // ALWAYS use direct API call - bypass cache manager completely
+    // Cache manager doesn't recognize autopay operations and blocks responses
+    
+    try {
+        const payload = {
+            action: action,
+            ...data
+        };
+        
+        console.log('[AUTOPAY_API_DIRECT] Payload:', payload);
+        
+        const response = await fetch(APP_CONFIG.API_URL, {
+            method: 'POST',
+            headers: { 
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(payload)
+        });
+        
+        console.log('[AUTOPAY_API_DIRECT] HTTP status:', response.status);
+        
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
         }
-    }
-    
-    // Fallback: direct API call
-    const response = await fetch(APP_CONFIG.API_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action, ...data })
-    });
-    
-    if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-    }
-    
-    const result = await response.json();
-    console.log('[AUTOPAY_API] Response:', result);
-    
-    if (result.success) {
-        return result.data;
-    } else {
-        throw new Error(result.message || 'API call failed');
+        
+        const result = await response.json();
+        console.log('[AUTOPAY_API_DIRECT] Response:', result);
+        
+        if (result.success === true) {
+            return result.data;
+        } else if (result.success === false) {
+            throw new Error(result.message || 'API call failed');
+        } else {
+            // Some backends return data directly without success wrapper
+            return result;
+        }
+    } catch (error) {
+        console.error('[AUTOPAY_API_DIRECT] Error:', error);
+        throw error;
     }
 }
 
