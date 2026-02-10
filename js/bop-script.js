@@ -6626,9 +6626,26 @@ const AUTOPAY_OPERATIONS = [
 async function autopayApiCall(action, data = {}) {
     console.log('[AUTOPAY_API_DIRECT]', action, data);
     
-    // ALWAYS use direct API call - bypass cache manager completely
-    // Cache manager doesn't recognize autopay operations and blocks responses
+    // Check if APP_CONFIG.API_URL is defined
+    if (!APP_CONFIG || !APP_CONFIG.API_URL || APP_CONFIG.API_URL === 'undefined') {
+        console.warn('[AUTOPAY_API_DIRECT] API_URL not configured, falling back to apiCall');
+        
+        // Fallback to existing apiCall function
+        if (typeof apiCall === 'function') {
+            try {
+                const result = await apiCall(action, data);
+                console.log('[AUTOPAY_API_DIRECT] Fallback result:', result);
+                return result;
+            } catch (error) {
+                console.error('[AUTOPAY_API_DIRECT] Fallback error:', error);
+                throw error;
+            }
+        } else {
+            throw new Error('API_URL not configured and apiCall not available');
+        }
+    }
     
+    // Direct API call if URL is configured
     try {
         const payload = {
             action: action,
@@ -6636,6 +6653,7 @@ async function autopayApiCall(action, data = {}) {
         };
         
         console.log('[AUTOPAY_API_DIRECT] Payload:', payload);
+        console.log('[AUTOPAY_API_DIRECT] URL:', APP_CONFIG.API_URL);
         
         const response = await fetch(APP_CONFIG.API_URL, {
             method: 'POST',
@@ -6659,7 +6677,6 @@ async function autopayApiCall(action, data = {}) {
         } else if (result.success === false) {
             throw new Error(result.message || 'API call failed');
         } else {
-            // Some backends return data directly without success wrapper
             return result;
         }
     } catch (error) {

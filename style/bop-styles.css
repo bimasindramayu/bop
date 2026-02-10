@@ -753,6 +753,9 @@ textarea.verify-notes:focus {
     }
 }
 
+/* ===== AUTOPAY ADDITIONAL STYLES =====*/
+/* Add these styles to the END of bop-styles.css */
+
 /* Autopay Sub-Navigation */
 .autopay-subnav {
     display: flex;
