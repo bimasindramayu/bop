@@ -25,6 +25,11 @@ const localCache = {
     lastUpdate: {}
 };
 
+// Autopay state
+let autopayConfigs = [];
+let autopayData = [];
+let autopayKUAList = [];
+
 // ✅ Function untuk update cache dengan data baru
 function updateLocalCache(key, data) {
     localCache[key] = data;
@@ -353,6 +358,7 @@ function buildNavMenu() {
             { id: 'budgetingPage', label: 'Budget' },
             { id: 'rpdPage', label: 'Lihat RPD' },
             { id: 'verifikasiPage', label: 'Verifikasi' },
+            { id: 'autopayPage', label: 'Autopay' },
             { id: 'laporanPage', label: 'Laporan' },
             { id: 'rpdConfigPage', label: 'Konfigurasi' }
         ];
@@ -446,6 +452,11 @@ function navigateTo(pageId) {
                 loadRealisasis(false);
                 // ✅ Start polling HANYA untuk halaman realisasi
                 startRealisasiPolling();
+                break;
+            case 'autopayPage':
+                if (currentUser.role === 'Admin') {
+                    loadAutopayConfig();
+                }
                 break;
             case 'verifikasiPage':
                 if (currentUser.role === 'Admin') {
@@ -2081,7 +2092,15 @@ async function loadRealisasis(forceRefresh = false) {
             const yearFilter = document.getElementById('realisasiYearFilter');
             const year = yearFilter ? yearFilter.value : new Date().getFullYear();
             
-            let realisasis = await apiCall('getRealisasis', { kua: currentUser.kua, year: year });
+            // Get includeAutopay filter value
+            const includeAutopayEl = document.getElementById('includeAutopayFilter');
+            const includeAutopay = includeAutopayEl ? (includeAutopayEl.value === 'true') : false;
+
+            let realisasis = await apiCall('getRealisasis', { 
+                kua: currentUser.kua, 
+                year: year,
+                includeAutopay: includeAutopay
+            });
             realisasis = sortByMonth(realisasis);
             
             // ✅ Update local cache
@@ -3334,13 +3353,25 @@ async function showRealisasiInputs(rpd, realisasi = null) {
         
         Object.entries(items).forEach(([item, rpdValue]) => {
             const realValue = realisasiData[code] && realisasiData[code][item] ? realisasiData[code][item] : 0;
-            parametersHTML += `
-                <div class="rpd-subitem" style="grid-template-columns: 2fr 1fr 1fr; gap: 10px;">
-                    <label>${item}</label>
-                    <div style="text-align: right; padding: 10px; background: #e9ecef; border-radius: 6px;">
-                        <small style="display: block; color: #666; font-size: 11px;">RPD</small>
-                        <strong style="color: #333;">${formatCurrency(rpdValue)}</strong>
+            
+            // Check if this is an autopay pos (Listrik or Telepon)
+            const isAutopayPos = (code === '522111' || code === '522112');
+            let inputHTML = '';
+            
+            if (isAutopayPos && currentUser.role === 'Operator KUA') {
+                // Show placeholder for async checking
+                inputHTML = `
+                    <div class="autopay-check-placeholder" 
+                         data-code="${code}" 
+                         data-item="${item}" 
+                         data-realvalue="${realValue}"
+                         style="text-align: center; padding: 10px; background: #fff3cd; border-radius: 6px;">
+                        <small style="color: #856404;">⚡ Checking...</small>
                     </div>
+                `;
+            } else {
+                // Normal input for non-autopay or Admin
+                inputHTML = `
                     <input type="number" 
                         class="realisasi-input" 
                         data-code="${code}" 
@@ -3349,6 +3380,17 @@ async function showRealisasiInputs(rpd, realisasi = null) {
                         min="0"
                         step="1000"
                         placeholder="Realisasi">
+                `;
+            }
+            
+            parametersHTML += `
+                <div class="rpd-subitem" style="grid-template-columns: 2fr 1fr 1fr; gap: 10px;">
+                    <label>${item}</label>
+                    <div style="text-align: right; padding: 10px; background: #e9ecef; border-radius: 6px;">
+                        <small style="display: block; color: #666; font-size: 11px;">RPD</small>
+                        <strong style="color: #333;">${formatCurrency(rpdValue)}</strong>
+                    </div>
+                    ${inputHTML}
                 </div>
             `;
         });
@@ -3358,6 +3400,67 @@ async function showRealisasiInputs(rpd, realisasi = null) {
     
     document.getElementById('realisasiParameters').innerHTML = parametersHTML;
     
+    // Check autopay status for Operator and replace placeholders
+    if (currentUser.role === 'Operator KUA') {
+        const placeholders = document.querySelectorAll('.autopay-check-placeholder');
+        placeholders.forEach(async (placeholder) => {
+            const code = placeholder.dataset.code;
+            const item = placeholder.dataset.item;
+            const realValue = placeholder.dataset.realvalue;
+            
+            try {
+                const isEnabled = await autopayApiCall('isAutopayEnabled', {
+                    kua: currentUser.kua,
+                    kodePos: code
+                });
+                
+                if (isEnabled) {
+                    // Autopay is enabled - show disabled badge
+                    placeholder.outerHTML = `
+                        <div style="text-align: center; padding: 10px; background: #fff3cd; border-radius: 6px; border: 2px solid #ffc107;">
+                            <small style="display: block; color: #856404; font-size: 11px; font-weight: 600;">
+                                ⚡ AUTOPAY AKTIF
+                            </small>
+                            <small style="display: block; color: #856404; font-size: 10px; margin-top: 4px;">
+                                Dikelola oleh Admin
+                            </small>
+                        </div>
+                    `;
+                } else {
+                    // Autopay is NOT enabled - show normal input
+                    placeholder.outerHTML = `
+                        <input type="number" 
+                            class="realisasi-input" 
+                            data-code="${code}" 
+                            data-item="${item}" 
+                            value="${realValue}" 
+                            min="0"
+                            step="1000"
+                            placeholder="Realisasi">
+                    `;
+                    
+                    // Re-attach event listener to new input
+                    const newInput = document.querySelector(`input[data-code="${code}"][data-item="${item}"]`);
+                    if (newInput) {
+                        newInput.addEventListener('input', calculateRealisasiTotal);
+                    }
+                }
+            } catch (error) {
+                console.error('[AUTOPAY CHECK ERROR]', error);
+                // On error, show normal input
+                placeholder.outerHTML = `
+                    <input type="number" 
+                        class="realisasi-input" 
+                        data-code="${code}" 
+                        data-item="${item}" 
+                        value="${realValue}" 
+                        min="0"
+                        step="1000"
+                        placeholder="Realisasi">
+                `;
+            }
+        });
+    }
     // Calculate total on input change
     const inputs = document.querySelectorAll('.realisasi-input');
     inputs.forEach(input => {
@@ -6508,3 +6611,466 @@ window.rotatePDF = rotatePDF;
 window.resetPDF = resetPDF;
 window.initPDFViewer = initPDFViewer;
 window.initAllPDFViewers = initAllPDFViewers;
+
+// ===== AUTOPAY FUNCTIONS =====
+
+// IMPORTANT: Bypass cache for autopay operations
+const AUTOPAY_OPERATIONS = [
+    'getAutopayConfig', 'saveAutopayConfig', 
+    'getAutopayRealisasi', 'saveAutopayRealisasi',
+    'deleteAutopayRealisasi', 'getAutopaySummary',
+    'getKUAList', 'isAutopayEnabled'
+];
+
+// Wrapper untuk autopay API calls yang bypass cache
+async function autopayApiCall(action, data = {}) {
+    console.log('[AUTOPAY_API]', action, data);
+    
+    // Check if apiCall exists and supports bypass
+    if (typeof apiCall === 'function') {
+        try {
+            // Try to call with cache bypass if supported
+            return await apiCall(action, data, { bypassCache: true });
+        } catch (error) {
+            console.warn('[AUTOPAY_API] Cache bypass not supported, using direct call');
+        }
+    }
+    
+    // Fallback: direct API call
+    const response = await fetch(APP_CONFIG.API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, ...data })
+    });
+    
+    if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    
+    const result = await response.json();
+    console.log('[AUTOPAY_API] Response:', result);
+    
+    if (result.success) {
+        return result.data;
+    } else {
+        throw new Error(result.message || 'API call failed');
+    }
+}
+
+function showAutopaySubPage(subPageName) {
+    console.log('[AUTOPAY] Showing sub-page:', subPageName);
+    
+    document.querySelectorAll('.autopay-subnav button').forEach(btn => {
+        btn.classList.remove('active');
+    });
+    
+    document.querySelectorAll('.autopay-subpage').forEach(page => {
+        page.classList.remove('active');
+    });
+    
+    document.getElementById('btnAutopay' + capitalizeFirst(subPageName)).classList.add('active');
+    document.getElementById('autopay' + capitalizeFirst(subPageName) + 'Page').classList.add('active');
+    
+    switch(subPageName) {
+        case 'config':
+            loadAutopayConfig();
+            break;
+        case 'input':
+            loadAutopayInput();
+            break;
+        case 'summary':
+            loadAutopaySummary();
+            break;
+    }
+}
+
+function capitalizeFirst(str) {
+    return str.charAt(0).toUpperCase() + str.slice(1);
+}
+
+async function loadAutopayConfig() {
+    console.log('[AUTOPAY] Loading config');
+    
+    try {
+        showLoading();
+        
+        const [kuas, configs] = await Promise.all([
+            autopayApiCall('getKUAList'),
+            autopayApiCall('getAutopayConfig')
+        ]);
+        
+        autopayKUAList = kuas || [];
+        autopayConfigs = configs || [];
+        
+        hideLoading();
+        displayAutopayConfig();
+    } catch (error) {
+        hideLoading();
+        console.error('[AUTOPAY] Error loading config:', error);
+        showNotification('Gagal memuat konfigurasi: ' + error.message, 'error');
+    }
+}
+
+function displayAutopayConfig() {
+    const tbody = document.getElementById('autopayConfigTableBody');
+    tbody.innerHTML = '';
+    
+    if (autopayKUAList.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" style="text-align: center;">Tidak ada data KUA</td></tr>';
+        return;
+    }
+    
+    autopayKUAList.forEach((kua, index) => {
+        const config = autopayConfigs.find(c => c.kua === kua) || {
+            kua: kua,
+            listrikEnabled: false,
+            teleponEnabled: false,
+            updatedBy: '',
+            updatedAt: ''
+        };
+        
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td>${index + 1}</td>
+            <td><strong>${kua}</strong></td>
+            <td style="text-align: center;">
+                <input type="checkbox" 
+                       class="autopay-checkbox listrik-checkbox" 
+                       data-kua="${kua}" 
+                       data-type="listrik"
+                       style="transform: scale(1.3); cursor: pointer;"
+                       ${config.listrikEnabled ? 'checked' : ''}>
+            </td>
+            <td style="text-align: center;">
+                <input type="checkbox" 
+                       class="autopay-checkbox telepon-checkbox" 
+                       data-kua="${kua}" 
+                       data-type="telepon"
+                       style="transform: scale(1.3); cursor: pointer;"
+                       ${config.teleponEnabled ? 'checked' : ''}>
+            </td>
+            <td>
+                ${config.updatedBy ? `${config.updatedBy}<br><small>${formatDate(config.updatedAt)}</small>` : '-'}
+            </td>
+        `;
+        tbody.appendChild(tr);
+    });
+}
+
+function checkAllListrik(checked) {
+    document.querySelectorAll('.listrik-checkbox').forEach(cb => {
+        cb.checked = checked;
+    });
+}
+
+function checkAllTelepon(checked) {
+    document.querySelectorAll('.telepon-checkbox').forEach(cb => {
+        cb.checked = checked;
+    });
+}
+
+async function saveAllAutopayConfig() {
+    console.log('[AUTOPAY] Saving all config');
+    
+    try {
+        showLoading();
+        
+        const checkboxes = document.querySelectorAll('.autopay-checkbox');
+        const configMap = {};
+        
+        checkboxes.forEach(cb => {
+            const kua = cb.dataset.kua;
+            const type = cb.dataset.type;
+            
+            if (!configMap[kua]) {
+                configMap[kua] = {
+                    kua: kua,
+                    listrikEnabled: false,
+                    teleponEnabled: false
+                };
+            }
+            
+            if (type === 'listrik') {
+                configMap[kua].listrikEnabled = cb.checked;
+            } else if (type === 'telepon') {
+                configMap[kua].teleponEnabled = cb.checked;
+            }
+        });
+        
+        const savePromises = Object.values(configMap).map(config => 
+            autopayApiCall('saveAutopayConfig', {
+                kua: config.kua,
+                listrikEnabled: config.listrikEnabled,
+                teleponEnabled: config.teleponEnabled,
+                updatedBy: currentUser.username
+            })
+        );
+        
+        await Promise.all(savePromises);
+        
+        hideLoading();
+        showNotification('Konfigurasi autopay berhasil disimpan', 'success');
+        loadAutopayConfig();
+    } catch (error) {
+        hideLoading();
+        console.error('[AUTOPAY] Error saving config:', error);
+        showNotification('Gagal menyimpan konfigurasi: ' + error.message, 'error');
+    }
+}
+
+async function loadAutopayInput() {
+    console.log('[AUTOPAY] Loading input');
+    
+    const bulan = parseInt(document.getElementById('filterBulanInput').value);
+    const tahun = parseInt(document.getElementById('filterTahunInput').value);
+    
+    try {
+        showLoading();
+        
+        const [configs, existingData] = await Promise.all([
+            autopayApiCall('getAutopayConfig'),
+            autopayApiCall('getAutopayRealisasi', { tahun: tahun, bulan: bulan })
+        ]);
+        
+        autopayConfigs = configs || [];
+        autopayData = existingData || [];
+        
+        hideLoading();
+        displayAutopayInput(bulan, tahun);
+    } catch (error) {
+        hideLoading();
+        console.error('[AUTOPAY] Error loading input:', error);
+        showNotification('Gagal memuat data: ' + error.message, 'error');
+    }
+}
+
+function displayAutopayInput(bulan, tahun) {
+    const section = document.getElementById('autopayInputSection');
+    section.innerHTML = '';
+    
+    const enabledConfigs = autopayConfigs.filter(c => c.listrikEnabled || c.teleponEnabled);
+    
+    if (enabledConfigs.length === 0) {
+        section.innerHTML = '<p class="text-muted">Belum ada KUA yang dikonfigurasi untuk autopay. Silakan konfigurasi terlebih dahulu di tab <strong>Konfigurasi</strong>.</p>';
+        return;
+    }
+    
+    enabledConfigs.forEach(config => {
+        const kuaCard = document.createElement('div');
+        kuaCard.className = 'autopay-kua-card';
+        
+        let html = `
+            <h3>${config.kua}</h3>
+            <div class="autopay-input-grid">
+        `;
+        
+        if (config.listrikEnabled) {
+            const existing = autopayData.find(d => 
+                d.kua === config.kua && d.kodePos === '522111'
+            );
+            
+            html += `
+                <div class="autopay-input-item">
+                    <label>⚡ Listrik (522111)</label>
+                    <input type="number" 
+                           class="autopay-nominal-input" 
+                           data-kua="${config.kua}" 
+                           data-kodepos="522111"
+                           data-namapos="Belanja Langganan Listrik"
+                           placeholder="Nominal"
+                           value="${existing ? existing.nominal : ''}"
+                           min="0"
+                           step="1000">
+                    <textarea class="autopay-notes-input" 
+                              data-kua="${config.kua}" 
+                              data-kodepos="522111"
+                              placeholder="Keterangan (opsional)">${existing ? existing.keterangan : ''}</textarea>
+                </div>
+            `;
+        }
+        
+        if (config.teleponEnabled) {
+            const existing = autopayData.find(d => 
+                d.kua === config.kua && d.kodePos === '522112'
+            );
+            
+            html += `
+                <div class="autopay-input-item">
+                    <label>📞 Telepon/Internet (522112)</label>
+                    <input type="number" 
+                           class="autopay-nominal-input" 
+                           data-kua="${config.kua}" 
+                           data-kodepos="522112"
+                           data-namapos="Belanja Langganan Telepon / Internet"
+                           placeholder="Nominal"
+                           value="${existing ? existing.nominal : ''}"
+                           min="0"
+                           step="1000">
+                    <textarea class="autopay-notes-input" 
+                              data-kua="${config.kua}" 
+                              data-kodepos="522112"
+                              placeholder="Keterangan (opsional)">${existing ? existing.keterangan : ''}</textarea>
+                </div>
+            `;
+        }
+        
+        html += `</div>`;
+        kuaCard.innerHTML = html;
+        section.appendChild(kuaCard);
+    });
+}
+
+async function saveAllAutopayInput() {
+    console.log('[AUTOPAY] Saving all input');
+    
+    const bulan = parseInt(document.getElementById('filterBulanInput').value);
+    const tahun = parseInt(document.getElementById('filterTahunInput').value);
+    
+    try {
+        showLoading();
+        
+        const inputs = document.querySelectorAll('.autopay-nominal-input');
+        const savePromises = [];
+        
+        inputs.forEach(input => {
+            const kua = input.dataset.kua;
+            const kodePos = input.dataset.kodepos;
+            const namaPos = input.dataset.namapos;
+            const nominal = parseFloat(input.value) || 0;
+            
+            const notesEl = document.querySelector(`.autopay-notes-input[data-kua="${kua}"][data-kodepos="${kodePos}"]`);
+            const keterangan = notesEl ? notesEl.value : '';
+            
+            if (nominal > 0) {
+                savePromises.push(
+                    autopayApiCall('saveAutopayRealisasi', {
+                        tahun: tahun,
+                        bulan: bulan,
+                        kua: kua,
+                        kodePos: kodePos,
+                        namaPos: namaPos,
+                        nominal: nominal,
+                        keterangan: keterangan,
+                        updatedBy: currentUser.username
+                    })
+                );
+            } else if (nominal === 0 && input.value !== '') {
+                savePromises.push(
+                    autopayApiCall('deleteAutopayRealisasi', {
+                        tahun: tahun,
+                        bulan: bulan,
+                        kua: kua,
+                        kodePos: kodePos
+                    })
+                );
+            }
+        });
+        
+        if (savePromises.length === 0) {
+            hideLoading();
+            showNotification('Tidak ada data untuk disimpan', 'warning');
+            return;
+        }
+        
+        await Promise.all(savePromises);
+        
+        hideLoading();
+        showNotification('Data autopay berhasil disimpan', 'success');
+        loadAutopayInput();
+    } catch (error) {
+        hideLoading();
+        console.error('[AUTOPAY] Error saving input:', error);
+        showNotification('Gagal menyimpan data: ' + error.message, 'error');
+    }
+}
+
+async function loadAutopaySummary() {
+    console.log('[AUTOPAY] Loading summary');
+    
+    const bulan = parseInt(document.getElementById('filterBulanSummary').value);
+    const tahun = parseInt(document.getElementById('filterTahunSummary').value);
+    
+    try {
+        showLoading();
+        
+        const summary = await autopayApiCall('getAutopaySummary', { tahun: tahun, bulan: bulan });
+        
+        hideLoading();
+        displayAutopaySummary(summary);
+    } catch (error) {
+        hideLoading();
+        console.error('[AUTOPAY] Error loading summary:', error);
+        showNotification('Gagal memuat ringkasan: ' + error.message, 'error');
+    }
+}
+
+function displayAutopaySummary(summary) {
+    const tbody = document.getElementById('autopaySummaryTableBody');
+    const tfoot = document.getElementById('autopaySummaryTableFoot');
+    
+    tbody.innerHTML = '';
+    tfoot.innerHTML = '';
+    
+    if (summary.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" style="text-align: center;">Tidak ada data autopay untuk bulan ini</td></tr>';
+        return;
+    }
+    
+    let totalListrik = 0;
+    let totalTelepon = 0;
+    let grandTotal = 0;
+    
+    summary.forEach((item, index) => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td>${index + 1}</td>
+            <td>${item.kua}</td>
+            <td style="text-align: right;">${formatCurrency(item.listrik)}</td>
+            <td style="text-align: right;">${formatCurrency(item.telepon)}</td>
+            <td style="text-align: right;"><strong>${formatCurrency(item.total)}</strong></td>
+        `;
+        tbody.appendChild(tr);
+        
+        totalListrik += item.listrik;
+        totalTelepon += item.telepon;
+        grandTotal += item.total;
+    });
+    
+    const footerTr = document.createElement('tr');
+    footerTr.innerHTML = `
+        <th colspan="2">Total</th>
+        <th style="text-align: right;">${formatCurrency(totalListrik)}</th>
+        <th style="text-align: right;">${formatCurrency(totalTelepon)}</th>
+        <th style="text-align: right;">${formatCurrency(grandTotal)}</th>
+    `;
+    tfoot.appendChild(footerTr);
+}
+
+function initializeAutopay() {
+    const currentMonth = new Date().getMonth() + 1;
+    
+    const inputMonth = document.getElementById('filterBulanInput');
+    const summaryMonth = document.getElementById('filterBulanSummary');
+    
+    if (inputMonth) inputMonth.value = currentMonth;
+    if (summaryMonth) summaryMonth.value = currentMonth;
+}
+
+// Expose functions to window
+window.showAutopaySubPage = showAutopaySubPage;
+window.loadAutopayConfig = loadAutopayConfig;
+window.checkAllListrik = checkAllListrik;
+window.checkAllTelepon = checkAllTelepon;
+window.saveAllAutopayConfig = saveAllAutopayConfig;
+window.loadAutopayInput = loadAutopayInput;
+window.saveAllAutopayInput = saveAllAutopayInput;
+window.loadAutopaySummary = loadAutopaySummary;
+
+// Initialize on page load
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initializeAutopay);
+} else {
+    initializeAutopay();
+}
+
+// ===== END OF AUTOPAY FUNCTIONS =====

@@ -752,3 +752,164 @@ textarea.verify-notes:focus {
         page-break-after: auto;
     }
 }
+
+/* Autopay Sub-Navigation */
+.autopay-subnav {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    padding: 15px;
+    background: #f8f9fa;
+    border-radius: 10px;
+}
+
+.autopay-subnav button {
+    flex: 1;
+    min-width: 150px;
+}
+
+.autopay-subnav button.active {
+    background: #667eea;
+    color: white;
+}
+
+/* Autopay Sub-Pages */
+.autopay-subpage {
+    display: none;
+}
+
+.autopay-subpage.active {
+    display: block;
+}
+
+/* Autopay Config */
+.autopay-checkbox {
+    width: 20px;
+    height: 20px;
+    cursor: pointer;
+}
+
+/* Autopay Input */
+.autopay-kua-card {
+    background: #f8f9fa;
+    padding: 25px;
+    border-radius: 12px;
+    margin-bottom: 25px;
+    border: 2px solid #dee2e6;
+}
+
+.autopay-kua-card h3 {
+    color: #667eea;
+    margin-bottom: 20px;
+    font-size: 20px;
+    padding-bottom: 10px;
+    border-bottom: 2px solid #667eea;
+}
+
+.autopay-input-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 20px;
+}
+
+.autopay-input-item {
+    background: white;
+    padding: 20px;
+    border-radius: 8px;
+    border: 1px solid #dee2e6;
+}
+
+.autopay-input-item label {
+    display: block;
+    font-weight: 600;
+    color: #333;
+    margin-bottom: 10px;
+    font-size: 14px;
+}
+
+.autopay-nominal-input {
+    width: 100%;
+    padding: 12px;
+    border: 2px solid #ddd;
+    border-radius: 8px;
+    font-size: 16px;
+    font-weight: 500;
+    transition: all 0.3s;
+    margin-bottom: 10px;
+}
+
+.autopay-nominal-input:hover {
+    border-color: #667eea;
+}
+
+.autopay-nominal-input:focus {
+    outline: none;
+    border-color: #667eea;
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.autopay-notes-input {
+    width: 100%;
+    min-height: 60px;
+    padding: 10px;
+    border: 2px solid #ddd;
+    border-radius: 8px;
+    font-size: 13px;
+    font-family: inherit;
+    resize: vertical;
+    transition: all 0.3s;
+}
+
+.autopay-notes-input:hover {
+    border-color: #667eea;
+}
+
+.autopay-notes-input:focus {
+    outline: none;
+    border-color: #667eea;
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+/* Autopay Check Placeholder */
+.autopay-check-placeholder {
+    padding: 10px;
+    background: #fff3cd;
+    border-radius: 6px;
+    text-align: center;
+    animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
+}
+
+/* Text Muted */
+.text-muted {
+    color: #6c757d;
+    font-size: 14px;
+    margin-bottom: 20px;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .autopay-input-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .autopay-kua-card {
+        padding: 15px;
+    }
+    
+    .autopay-input-item {
+        padding: 15px;
+    }
+    
+    .autopay-subnav {
+        flex-direction: column;
+    }
+    
+    .autopay-subnav button {
+        width: 100%;
+    }
+}

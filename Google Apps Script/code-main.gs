@@ -113,6 +113,19 @@ function doPost(e) {
         result = handleNikahAction(action, data);
         break;
       
+      // AUTOPAY Actions
+      case 'getAutopayConfig':
+      case 'saveAutopayConfig':
+      case 'getAutopayRealisasi':
+      case 'saveAutopayRealisasi':
+      case 'deleteAutopayRealisasi':
+      case 'getAutopaySummary':
+      case 'getKUAList':
+      case 'isAutopayEnabled':
+        // Delegate ke AUTOPAY module
+        result = handleAutopayAction(action, data);
+        break;
+      
       default:
         Logger.log(`[ERROR] Unknown action: ${action}`);
         result = { success: false, message: 'Action tidak dikenal' };
@@ -422,5 +435,75 @@ function logAction(action, userId, details) {
     ]);
   } catch (error) {
     Logger.log('[LOG_ACTION ERROR] ' + error.toString());
+  }
+}
+
+// ===== AUTOPAY ACTION HANDLER =====
+function handleAutopayAction(action, data) {
+  Logger.log(`[AUTOPAY_ACTION] ${action}`);
+  
+  try {
+    let result;
+    
+    switch(action) {
+      case 'getAutopayConfig':
+        result = getAutopayConfig();
+        break;
+      
+      case 'saveAutopayConfig':
+        result = saveAutopayConfig(
+          data.kua,
+          data.listrikEnabled,
+          data.teleponEnabled,
+          data.updatedBy
+        );
+        break;
+      
+      case 'getAutopayRealisasi':
+        result = getAutopayRealisasi(data.tahun, data.bulan);
+        break;
+      
+      case 'saveAutopayRealisasi':
+        result = saveAutopayRealisasi(
+          data.tahun,
+          data.bulan,
+          data.kua,
+          data.kodePos,
+          data.namaPos,
+          data.nominal,
+          data.keterangan || '',
+          data.updatedBy
+        );
+        break;
+      
+      case 'deleteAutopayRealisasi':
+        result = deleteAutopayRealisasi(
+          data.tahun,
+          data.bulan,
+          data.kua,
+          data.kodePos
+        );
+        break;
+      
+      case 'getAutopaySummary':
+        result = getAutopaySummary(data.tahun, data.bulan);
+        break;
+      
+      case 'getKUAList':
+        result = getKUAList();
+        break;
+      
+      case 'isAutopayEnabled':
+        result = isAutopayEnabled(data.kua, data.kodePos);
+        break;
+      
+      default:
+        return errorResponse('Autopay action not found: ' + action);
+    }
+    
+    return successResponse(result);
+  } catch (error) {
+    Logger.log(`[AUTOPAY_ACTION ERROR] ${action}: ${error.toString()}`);
+    return errorResponse(error.message || error.toString());
   }
 }
