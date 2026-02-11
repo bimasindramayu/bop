@@ -355,27 +355,76 @@ function getAutopaySummary(tahun, bulan) {
 
 /**
  * Get all KUAs from budget data (for dropdown)
+ * First tries Budgets sheet, then falls back to Autopay_Config
+ * Auto-creates Autopay_Config with default Indramayu KUAs if needed
  */
 function getKUAList() {
   try {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
-    const budgetSheet = ss.getSheetByName('Budgets');
     
-    if (!budgetSheet) {
-      return [];
-    }
+    // Try Budgets sheet first
+    let budgetSheet = ss.getSheetByName('Budgets');
     
-    const data = budgetSheet.getDataRange().getValues();
-    const kuaSet = new Set();
-    
-    for (let i = 1; i < data.length; i++) {
-      if (data[i][1]) { // KUA column
-        kuaSet.add(data[i][1]);
+    if (budgetSheet) {
+      const data = budgetSheet.getDataRange().getValues();
+      const kuaSet = new Set();
+      
+      for (let i = 1; i < data.length; i++) {
+        if (data[i][1]) { // KUA column (column B, index 1)
+          kuaSet.add(data[i][1]);
+        }
+      }
+      
+      if (kuaSet.size > 0) {
+        return Array.from(kuaSet).sort();
       }
     }
     
-    return Array.from(kuaSet).sort();
+    // Fallback: Get from Autopay_Config or create it
+    let autopaySheet = ss.getSheetByName('Autopay_Config');
+    
+    if (!autopaySheet) {
+      Logger.log('[AUTOPAY] Creating Autopay_Config sheet with default KUAs');
+      
+      autopaySheet = ss.insertSheet('Autopay_Config');
+      autopaySheet.appendRow([
+        'KUA',
+        'Listrik_Enabled',
+        'Telepon_Enabled',
+        'Updated_By',
+        'Updated_At'
+      ]);
+      
+      // Default KUA list for Kabupaten Indramayu (31 KUAs)
+      const defaultKUAs = [
+        'KUA Anjatan', 'KUA Arahan', 'KUA Balongan', 'KUA Bangodua', 'KUA Bongas',
+        'KUA Cantigi', 'KUA Cikedung', 'KUA Gantar', 'KUA Gabuswetan', 'KUA Haurgeulis',
+        'KUA Indramayu', 'KUA Jatibarang', 'KUA Juntinyuat', 'KUA Karangampel', 'KUA Kedokanbunder',
+        'KUA Kertasemaya', 'KUA Kandanghaur', 'KUA Kroya', 'KUA Krangkeng', 'KUA Lelea',
+        'KUA Lohbener', 'KUA Losarang', 'KUA Pasekan', 'KUA Patrol', 'KUA Sindang',
+        'KUA Sliyeg', 'KUA Sukagumiwang', 'KUA Sukra', 'KUA Terisi', 'KUA Tukdana',
+        'KUA Widasari'
+      ];
+      
+      defaultKUAs.forEach(kua => {
+        autopaySheet.appendRow([kua, false, false, '', '']);
+      });
+      
+      Logger.log('[AUTOPAY] Created Autopay_Config with ' + defaultKUAs.length + ' KUAs');
+    }
+    
+    const data = autopaySheet.getDataRange().getValues();
+    const kuaList = [];
+    
+    for (let i = 1; i < data.length; i++) {
+      if (data[i][0]) {
+        kuaList.push(data[i][0]);
+      }
+    }
+    
+    return kuaList.sort();
   } catch (error) {
+    Logger.log('[AUTOPAY] Error getting KUA list: ' + error.message);
     throw new Error('Error getting KUA list: ' + error.message);
   }
 }
