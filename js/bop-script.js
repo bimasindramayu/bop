@@ -292,6 +292,13 @@ function showDashboard() {
         currentPage = 'dashboardPage';
         showPage('dashboardPage');
     });
+    // Show/hide autopay filter based on role
+    // Filter should only be visible for Admin in Laporan page
+    const includeAutopayFilterContainer = document.getElementById('includeAutopayFilterContainer');
+    if (includeAutopayFilterContainer) {
+        // Always hide in Realisasi page (will be shown only in Laporan via other code)
+        includeAutopayFilterContainer.style.display = 'none';
+    }
 }
 
 function populateYearFilters() {
@@ -461,6 +468,17 @@ function navigateTo(pageId) {
             case 'verifikasiPage':
                 if (currentUser.role === 'Admin') {
                     loadVerifikasi();
+                }
+                break;
+            case 'laporanPage':
+                // ... existing code ...
+                
+                // Show autopay filter only for Admin in Laporan page
+                if (user.role === 'Admin') {
+                    const filterContainer = document.getElementById('includeAutopayFilterContainer');
+                    if (filterContainer) {
+                        filterContainer.style.display = 'inline';
+                    }
                 }
                 break;
         }
@@ -2141,6 +2159,27 @@ async function updateRealisasiButtonState() {
     }
 }
 
+async function getAutopayTotal(tahun, bulan, kua) {
+    try {
+        const autopayData = await autopayApiCall('getAutopayRealisasi', { 
+            tahun: parseInt(tahun), 
+            bulan: parseInt(bulan) 
+        });
+        
+        // Filter for specific KUA
+        const kuaAutopay = autopayData.filter(r => r.kua === kua);
+        
+        // Sum all autopay nominals
+        const total = kuaAutopay.reduce((sum, r) => sum + (parseInt(r.nominal) || 0), 0);
+        
+        console.log(`[AUTOPAY_TOTAL] ${kua} ${tahun}-${bulan}: ${total}`);
+        return total;
+    } catch (error) {
+        console.error('[AUTOPAY_TOTAL] Error:', error);
+        return 0;
+    }
+}
+
 function displayRealisasis(realisasis) {
     const tbody = document.querySelector('#realisasiTable tbody');
     let totalNominal = 0;
@@ -2198,7 +2237,74 @@ function displayRealisasis(realisasis) {
         </tr>
     `;
     
+    // Set innerHTML first
     tbody.innerHTML = rows + totalRow;
+    
+    // Add dual totals row for Operator (async)
+    if (user.role === 'Operator' && realisasis.length > 0) {
+        const totalRealisasi = realisasis.reduce((sum, r) => sum + (parseFloat(r.total) || 0), 0);
+        
+        // Calculate autopay total for displayed realisasis
+        Promise.all(
+            realisasis.map(r => getAutopayTotal(r.year, r.month, r.kua))
+        ).then(autopayTotals => {
+            const totalAutopay = autopayTotals.reduce((sum, t) => sum + t, 0);
+            const totalPencairan = totalRealisasi - totalAutopay;
+            
+            // Create totals row
+            const totalsRow = document.createElement('tr');
+            totalsRow.style.cssText = 'background: #f5f5f5; font-weight: bold; border-top: 2px solid #333;';
+            
+            // Label cell
+            const labelCell = document.createElement('td');
+            labelCell.colSpan = 3; // Columns: No, Bulan, Tahun
+            labelCell.style.cssText = 'text-align: right; padding: 12px;';
+            labelCell.innerHTML = `
+                <div style="margin-bottom: 4px;">Total Realisasi:</div>
+                ${totalAutopay > 0 ? `
+                    <div style="color: #F57C00; font-size: 12px; margin-bottom: 4px;">Dibayar via Autopay:</div>
+                    <div style="border-top: 1px solid #ccc; margin-top: 4px; padding-top: 4px;">Total Pencairan KUA:</div>
+                ` : ''}
+            `;
+            
+            // Amount cell
+            const amountCell = document.createElement('td');
+            amountCell.style.cssText = 'padding: 12px; text-align: right;';
+            amountCell.innerHTML = `
+                <div style="margin-bottom: 4px; color: #1976D2; font-size: 15px;">${formatCurrency(totalRealisasi)}</div>
+                ${totalAutopay > 0 ? `
+                    <div style="color: #F57C00; font-size: 12px; margin-bottom: 4px;">- ${formatCurrency(totalAutopay)}</div>
+                    <div style="border-top: 1px solid #ccc; margin-top: 4px; padding-top: 4px; color: #2E7D32; font-size: 16px;">
+                        ${formatCurrency(totalPencairan)}
+                    </div>
+                ` : ''}
+            `;
+            
+            // Status cell (empty)
+            const statusCell = document.createElement('td');
+            statusCell.innerHTML = '';
+            
+            // Date cell (empty)
+            const dateCell = document.createElement('td');
+            dateCell.innerHTML = '';
+            
+            // Action cell (empty)
+            const actionCell = document.createElement('td');
+            actionCell.innerHTML = '';
+            
+            // Append cells
+            totalsRow.appendChild(labelCell);
+            totalsRow.appendChild(amountCell);
+            totalsRow.appendChild(statusCell);
+            totalsRow.appendChild(dateCell);
+            totalsRow.appendChild(actionCell);
+            
+            // Append row to tbody
+            tbody.appendChild(totalsRow);
+        }).catch(error => {
+            console.error('[TOTALS] Error calculating autopay totals:', error);
+        });
+    }
 }
 
 async function showRealisasiModal(realisasi = null) {
@@ -3400,65 +3506,128 @@ async function showRealisasiInputs(rpd, realisasi = null) {
     
     document.getElementById('realisasiParameters').innerHTML = parametersHTML;
     
-    // Check autopay status for Operator and replace placeholders
+    // Autopay check for Operator KUA
     if (currentUser.role === 'Operator KUA') {
-        const placeholders = document.querySelectorAll('.autopay-check-placeholder');
-        placeholders.forEach(async (placeholder) => {
-            const code = placeholder.dataset.code;
-            const item = placeholder.dataset.item;
-            const realValue = placeholder.dataset.realvalue;
-            
-            try {
-                const isEnabled = await autopayApiCall('isAutopayEnabled', {
-                    kua: currentUser.kua,
-                    kodePos: code
-                });
-                
-                if (isEnabled) {
-                    // Autopay is enabled - show disabled badge
-                    placeholder.outerHTML = `
-                        <div style="text-align: center; padding: 10px; background: #fff3cd; border-radius: 6px; border: 2px solid #ffc107;">
-                            <small style="display: block; color: #856404; font-size: 11px; font-weight: 600;">
-                                ⚡ AUTOPAY AKTIF
-                            </small>
-                            <small style="display: block; color: #856404; font-size: 10px; margin-top: 4px;">
-                                Dikelola oleh Admin
-                            </small>
-                        </div>
-                    `;
-                } else {
-                    // Autopay is NOT enabled - show normal input
-                    placeholder.outerHTML = `
-                        <input type="number" 
-                            class="realisasi-input" 
-                            data-code="${code}" 
-                            data-item="${item}" 
-                            value="${realValue}" 
-                            min="0"
-                            step="1000"
-                            placeholder="Realisasi">
-                    `;
-                    
-                    // Re-attach event listener to new input
-                    const newInput = document.querySelector(`input[data-code="${code}"][data-item="${item}"]`);
-                    if (newInput) {
-                        newInput.addEventListener('input', calculateRealisasiTotal);
-                    }
-                }
-            } catch (error) {
-                console.error('[AUTOPAY CHECK ERROR]', error);
-                // On error, show normal input
-                placeholder.outerHTML = `
-                    <input type="number" 
-                        class="realisasi-input" 
-                        data-code="${code}" 
-                        data-item="${item}" 
-                        value="${realValue}" 
-                        min="0"
-                        step="1000"
-                        placeholder="Realisasi">
-                `;
+        const tahun = parseInt(rpd.year);
+        const bulan = parseInt(rpd.month);
+        const kua = currentUser.kua;
+        
+        console.log('[AUTOPAY_BLOCK] Checking autopay for operator:', { kua, tahun, bulan });
+        
+        // Check autopay for Listrik (522111) and Telepon (522112)
+        const autopayPOS = [
+            { kodePos: '522111', namaPos: 'Belanja Langganan Listrik' },
+            { kodePos: '522112', namaPos: 'Belanja Langganan Telepon / Internet' }
+        ];
+        
+        autopayPOS.forEach(pos => {
+            // Check if this POS exists in the RPD
+            const posExists = rpd.data[pos.kodePos];
+            if (!posExists) {
+                console.log('[AUTOPAY_BLOCK] POS not in RPD:', pos.kodePos);
+                return;
             }
+            
+            console.log('[AUTOPAY_BLOCK] Checking POS:', pos.kodePos);
+            
+            // Async check autopay status and data
+            Promise.all([
+                autopayApiCall('isAutopayEnabled', { kua: kua, kodePos: pos.kodePos }),
+                autopayApiCall('getAutopayRealisasi', { tahun: tahun, bulan: bulan })
+            ]).then(([enabled, autopayDataList]) => {
+                console.log('[AUTOPAY_BLOCK] POS', pos.kodePos, 'enabled:', enabled);
+                
+                if (!enabled) {
+                    console.log('[AUTOPAY_BLOCK] Autopay not enabled, allow normal input');
+                    return; // Not autopay, allow normal input
+                }
+                
+                // Find autopay data for this KUA and POS
+                const autopayRecord = autopayDataList.find(r => 
+                    r.kua === kua && r.kodePos === pos.kodePos
+                );
+                
+                console.log('[AUTOPAY_BLOCK] Autopay record:', autopayRecord);
+                
+                // Find all input fields for this POS
+                const inputs = document.querySelectorAll(
+                    `.realisasi-input[data-code="${pos.kodePos}"]`
+                );
+                
+                console.log('[AUTOPAY_BLOCK] Found', inputs.length, 'inputs for POS', pos.kodePos);
+                
+                inputs.forEach(input => {
+                    const item = input.dataset.item;
+                    const container = input.parentElement;
+                    
+                    if (autopayRecord && autopayRecord.nominal > 0) {
+                        // Replace input with readonly autopay display
+                        console.log('[AUTOPAY_BLOCK] Blocking input for', item, 'with nominal', autopayRecord.nominal);
+                        
+                        container.innerHTML = `
+                            <div style="padding: 10px; background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%); 
+                                        border-radius: 6px; border: 2px solid #4CAF50;">
+                                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+                                    <span style="background: white; color: #4CAF50; padding: 4px 8px; 
+                                                 border-radius: 4px; font-weight: bold; font-size: 12px;">
+                                        🤖 DIBAYAR VIA SAKTI
+                                    </span>
+                                </div>
+                                <div style="background: white; padding: 10px; border-radius: 4px; margin-bottom: 8px;">
+                                    <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+                                        <small style="color: #666;">Nominal:</small>
+                                        <strong style="color: #2E7D32; font-size: 16px;">
+                                            ${formatCurrency(autopayRecord.nominal)}
+                                        </strong>
+                                    </div>
+                                    ${autopayRecord.keterangan ? `
+                                        <div style="border-top: 1px solid #e0e0e0; padding-top: 4px; margin-top: 4px;">
+                                            <small style="color: #666;">Keterangan:</small>
+                                            <div style="color: #333; font-size: 13px; margin-top: 2px;">
+                                                ${autopayRecord.keterangan}
+                                            </div>
+                                        </div>
+                                    ` : ''}
+                                </div>
+                                <div style="background: #FFF9C4; padding: 8px; border-radius: 4px; 
+                                           border-left: 3px solid #F57C00;">
+                                    <small style="color: #E65100; font-size: 11px;">
+                                        ⚠️ POS ini tidak dapat diinput manual karena pembayaran 
+                                        dilakukan otomatis melalui sistem SAKTI (Autopay).
+                                    </small>
+                                </div>
+                            </div>
+                        `;
+                        
+                        // Set value in realisasi data for auto-saving
+                        if (!realisasiData[pos.kodePos]) {
+                            realisasiData[pos.kodePos] = {};
+                        }
+                        realisasiData[pos.kodePos][item] = autopayRecord.nominal;
+                        
+                    } else if (enabled && (!autopayRecord || autopayRecord.nominal === 0)) {
+                        // Autopay enabled but no data yet - show info and disable
+                        console.log('[AUTOPAY_BLOCK] Autopay enabled but no data, disabling input');
+                        
+                        const infoDiv = document.createElement('div');
+                        infoDiv.style.cssText = 'padding: 8px; background: #E3F2FD; border-radius: 4px; margin-top: 5px;';
+                        infoDiv.innerHTML = `
+                            <small style="color: #1976D2; font-size: 11px;">
+                                ℹ️ POS ini menggunakan Autopay. Admin akan input nominal via SAKTI.
+                            </small>
+                        `;
+                        container.appendChild(infoDiv);
+                        
+                        // Disable input
+                        input.disabled = true;
+                        input.placeholder = 'Menunggu input Admin via SAKTI';
+                        input.style.background = '#f5f5f5';
+                        input.style.cursor = 'not-allowed';
+                    }
+                });
+            }).catch(error => {
+                console.error('[AUTOPAY_BLOCK] Error checking autopay status:', error);
+            });
         });
     }
     // Calculate total on input change
@@ -4255,10 +4424,72 @@ function viewRealisasi(realisasi) {
                     <strong>${formatCurrency(realisasi.total)}</strong>
                 </div>
             </div>
+            
+            <!-- Dual Totals Placeholder -->
+            <div id="dualTotalsContainer"></div>
         </div>
     `;
     
     modal.classList.add('active');
+    
+    // Calculate and display dual totals (async)
+    getAutopayTotal(realisasi.year, realisasi.month, realisasi.kua).then(autopayTotal => {
+        const totalRealisasi = realisasi.total || 0;
+        const totalPencairan = totalRealisasi - autopayTotal;
+        
+        const totalsHTML = `
+            <div style="margin-top: 20px; padding: 15px; background: linear-gradient(to bottom, #f9f9f9, #ffffff); border-radius: 8px; border: 1px solid #e0e0e0; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                <h4 style="margin: 0 0 15px 0; color: #333; font-size: 14px; border-bottom: 2px solid #1976D2; padding-bottom: 8px;">
+                    <i class="fas fa-calculator"></i> Ringkasan Total
+                </h4>
+                
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; padding: 10px; background: #E3F2FD; border-radius: 4px;">
+                    <strong style="color: #1565C0;">Total Realisasi:</strong>
+                    <strong style="color: #1976D2; font-size: 18px;">${formatCurrency(totalRealisasi)}</strong>
+                </div>
+                
+                ${autopayTotal > 0 ? `
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; padding: 10px; background: #FFF3E0; border-radius: 4px;">
+                        <span style="color: #E65100;">
+                            <i class="fas fa-robot"></i> Dibayar via Autopay:
+                        </span>
+                        <span style="color: #F57C00; font-size: 16px;">- ${formatCurrency(autopayTotal)}</span>
+                    </div>
+                    
+                    <div style="height: 1px; background: linear-gradient(to right, transparent, #ccc, transparent); margin: 15px 0;"></div>
+                    
+                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px; background: #E8F5E9; border-radius: 4px; border: 2px solid #4CAF50;">
+                        <strong style="color: #2E7D32; font-size: 16px;">
+                            <i class="fas fa-money-bill-wave"></i> Total Pencairan KUA:
+                        </strong>
+                        <strong style="color: #2E7D32; font-size: 20px;">${formatCurrency(totalPencairan)}</strong>
+                    </div>
+                    
+                    <div style="margin-top: 12px; padding: 10px; background: #FFFDE7; border-left: 4px solid #FBC02D; border-radius: 4px;">
+                        <small style="color: #F57C00; font-size: 11px; display: block; line-height: 1.5;">
+                            <i class="fas fa-info-circle"></i> 
+                            <strong>Total Pencairan KUA</strong> adalah jumlah yang sebenarnya diterima oleh KUA setelah dikurangi pembayaran yang dilakukan melalui sistem SAKTI (Autopay).
+                        </small>
+                    </div>
+                ` : `
+                    <div style="margin-top: 10px; padding: 10px; background: #E8F5E9; border-left: 4px solid #4CAF50; border-radius: 4px;">
+                        <small style="color: #2E7D32; font-size: 12px;">
+                            <i class="fas fa-check-circle"></i> 
+                            Tidak ada pembayaran autopay untuk periode ini. Total Pencairan sama dengan Total Realisasi.
+                        </small>
+                    </div>
+                `}
+            </div>
+        `;
+        
+        // Insert into modal
+        const container = document.getElementById('dualTotalsContainer');
+        if (container) {
+            container.innerHTML = totalsHTML;
+        }
+    }).catch(error => {
+        console.error('[DETAIL_TOTALS] Error:', error);
+    });
 }
 
 function editRealisasi(realisasi) {
@@ -4389,7 +4620,71 @@ function displayVerifikasi(realisasis) {
         </tr>
     `;
     
+    // Set innerHTML first
     tbody.innerHTML = rows + totalRow;
+    
+    // Add dual totals row for Admin (async)
+    if (filteredData.length > 0) {
+        const totalRealisasi = filteredData.reduce((sum, r) => sum + (parseFloat(r.total) || 0), 0);
+        
+        // Get autopay totals for all displayed verifikasi
+        Promise.all(
+            filteredData.map(r => getAutopayTotal(r.year, r.month, r.kua))
+        ).then(autopayTotals => {
+            const totalAutopay = autopayTotals.reduce((sum, t) => sum + t, 0);
+            const totalPencairan = totalRealisasi - totalAutopay;
+            
+            // Create totals row
+            const totalsRow = document.createElement('tr');
+            totalsRow.style.cssText = 'background: #f5f5f5; font-weight: bold; border-top: 2px solid #333;';
+            
+            // Label cell
+            const labelCell = document.createElement('td');
+            labelCell.colSpan = 4; // Columns: No, KUA, Bulan, Tahun
+            labelCell.style.cssText = 'text-align: right; padding: 12px;';
+            labelCell.innerHTML = `
+                <div style="margin-bottom: 4px;">Total Realisasi:</div>
+                ${totalAutopay > 0 ? `
+                    <div style="color: #F57C00; font-size: 12px; margin-bottom: 4px;">Dibayar via Autopay:</div>
+                    <div style="border-top: 1px solid #ccc; margin-top: 4px; padding-top: 4px;">Total Pencairan:</div>
+                ` : ''}
+            `;
+            
+            // Amount cell
+            const amountCell = document.createElement('td');
+            amountCell.style.cssText = 'padding: 12px; text-align: right;';
+            amountCell.innerHTML = `
+                <div style="margin-bottom: 4px; color: #1976D2; font-size: 15px;">${formatCurrency(totalRealisasi)}</div>
+                ${totalAutopay > 0 ? `
+                    <div style="color: #F57C00; font-size: 12px; margin-bottom: 4px;">- ${formatCurrency(totalAutopay)}</div>
+                    <div style="border-top: 1px solid #ccc; margin-top: 4px; padding-top: 4px; color: #2E7D32; font-size: 16px;">
+                        ${formatCurrency(totalPencairan)}
+                    </div>
+                ` : ''}
+            `;
+            
+            // Remaining cells (empty)
+            const cell1 = document.createElement('td');
+            cell1.innerHTML = '';
+            const cell2 = document.createElement('td');
+            cell2.innerHTML = '';
+            const cell3 = document.createElement('td');
+            cell3.innerHTML = '';
+            
+            // Append cells
+            totalsRow.appendChild(labelCell);
+            totalsRow.appendChild(amountCell);
+            totalsRow.appendChild(cell1);
+            totalsRow.appendChild(cell2);
+            totalsRow.appendChild(cell3);
+            
+            // Append row to tbody
+            tbody.appendChild(totalsRow);
+        }).catch(error => {
+            console.error('[VERIFIKASI_TOTALS] Error calculating autopay totals:', error);
+        });
+    }
+    
     console.log('[VERIFIKASI] Displayed', filteredData.length, 'records');
 }
 
@@ -4530,26 +4825,8 @@ function verifyRealisasi(realisasi) {
     }
     
     // ✅ FIX: Build files HTML dengan validasi yang benar
-    let filesHTML = files.map(file => {
-        const isImage = file.mimeType && file.mimeType.startsWith('image/');
-        const previewUrl = getDrivePreviewUrl(file.fileUrl, file.mimeType);
-        
-        return `
-            <div class="file-item">
-                <strong>📎 ${file.fileName}</strong>
-                <button onclick="window.open('${file.fileUrl}', '_blank')">Buka File</button>
-                
-                ${isImage ? `
-                    <img src="${previewUrl}" 
-                         style="max-width: 100%; max-height: 400px;"
-                         onclick="window.open('${file.fileUrl}', '_blank')">
-                ` : `
-                    <p>Preview tidak tersedia. Klik "Buka File" untuk melihat.</p>
-                `}
-            </div>
-        `;
-    }).join('');
-
+    let filesHTML = '';
+    
     if (Array.isArray(files) && files.length > 0) {
         console.log('[VERIFIKASI] Processing files for display:', files.length);
         
@@ -4727,6 +5004,9 @@ function verifyRealisasi(realisasi) {
                         </div>
                         ` : ''}
                     </div>
+                    
+                    <!-- Dual Totals Placeholder -->
+                    <div id="verifikasiDualTotalsContainer"></div>
                 </div>
                 
                 <div class="verify-right">
@@ -4760,6 +5040,65 @@ function verifyRealisasi(realisasi) {
         initAllImageViewers();
         initAllPDFViewers();
     }, 100);
+    
+    // Calculate and display dual totals (async)
+    getAutopayTotal(realisasi.year, realisasi.month, realisasi.kua).then(autopayTotal => {
+        const totalRealisasi = realisasi.total || 0;
+        const totalPencairan = totalRealisasi - autopayTotal;
+        
+        const totalsHTML = `
+            <div style="margin-top: 20px; padding: 15px; background: linear-gradient(to bottom, #f9f9f9, #ffffff); border-radius: 8px; border: 1px solid #e0e0e0; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                <h4 style="margin: 0 0 15px 0; color: #333; font-size: 14px; border-bottom: 2px solid #1976D2; padding-bottom: 8px;">
+                    <i class="fas fa-calculator"></i> Ringkasan Total Verifikasi
+                </h4>
+                
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; padding: 10px; background: #E3F2FD; border-radius: 4px;">
+                    <strong style="color: #1565C0;">Total Realisasi:</strong>
+                    <strong style="color: #1976D2; font-size: 18px;">${formatCurrency(totalRealisasi)}</strong>
+                </div>
+                
+                ${autopayTotal > 0 ? `
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; padding: 10px; background: #FFF3E0; border-radius: 4px;">
+                        <span style="color: #E65100;">
+                            <i class="fas fa-robot"></i> Dibayar via Autopay:
+                        </span>
+                        <span style="color: #F57C00; font-size: 16px;">- ${formatCurrency(autopayTotal)}</span>
+                    </div>
+                    
+                    <div style="height: 1px; background: linear-gradient(to right, transparent, #ccc, transparent); margin: 15px 0;"></div>
+                    
+                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px; background: #E8F5E9; border-radius: 4px; border: 2px solid #4CAF50;">
+                        <strong style="color: #2E7D32; font-size: 16px;">
+                            <i class="fas fa-money-bill-wave"></i> Total Pencairan KUA:
+                        </strong>
+                        <strong style="color: #2E7D32; font-size: 20px;">${formatCurrency(totalPencairan)}</strong>
+                    </div>
+                    
+                    <div style="margin-top: 12px; padding: 10px; background: #FFFDE7; border-left: 4px solid #FBC02D; border-radius: 4px;">
+                        <small style="color: #F57C00; font-size: 11px; display: block; line-height: 1.5;">
+                            <i class="fas fa-info-circle"></i> 
+                            <strong>Total Pencairan</strong> adalah jumlah yang sebenarnya dicairkan ke KUA setelah dikurangi pembayaran autopay yang dilakukan melalui SAKTI.
+                        </small>
+                    </div>
+                ` : `
+                    <div style="margin-top: 10px; padding: 10px; background: #E8F5E9; border-left: 4px solid #4CAF50; border-radius: 4px;">
+                        <small style="color: #2E7D32; font-size: 12px;">
+                            <i class="fas fa-check-circle"></i> 
+                            Tidak ada pembayaran autopay untuk periode ini. Total Pencairan sama dengan Total Realisasi.
+                        </small>
+                    </div>
+                `}
+            </div>
+        `;
+        
+        // Insert into modal
+        const container = document.getElementById('verifikasiDualTotalsContainer');
+        if (container) {
+            container.innerHTML = totalsHTML;
+        }
+    }).catch(error => {
+        console.error('[VERIFIKASI_MODAL_TOTALS] Error:', error);
+    });
     
     document.getElementById('verifyForm').addEventListener('submit', async (e) => {
         e.preventDefault();
@@ -5673,6 +6012,11 @@ function formatFileSize(bytes) {
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     
     return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+}
+
+function formatNumber(num) {
+    if (!num && num !== 0) return '';
+    return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
 }
 
 function formatNumberInput(input) {
@@ -6685,6 +7029,19 @@ async function autopayApiCall(action, data = {}) {
     }
 }
 
+function formatInputNumber(input) {
+    let value = input.value.replace(/\D/g, ''); // Remove non-digits
+    if (value) {
+        input.value = formatNumber(parseInt(value));
+    } else {
+        input.value = '';
+    }
+}
+
+function getInputNumber(input) {
+    return parseInt(input.value.replace(/\D/g, '') || '0');
+}
+
 function showAutopaySubPage(subPageName) {
     console.log('[AUTOPAY] Showing sub-page:', subPageName);
     
@@ -6872,80 +7229,108 @@ async function loadAutopayInput() {
     }
 }
 
-function displayAutopayInput(bulan, tahun) {
-    const section = document.getElementById('autopayInputSection');
-    section.innerHTML = '';
+function displayAutopayInput() {
+    console.log('[AUTOPAY] Displaying input');
+    console.log('[AUTOPAY] autopayConfigs:', autopayConfigs);
+    console.log('[AUTOPAY] autopayData:', autopayData);
     
-    const enabledConfigs = autopayConfigs.filter(c => c.listrikEnabled || c.teleponEnabled);
-    
-    if (enabledConfigs.length === 0) {
-        section.innerHTML = '<p class="text-muted">Belum ada KUA yang dikonfigurasi untuk autopay. Silakan konfigurasi terlebih dahulu di tab <strong>Konfigurasi</strong>.</p>';
+    const container = document.getElementById('autopayInputContainer');
+    if (!container) {
+        console.error('[AUTOPAY] Container not found');
         return;
     }
     
-    enabledConfigs.forEach(config => {
-        const kuaCard = document.createElement('div');
-        kuaCard.className = 'autopay-kua-card';
+    if (!autopayConfigs || autopayConfigs.length === 0) {
+        container.innerHTML = '<p>Tidak ada konfigurasi autopay. Silakan ke tab Konfigurasi terlebih dahulu.</p>';
+        return;
+    }
+    
+    // Group by KUA
+    const byKUA = {};
+    autopayConfigs.forEach(config => {
+        if (config.listrikEnabled || config.teleponEnabled) {
+            if (!byKUA[config.kua]) {
+                byKUA[config.kua] = { listrik: config.listrikEnabled, telepon: config.teleponEnabled };
+            }
+        }
+    });
+    
+    if (Object.keys(byKUA).length === 0) {
+        container.innerHTML = '<p>Tidak ada KUA yang mengaktifkan autopay. Silakan aktifkan di tab Konfigurasi.</p>';
+        return;
+    }
+    
+    let html = '';
+    
+    Object.keys(byKUA).sort().forEach(kua => {
+        const config = byKUA[kua];
+        const enabledPOS = [];
         
-        let html = `
-            <h3>${config.kua}</h3>
-            <div class="autopay-input-grid">
+        if (config.listrik) {
+            enabledPOS.push({ kodePos: '522111', namaPos: 'Belanja Langganan Listrik' });
+        }
+        if (config.telepon) {
+            enabledPOS.push({ kodePos: '522112', namaPos: 'Belanja Langganan Telepon / Internet' });
+        }
+        
+        if (enabledPOS.length === 0) return;
+        
+        html += `
+            <div class="autopay-kua-card">
+                <h4 style="margin: 0 0 15px 0; color: #1976D2;">
+                    <i class="fas fa-building"></i> ${kua}
+                </h4>
+                <div class="autopay-input-grid">
         `;
         
-        if (config.listrikEnabled) {
+        enabledPOS.forEach(pos => {enabledPOS.forEach(pos => {
+            // ✅ ADD DETAILED LOGGING
+            console.log('[AUTOPAY] Looking for:', { kua, kodePos: pos.kodePos });
+            console.log('[AUTOPAY] Available data:', autopayData.map(d => ({ 
+                kua: d.kua, 
+                kodePos: d.kodePos, 
+                nominal: d.nominal 
+            })));
+            
             const existing = autopayData.find(d => 
-                d.kua === config.kua && d.kodePos === '522111'
+                String(d.kua).trim() === String(kua).trim() && 
+                String(d.kodePos).trim() === String(pos.kodePos).trim()
             );
+            
+            console.log('[AUTOPAY] Found existing:', existing);
             
             html += `
                 <div class="autopay-input-item">
-                    <label>⚡ Listrik (522111)</label>
-                    <input type="number" 
-                           class="autopay-nominal-input" 
-                           data-kua="${config.kua}" 
-                           data-kodepos="522111"
-                           data-namapos="Belanja Langganan Listrik"
-                           placeholder="Nominal"
-                           value="${existing ? existing.nominal : ''}"
-                           min="0"
-                           step="1000">
-                    <textarea class="autopay-notes-input" 
-                              data-kua="${config.kua}" 
-                              data-kodepos="522111"
-                              placeholder="Keterangan (opsional)">${existing ? existing.keterangan : ''}</textarea>
+                    <label style="font-weight: 500; color: #333; margin-bottom: 8px; display: block;">
+                        ${pos.kodePos} - ${pos.namaPos}
+                    </label>
+                    <input 
+                        type="text" 
+                        class="autopay-nominal-input" 
+                        value="${existing ? formatNumber(existing.nominal) : ''}"
+                        data-kua="${kua}"
+                        data-kode-pos="${pos.kodePos}"
+                        data-nama-pos="${pos.namaPos}"
+                        placeholder="0"
+                        oninput="formatInputNumber(this)">
+                    <textarea 
+                        class="autopay-notes-input" 
+                        data-kua="${kua}"
+                        data-kode-pos="${pos.kodePos}"
+                        placeholder="Keterangan (opsional)"
+                        style="margin-top: 8px;">${existing ? existing.keterangan : ''}</textarea>
                 </div>
             `;
-        }
+        });
+        });
         
-        if (config.teleponEnabled) {
-            const existing = autopayData.find(d => 
-                d.kua === config.kua && d.kodePos === '522112'
-            );
-            
-            html += `
-                <div class="autopay-input-item">
-                    <label>📞 Telepon/Internet (522112)</label>
-                    <input type="number" 
-                           class="autopay-nominal-input" 
-                           data-kua="${config.kua}" 
-                           data-kodepos="522112"
-                           data-namapos="Belanja Langganan Telepon / Internet"
-                           placeholder="Nominal"
-                           value="${existing ? existing.nominal : ''}"
-                           min="0"
-                           step="1000">
-                    <textarea class="autopay-notes-input" 
-                              data-kua="${config.kua}" 
-                              data-kodepos="522112"
-                              placeholder="Keterangan (opsional)">${existing ? existing.keterangan : ''}</textarea>
+        html += `
                 </div>
-            `;
-        }
-        
-        html += `</div>`;
-        kuaCard.innerHTML = html;
-        section.appendChild(kuaCard);
+            </div>
+        `;
     });
+    
+    container.innerHTML = html;
 }
 
 async function saveAllAutopayInput() {
@@ -6962,12 +7347,15 @@ async function saveAllAutopayInput() {
         
         inputs.forEach(input => {
             const kua = input.dataset.kua;
-            const kodePos = input.dataset.kodepos;
-            const namaPos = input.dataset.namapos;
-            const nominal = parseFloat(input.value) || 0;
+            const kodePos = input.dataset.kodePos;  // ✅ FIXED - camelCase (was: kodepos)
+            const namaPos = input.dataset.namaPos;  // ✅ FIXED - camelCase (was: namapos)
+            const nominal = getInputNumber(input);
             
-            const notesEl = document.querySelector(`.autopay-notes-input[data-kua="${kua}"][data-kodepos="${kodePos}"]`);
+            // ✅ FIXED - attribute selector (was: data-kodepos)
+            const notesEl = document.querySelector(`.autopay-notes-input[data-kua="${kua}"][data-kode-pos="${kodePos}"]`);
             const keterangan = notesEl ? notesEl.value : '';
+            
+            console.log('[AUTOPAY] Processing:', { kua, kodePos, namaPos, nominal, keterangan });
             
             if (nominal > 0) {
                 savePromises.push(
@@ -7004,7 +7392,9 @@ async function saveAllAutopayInput() {
         
         hideLoading();
         showNotification('Data autopay berhasil disimpan', 'success');
-        loadAutopayInput();
+        
+        // Reload data to show saved values
+        await loadAutopayInput();
     } catch (error) {
         hideLoading();
         console.error('[AUTOPAY] Error saving input:', error);

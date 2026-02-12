@@ -190,6 +190,22 @@ function getAutopayRealisasi(tahun, bulan) {
 }
 
 /**
+ * Generate unique ID for autopay realisasi
+ * Format: APYYYYMMDDHHMMSS + random 4 digits
+ */
+function generateId() {
+  const now = new Date();
+  const timestamp = now.getFullYear().toString() +
+                    (now.getMonth() + 1).toString().padStart(2, '0') +
+                    now.getDate().toString().padStart(2, '0') +
+                    now.getHours().toString().padStart(2, '0') +
+                    now.getMinutes().toString().padStart(2, '0') +
+                    now.getSeconds().toString().padStart(2, '0');
+  const random = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
+  return 'AP' + timestamp + random;
+}
+
+/**
  * Save autopay realisasi data
  * @param {number} tahun - Year
  * @param {number} bulan - Month
@@ -338,17 +354,22 @@ function getAutopaySummary(tahun, bulan) {
         };
       }
       
+      // ✅ FIX: Convert nominal to number (spreadsheet returns string)
+      const nominal = parseInt(r.nominal) || 0;
+      
       if (r.kodePos === '522111') {
-        summary[r.kua].listrik = r.nominal;
+        summary[r.kua].listrik += nominal;  // ✅ Use += for safety
       } else if (r.kodePos === '522112') {
-        summary[r.kua].telepon = r.nominal;
+        summary[r.kua].telepon += nominal;  // ✅ Use += for safety
       }
       
-      summary[r.kua].total += r.nominal;
+      summary[r.kua].total += nominal;
     });
     
+    Logger.log('[AUTOPAY] Summary generated for ' + tahun + '-' + bulan + ': ' + Object.keys(summary).length + ' KUAs');
     return Object.values(summary);
   } catch (error) {
+    Logger.log('[AUTOPAY] Error getting summary: ' + error.message);
     throw new Error('Error getting autopay summary: ' + error.message);
   }
 }

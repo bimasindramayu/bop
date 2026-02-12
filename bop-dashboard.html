@@ -134,11 +134,14 @@
                             <option value="2027">2027</option>
                         </select>
 
-                        <label style="margin-left: 10px;">Include Autopay:</label>
-                        <select id="includeAutopayFilter" onchange="loadRealisasis(true)">
-                            <option value="false">Exclude Autopay</option>
-                            <option value="true">Include Autopay</option>
-                        </select>
+                        <!-- Only show for Admin (will be controlled by JS) -->
+                        <div id="realisasiAutopayFilterContainer" style="display: none;">
+                            <label style="margin-left: 10px;">Include Autopay:</label>
+                            <select id="includeAutopayFilter" onchange="loadRealisasis(true)">
+                                <option value="false">Exclude Autopay</option>
+                                <option value="true">Include Autopay</option>
+                            </select>
+                        </div>
                     </div>
                     <div class="table-container">
                         <table id="realisasiTable">
@@ -397,7 +400,7 @@
                             <button class="btn btn-sm btn-secondary" onclick="loadAutopayInput()">🔄 Refresh</button>
                         </div>
 
-                        <div id="autopayInputSection" style="margin-top: 30px;">
+                        <div id="autopayInputContainer" style="margin-top: 30px;">
                             <!-- Will be populated by JavaScript -->
                         </div>
                     </div>
