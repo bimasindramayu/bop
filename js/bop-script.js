@@ -14,6 +14,9 @@ let uploadConfig = {
     maxFileSize: 10  // MB
 };
 
+// ✅ Realisasi data for autopay integration
+let realisasiData = {};
+
 // ✅ LOCAL CACHE - persisten selama session, tidak ada timeout
 const localCache = {
     budgets: null,
@@ -2241,7 +2244,7 @@ function displayRealisasis(realisasis) {
     tbody.innerHTML = rows + totalRow;
     
     // Add dual totals row for Operator (async)
-    if (user.role === 'Operator' && realisasis.length > 0) {
+    if (currentUser.role === 'Operator KUA' && realisasis.length > 0) {
         const totalRealisasi = realisasis.reduce((sum, r) => sum + (parseFloat(r.total) || 0), 0);
         
         // Calculate autopay total for displayed realisasis
@@ -2329,6 +2332,10 @@ async function showRealisasiModal(realisasi = null) {
     
     // ✅ PERBAIKAN: Reset uploadedFiles (harus pakai 'let' di global, bukan 'const')
     uploadedFiles = [];
+    
+    // ✅ Reset global realisasiData for autopay
+    window.realisasiData = {};
+    console.log('[REALISASI MODAL] Reset realisasiData for autopay');
     
     // Get modal - FIXED: menggunakan let agar bisa di-reassign
     let modal = document.getElementById('realisasiModal');
@@ -2764,11 +2771,11 @@ async function showRealisasiModal(realisasi = null) {
         }
         
         // Collect data
-        const realisasiData = {};
+        const realisasiDataToSave = {};
         let total = 0;
         
         Object.entries(APP_CONFIG.BOP.RPD_PARAMETERS).forEach(([code, param]) => {
-            realisasiData[code] = {};
+            realisasiDataToSave[code] = {};
             
             param.items.forEach(item => {
                 const inputId = `realisasi_${code}_${item.replace(/\s+/g, '_')}`;
@@ -2776,13 +2783,38 @@ async function showRealisasiModal(realisasi = null) {
                 
                 if (input) {
                     const value = parseFormattedNumber(input.value);
-                    realisasiData[code][item] = value;
+                    realisasiDataToSave[code][item] = value;
                     total += value;
                 }
             });
         });
         
-        console.log('[REALISASI FORM] Data collected:', { realisasiData, total });
+        console.log('[REALISASI FORM] Data from inputs:', realisasiDataToSave);
+        console.log('[REALISASI FORM] Total from inputs:', total);
+        
+        // ✅ Merge with global realisasiData (contains autopay values)
+        if (window.realisasiData && Object.keys(window.realisasiData).length > 0) {
+            console.log('[AUTOPAY_SUBMIT] Merging autopay data:', window.realisasiData);
+            
+            Object.keys(window.realisasiData).forEach(code => {
+                if (!realisasiDataToSave[code]) {
+                    realisasiDataToSave[code] = {};
+                }
+                
+                Object.keys(window.realisasiData[code]).forEach(item => {
+                    const autopayValue = parseFloat(window.realisasiData[code][item]) || 0;
+                    
+                    // Only add if not already in collected data (because input was blocked)
+                    if (realisasiDataToSave[code][item] === undefined || realisasiDataToSave[code][item] === 0) {
+                        console.log('[AUTOPAY_SUBMIT] Adding autopay value:', { code, item, value: autopayValue });
+                        realisasiDataToSave[code][item] = autopayValue;
+                        total += autopayValue;
+                    }
+                });
+            });
+        }
+        
+        console.log('[REALISASI FORM] Final data to save (with autopay):', { realisasiData: realisasiDataToSave, total });
         
         // ✅ VALIDASI WAJIB UPLOAD DOKUMEN LPJ
         // Check if there are any files (existing or new)
@@ -2895,7 +2927,7 @@ async function showRealisasiModal(realisasi = null) {
             kua: currentUser.kua,
             month: month,
             year: year,
-            data: realisasiData,
+            data: realisasiDataToSave,  // ✅ Use merged data with autopay
             total: total,
             files: allFiles,  // ✅ Send all files
             userId: currentUser.id,
@@ -3105,8 +3137,8 @@ function loadRPDDataFromSelect() {
         if (parametersDiv) {
             parametersDiv.innerHTML = parametersHTML;
             
-            // Setup auto-format untuk input baru
-            setTimeout(() => {
+            // Setup auto-format dan autopay block
+            setTimeout(async () => {
                 console.log('[LOAD_RPD_DATA_FROM_SELECT] Setting up auto-format for new inputs');
                 setupAllAutoFormatInputs('.auto-format-number');
                 
@@ -3116,6 +3148,144 @@ function loadRPDDataFromSelect() {
                     input.addEventListener('input', calculateRealisasiTotal);
                 });
                 
+                // ✅ AUTOPAY BLOCK for Operator KUA
+                if (currentUser.role === 'Operator KUA') {
+                    const tahun = parseInt(year);
+                    const bulan = parseInt(month);
+                    const kua = currentUser.kua;
+                    
+                    console.log('[AUTOPAY_BLOCK] ========== START AUTOPAY BLOCK ==========');
+                    console.log('[AUTOPAY_BLOCK] User:', { kua, tahun, bulan, role: currentUser.role });
+                    
+                    // Check autopay for Listrik (522111) and Telepon (522112)
+                    const autopayPOS = [
+                        { kodePos: '522111', namaPos: 'Belanja Langganan Listrik' },
+                        { kodePos: '522112', namaPos: 'Belanja Langganan Telepon / Internet' }
+                    ];
+                    
+                    // Process autopay check sequentially for each POS
+                    for (const pos of autopayPOS) {
+                        try {
+                            console.log('[AUTOPAY_BLOCK] Processing POS:', pos.kodePos);
+                            
+                            // Call both APIs in parallel
+                            const [isEnabled, autopayDataList] = await Promise.all([
+                                autopayApiCall('isAutopayEnabled', { kua: kua, kodePos: pos.kodePos }),
+                                autopayApiCall('getAutopayRealisasi', { tahun: tahun, bulan: bulan })
+                            ]);
+                            
+                            console.log('[AUTOPAY_BLOCK] POS', pos.kodePos, 'enabled:', isEnabled, 'type:', typeof isEnabled);
+                            console.log('[AUTOPAY_BLOCK] Autopay data list:', autopayDataList);
+                            
+                            if (!isEnabled) {
+                                console.log('[AUTOPAY_BLOCK] Autopay not enabled for', pos.kodePos);
+                                continue;
+                            }
+                            
+                            console.log('[AUTOPAY_BLOCK] ✅ Autopay ENABLED for', pos.kodePos);
+                            
+                            // Find autopay data for this KUA and POS
+                            const autopayRecord = autopayDataList.find(r => {
+                                const matchKua = String(r.kua).trim() === String(kua).trim();
+                                const matchPos = String(r.kodePos).trim() === String(pos.kodePos).trim();
+                                return matchKua && matchPos;
+                            });
+                            
+                            console.log('[AUTOPAY_BLOCK] Autopay record found:', autopayRecord);
+                            
+                            // Find input field for this POS code
+                            const inputField = document.querySelector(
+                                `.realisasi-input[data-code="${pos.kodePos}"]`
+                            );
+                            
+                            if (!inputField) {
+                                console.warn('[AUTOPAY_BLOCK] ⚠️ No input field found for POS', pos.kodePos);
+                                continue;
+                            }
+                            
+                            console.log('[AUTOPAY_BLOCK] Found input field for POS', pos.kodePos);
+                            
+                            const item = inputField.dataset.item;
+                            const container = inputField.parentElement;
+                            
+                            if (autopayRecord && autopayRecord.nominal > 0) {
+                                // Replace input with readonly autopay display
+                                console.log('[AUTOPAY_BLOCK] 🔒 BLOCKING input for', item, 'with nominal', autopayRecord.nominal);
+                                
+                                container.innerHTML = `
+                                    <div style="padding: 10px; background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%); 
+                                                border-radius: 6px; border: 2px solid #4CAF50;">
+                                        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+                                            <span style="background: white; color: #4CAF50; padding: 4px 8px; 
+                                                         border-radius: 4px; font-weight: bold; font-size: 12px;">
+                                                🤖 DIBAYAR VIA SAKTI
+                                            </span>
+                                        </div>
+                                        <div style="background: white; padding: 10px; border-radius: 4px; margin-bottom: 8px;">
+                                            <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+                                                <small style="color: #666;">Nominal:</small>
+                                                <strong style="color: #2E7D32; font-size: 16px;">
+                                                    ${formatCurrency(autopayRecord.nominal)}
+                                                </strong>
+                                            </div>
+                                            ${autopayRecord.keterangan ? `
+                                                <div style="border-top: 1px solid #e0e0e0; padding-top: 4px; margin-top: 4px;">
+                                                    <small style="color: #666;">Keterangan:</small>
+                                                    <div style="color: #333; font-size: 13px; margin-top: 2px;">
+                                                        ${autopayRecord.keterangan}
+                                                    </div>
+                                                </div>
+                                            ` : ''}
+                                        </div>
+                                        <div style="background: #FFF9C4; padding: 8px; border-radius: 4px; 
+                                                   border-left: 3px solid #F57C00;">
+                                            <small style="color: #E65100; font-size: 11px;">
+                                                ⚠️ POS ini tidak dapat diinput manual karena pembayaran 
+                                                dilakukan otomatis melalui sistem SAKTI (Autopay).
+                                            </small>
+                                        </div>
+                                    </div>
+                                `;
+                                
+                                // Store value in global realisasiData
+                                if (!window.realisasiData[pos.kodePos]) {
+                                    window.realisasiData[pos.kodePos] = {};
+                                }
+                                window.realisasiData[pos.kodePos][item] = autopayRecord.nominal;
+                                
+                                console.log('[AUTOPAY_BLOCK] ✅ Input blocked and value set:', window.realisasiData[pos.kodePos]);
+                                
+                            } else if (isEnabled && (!autopayRecord || autopayRecord.nominal === 0)) {
+                                // Autopay enabled but no data yet - disable input
+                                console.log('[AUTOPAY_BLOCK] ⚠️ Autopay enabled but no data - disabling input');
+                                
+                                inputField.disabled = true;
+                                inputField.placeholder = 'Menunggu input Admin via SAKTI';
+                                inputField.style.background = '#f5f5f5';
+                                inputField.style.cursor = 'not-allowed';
+                                
+                                // Add info message after input
+                                const infoDiv = document.createElement('div');
+                                infoDiv.style.cssText = 'grid-column: 1 / -1; padding: 8px; background: #E3F2FD; border-radius: 4px; margin-top: 5px;';
+                                infoDiv.innerHTML = `
+                                    <small style="color: #1976D2; font-size: 11px;">
+                                        ℹ️ POS ini menggunakan Autopay. Admin akan input nominal via SAKTI.
+                                    </small>
+                                `;
+                                container.parentElement.appendChild(infoDiv);
+                                
+                                console.log('[AUTOPAY_BLOCK] ✅ Input disabled');
+                            }
+                            
+                        } catch (error) {
+                            console.error('[AUTOPAY_BLOCK] ❌ Error processing POS', pos.kodePos, ':', error);
+                        }
+                    }
+                    
+                    console.log('[AUTOPAY_BLOCK] ========== END AUTOPAY BLOCK ==========');
+                }
+                
+                // Calculate total after autopay block
                 calculateRealisasiTotal();
             }, 100);
         }
@@ -3298,6 +3468,17 @@ async function showRealisasiForm(rpd, realisasi = null) {
     console.log('[REALISASI FORM] Showing form for RPD:', rpd);
     console.log('[REALISASI FORM] Existing realisasi:', realisasi);
     
+    // ✅ Reset realisasiData for autopay
+    window.realisasiData = {};
+    console.log('[REALISASI FORM] Reset realisasiData');
+    
+    // ✅ Populate realisasiData from existing realisasi for edit mode
+    if (realisasi && realisasi.data) {
+        console.log('[REALISASI FORM] Populating realisasiData from existing realisasi');
+        window.realisasiData = JSON.parse(JSON.stringify(realisasi.data)); // Deep copy
+        console.log('[REALISASI FORM] Populated realisasiData:', window.realisasiData);
+    }
+    
     // Get max file info from config
     let maxFileSize = '5';
     let maxFiles = '10';
@@ -3458,34 +3639,37 @@ async function showRealisasiInputs(rpd, realisasi = null) {
             <h4>${code} - ${param.name}</h4>`;
         
         Object.entries(items).forEach(([item, rpdValue]) => {
-            const realValue = realisasiData[code] && realisasiData[code][item] ? realisasiData[code][item] : 0;
+            // ✅ Get realisasi value from existing data or default to 0
+            const realValue = (realisasi && realisasi.data && realisasi.data[code] && realisasi.data[code][item]) 
+                ? realisasi.data[code][item] 
+                : 0;
             
             // Check if this is an autopay pos (Listrik or Telepon)
             const isAutopayPos = (code === '522111' || code === '522112');
             let inputHTML = '';
             
             if (isAutopayPos && currentUser.role === 'Operator KUA') {
-                // Show placeholder for async checking
+                // ✅ Show input with autopay placeholder - will be replaced by autopay block
                 inputHTML = `
-                    <div class="autopay-check-placeholder" 
-                         data-code="${code}" 
-                         data-item="${item}" 
-                         data-realvalue="${realValue}"
-                         style="text-align: center; padding: 10px; background: #fff3cd; border-radius: 6px;">
-                        <small style="color: #856404;">⚡ Checking...</small>
-                    </div>
+                    <input type="text" 
+                        class="realisasi-input autopay-placeholder" 
+                        data-code="${code}" 
+                        data-item="${item}" 
+                        value="${realValue > 0 ? formatNumber(realValue) : ''}" 
+                        placeholder="⚡ Checking autopay..."
+                        oninput="formatInputNumber(this)"
+                        style="background: #fff3cd; border-color: #ffc107;">
                 `;
             } else {
-                // Normal input for non-autopay or Admin
+                // ✅ Normal input for non-autopay or Admin - use text input with formatting
                 inputHTML = `
-                    <input type="number" 
+                    <input type="text" 
                         class="realisasi-input" 
                         data-code="${code}" 
                         data-item="${item}" 
-                        value="${realValue}" 
-                        min="0"
-                        step="1000"
-                        placeholder="Realisasi">
+                        value="${realValue > 0 ? formatNumber(realValue) : ''}" 
+                        placeholder="0"
+                        oninput="formatInputNumber(this)">
                 `;
             }
             
@@ -3506,13 +3690,14 @@ async function showRealisasiInputs(rpd, realisasi = null) {
     
     document.getElementById('realisasiParameters').innerHTML = parametersHTML;
     
-    // Autopay check for Operator KUA
+    // ✅ Autopay check for Operator KUA - FIXED with async/await
     if (currentUser.role === 'Operator KUA') {
         const tahun = parseInt(rpd.year);
         const bulan = parseInt(rpd.month);
         const kua = currentUser.kua;
         
-        console.log('[AUTOPAY_BLOCK] Checking autopay for operator:', { kua, tahun, bulan });
+        console.log('[AUTOPAY_BLOCK] ========== START AUTOPAY BLOCK ==========');
+        console.log('[AUTOPAY_BLOCK] User:', { kua, tahun, bulan, role: currentUser.role });
         
         // Check autopay for Listrik (522111) and Telepon (522112)
         const autopayPOS = [
@@ -3520,51 +3705,68 @@ async function showRealisasiInputs(rpd, realisasi = null) {
             { kodePos: '522112', namaPos: 'Belanja Langganan Telepon / Internet' }
         ];
         
-        autopayPOS.forEach(pos => {
-            // Check if this POS exists in the RPD
-            const posExists = rpd.data[pos.kodePos];
-            if (!posExists) {
-                console.log('[AUTOPAY_BLOCK] POS not in RPD:', pos.kodePos);
-                return;
-            }
-            
-            console.log('[AUTOPAY_BLOCK] Checking POS:', pos.kodePos);
-            
-            // Async check autopay status and data
-            Promise.all([
-                autopayApiCall('isAutopayEnabled', { kua: kua, kodePos: pos.kodePos }),
-                autopayApiCall('getAutopayRealisasi', { tahun: tahun, bulan: bulan })
-            ]).then(([enabledResponse, autopayDataList]) => {
-                // ✅ FIX: Handle response properly - backend returns boolean directly in successResponse wrapper
-                const enabled = enabledResponse; // Should be boolean if autopayApiCall unwraps properly
-                console.log('[AUTOPAY_BLOCK] POS', pos.kodePos, 'enabled:', enabled, 'type:', typeof enabled);
+        // ✅ Process autopay check sequentially for each POS
+        for (const pos of autopayPOS) {
+            try {
+                console.log('[AUTOPAY_BLOCK] Processing POS:', pos.kodePos);
                 
-                if (!enabled) {
-                    console.log('[AUTOPAY_BLOCK] Autopay not enabled, allow normal input');
-                    return; // Not autopay, allow normal input
+                // ✅ Call both APIs in parallel
+                const [isEnabled, autopayDataList] = await Promise.all([
+                    autopayApiCall('isAutopayEnabled', { kua: kua, kodePos: pos.kodePos }),
+                    autopayApiCall('getAutopayRealisasi', { tahun: tahun, bulan: bulan })
+                ]);
+                
+                console.log('[AUTOPAY_BLOCK] POS', pos.kodePos, 'enabled:', isEnabled, 'type:', typeof isEnabled);
+                console.log('[AUTOPAY_BLOCK] Autopay data list:', autopayDataList);
+                
+                if (!isEnabled) {
+                    console.log('[AUTOPAY_BLOCK] Autopay not enabled for', pos.kodePos, '- allow normal input');
+                    continue; // Skip to next POS
                 }
                 
+                console.log('[AUTOPAY_BLOCK] ✅ Autopay ENABLED for', pos.kodePos);
+                
                 // Find autopay data for this KUA and POS
-                const autopayRecord = autopayDataList.find(r => 
-                    r.kua === kua && r.kodePos === pos.kodePos
-                );
+                const autopayRecord = autopayDataList.find(r => {
+                    const matchKua = String(r.kua).trim() === String(kua).trim();
+                    const matchPos = String(r.kodePos).trim() === String(pos.kodePos).trim();
+                    console.log('[AUTOPAY_BLOCK] Comparing:', {
+                        record: { kua: r.kua, kodePos: r.kodePos },
+                        target: { kua, kodePos: pos.kodePos },
+                        match: matchKua && matchPos
+                    });
+                    return matchKua && matchPos;
+                });
                 
-                console.log('[AUTOPAY_BLOCK] Autopay record:', autopayRecord);
+                console.log('[AUTOPAY_BLOCK] Autopay record found:', autopayRecord);
                 
-                // Find all input fields for this POS
+                // ✅ Find all input fields for this POS code
                 const inputs = document.querySelectorAll(
                     `.realisasi-input[data-code="${pos.kodePos}"]`
                 );
                 
-                console.log('[AUTOPAY_BLOCK] Found', inputs.length, 'inputs for POS', pos.kodePos);
+                console.log('[AUTOPAY_BLOCK] Found', inputs.length, 'input fields for POS', pos.kodePos);
+                
+                if (inputs.length === 0) {
+                    console.warn('[AUTOPAY_BLOCK] ⚠️ No input fields found for POS', pos.kodePos);
+                    console.log('[AUTOPAY_BLOCK] Available inputs:', 
+                        Array.from(document.querySelectorAll('.realisasi-input')).map(inp => ({
+                            id: inp.id,
+                            code: inp.dataset.code,
+                            item: inp.dataset.item
+                        }))
+                    );
+                }
                 
                 inputs.forEach(input => {
                     const item = input.dataset.item;
                     const container = input.parentElement;
                     
+                    console.log('[AUTOPAY_BLOCK] Processing input:', { item, hasAutopayRecord: !!autopayRecord });
+                    
                     if (autopayRecord && autopayRecord.nominal > 0) {
-                        // Replace input with readonly autopay display
-                        console.log('[AUTOPAY_BLOCK] Blocking input for', item, 'with nominal', autopayRecord.nominal);
+                        // ✅ Replace input with readonly autopay display
+                        console.log('[AUTOPAY_BLOCK] 🔒 BLOCKING input for', item, 'with nominal', autopayRecord.nominal);
                         
                         container.innerHTML = `
                             <div style="padding: 10px; background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%); 
@@ -3601,15 +3803,17 @@ async function showRealisasiInputs(rpd, realisasi = null) {
                             </div>
                         `;
                         
-                        // Set value in realisasi data for auto-saving
-                        if (!realisasiData[pos.kodePos]) {
-                            realisasiData[pos.kodePos] = {};
+                        // ✅ Set value in realisasi data for auto-saving
+                        if (!window.realisasiData[pos.kodePos]) {
+                            window.realisasiData[pos.kodePos] = {};
                         }
-                        realisasiData[pos.kodePos][item] = autopayRecord.nominal;
+                        window.realisasiData[pos.kodePos][item] = autopayRecord.nominal;
                         
-                    } else if (enabled && (!autopayRecord || autopayRecord.nominal === 0)) {
-                        // Autopay enabled but no data yet - show info and disable
-                        console.log('[AUTOPAY_BLOCK] Autopay enabled but no data, disabling input');
+                        console.log('[AUTOPAY_BLOCK] ✅ Input blocked and value set:', window.realisasiData[pos.kodePos]);
+                        
+                    } else if (isEnabled && (!autopayRecord || autopayRecord.nominal === 0)) {
+                        // ✅ Autopay enabled but no data yet - show info and disable
+                        console.log('[AUTOPAY_BLOCK] ⚠️ Autopay enabled but no data yet - disabling input');
                         
                         const infoDiv = document.createElement('div');
                         infoDiv.style.cssText = 'padding: 8px; background: #E3F2FD; border-radius: 4px; margin-top: 5px;';
@@ -3620,18 +3824,30 @@ async function showRealisasiInputs(rpd, realisasi = null) {
                         `;
                         container.appendChild(infoDiv);
                         
-                        // Disable input
+                        // ✅ Disable input
                         input.disabled = true;
                         input.placeholder = 'Menunggu input Admin via SAKTI';
                         input.style.background = '#f5f5f5';
                         input.style.cursor = 'not-allowed';
+                        
+                        console.log('[AUTOPAY_BLOCK] ✅ Input disabled, waiting for admin input');
                     }
                 });
-            }).catch(error => {
-                console.error('[AUTOPAY_BLOCK] Error checking autopay status:', error);
-            });
-        });
+                
+            } catch (error) {
+                console.error('[AUTOPAY_BLOCK] ❌ Error processing POS', pos.kodePos, ':', error);
+            }
+        }
+        
+        console.log('[AUTOPAY_BLOCK] ========== END AUTOPAY BLOCK ==========');
+        
+        // ✅ Recalculate total after autopay block to include autopay amounts
+        setTimeout(() => {
+            calculateRealisasiTotal();
+            console.log('[AUTOPAY_BLOCK] Total recalculated after autopay block');
+        }, 100);
     }
+    
     // Calculate total on input change
     const inputs = document.querySelectorAll('.realisasi-input');
     inputs.forEach(input => {
@@ -3724,15 +3940,46 @@ async function showRealisasiInputs(rpd, realisasi = null) {
             const realisasiDataToSave = {};
             let total = 0;
             
+            // ✅ STEP 1: Collect data from input fields (manual input)
             newForm.querySelectorAll('.realisasi-input').forEach(input => {
                 const code = input.dataset.code;
                 const item = input.dataset.item;
-                const value = parseFloat(input.value) || 0;
+                const value = parseFormattedNumber(input.value); // Use parseFormattedNumber instead of parseFloat
                 
                 if (!realisasiDataToSave[code]) realisasiDataToSave[code] = {};
                 realisasiDataToSave[code][item] = value;
                 total += value;
             });
+            
+            console.log('[REALISASI] Data from inputs:', realisasiDataToSave);
+            console.log('[REALISASI] Total from inputs:', total);
+            
+            // ✅ STEP 2: Add autopay data from global realisasiData variable
+            // This includes values that were blocked/disabled by autopay
+            if (realisasiData && Object.keys(realisasiData).length > 0) {
+                console.log('[AUTOPAY_SUBMIT] Merging autopay data:', realisasiData);
+                
+                Object.keys(realisasiData).forEach(code => {
+                    if (!realisasiDataToSave[code]) {
+                        realisasiDataToSave[code] = {};
+                    }
+                    
+                    Object.keys(realisasiData[code]).forEach(item => {
+                        const autopayValue = parseFloat(realisasiData[code][item]) || 0;
+                        
+                        // Only add autopay value if it's not already in realisasiDataToSave
+                        // (meaning the input was blocked and replaced with autopay display)
+                        if (realisasiDataToSave[code][item] === undefined) {
+                            console.log('[AUTOPAY_SUBMIT] Adding autopay value:', { code, item, value: autopayValue });
+                            realisasiDataToSave[code][item] = autopayValue;
+                            total += autopayValue;
+                        }
+                    });
+                });
+            }
+            
+            console.log('[REALISASI] Final data to save (with autopay):', realisasiDataToSave);
+            console.log('[REALISASI] Final total (with autopay):', total);
             
             try {
                 let newStatus = realisasi ? realisasi.status : 'Menunggu';
