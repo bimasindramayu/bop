@@ -7250,7 +7250,10 @@ function displayAutopayInput() {
     autopayConfigs.forEach(config => {
         if (config.listrikEnabled || config.teleponEnabled) {
             if (!byKUA[config.kua]) {
-                byKUA[config.kua] = { listrik: config.listrikEnabled, telepon: config.teleponEnabled };
+                byKUA[config.kua] = { 
+                    listrik: config.listrikEnabled, 
+                    telepon: config.teleponEnabled 
+                };
             }
         }
     });
@@ -7267,10 +7270,16 @@ function displayAutopayInput() {
         const enabledPOS = [];
         
         if (config.listrik) {
-            enabledPOS.push({ kodePos: '522111', namaPos: 'Belanja Langganan Listrik' });
+            enabledPOS.push({ 
+                kodePos: '522111', 
+                namaPos: 'Belanja Langganan Listrik' 
+            });
         }
         if (config.telepon) {
-            enabledPOS.push({ kodePos: '522112', namaPos: 'Belanja Langganan Telepon / Internet' });
+            enabledPOS.push({ 
+                kodePos: '522112', 
+                namaPos: 'Belanja Langganan Telepon / Internet' 
+            });
         }
         
         if (enabledPOS.length === 0) return;
