@@ -33,6 +33,109 @@ let autopayConfigs = [];
 let autopayData = [];
 let autopayKUAList = [];
 
+// ===== AUTOPAY HELPER FUNCTIONS =====
+
+/**
+ * Get autopay info for a specific KUA, month, year, and POS
+ * Returns nominal dari Autopay_Realisasi atau 0 jika belum ada data
+ */
+async function getAutopayInfo(kua, tahun, bulan, kodePos) {
+    try {
+        console.log('[AUTOPAY_INFO] Getting autopay info:', { kua, tahun, bulan, kodePos });
+        
+        // Check if autopay enabled for this KUA and POS
+        const isEnabled = await autopayApiCall('isAutopayEnabled', { kua, kodePos });
+        
+        if (!isEnabled) {
+            console.log('[AUTOPAY_INFO] Autopay not enabled');
+            return { enabled: false, nominal: 0 };
+        }
+        
+        // Get autopay realisasi data
+        const autopayDataList = await autopayApiCall('getAutopayRealisasi', { tahun, bulan });
+        
+        // Find data for this KUA and POS
+        const autopayRecord = autopayDataList.find(r => 
+            String(r.kua).trim() === String(kua).trim() && 
+            String(r.kodePos).trim() === String(kodePos).trim()
+        );
+        
+        const nominal = autopayRecord ? (parseFloat(autopayRecord.nominal) || 0) : 0;
+        
+        console.log('[AUTOPAY_INFO] Result:', { enabled: true, nominal });
+        
+        return {
+            enabled: true,
+            nominal: nominal,
+            keterangan: autopayRecord ? autopayRecord.keterangan : ''
+        };
+        
+    } catch (error) {
+        console.error('[AUTOPAY_INFO] Error:', error);
+        return { enabled: false, nominal: 0 };
+    }
+}
+
+/**
+ * Generate HTML untuk tampilkan info autopay
+ * Untuk dipakai di detail view / modal
+ */
+function generateAutopayInfoHTML(autopayInfo, posName) {
+    if (!autopayInfo || !autopayInfo.enabled) {
+        return '';
+    }
+    
+    return `
+        <div style="margin-top: 10px; padding: 12px; background: linear-gradient(135deg, #E3F2FD 0%, #BBDEFB 100%); 
+                    border-left: 4px solid #2196F3; border-radius: 6px;">
+            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+                <span style="background: white; color: #1976D2; padding: 4px 10px; 
+                             border-radius: 4px; font-weight: bold; font-size: 11px;">
+                    🤖 AUTOPAY - DIBAYAR VIA SAKTI
+                </span>
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: center; 
+                       padding: 8px; background: white; border-radius: 4px;">
+                <div>
+                    <small style="color: #666; display: block; font-size: 11px; margin-bottom: 4px;">
+                        ℹ️ POS ini menggunakan Autopay. Admin input nominal via SAKTI.
+                    </small>
+                    <div style="color: #1976D2; font-size: 13px; font-weight: 500;">
+                        Nominal Autopay:
+                    </div>
+                </div>
+                <strong style="color: #1976D2; font-size: 18px;">
+                    ${formatCurrency(autopayInfo.nominal)}
+                </strong>
+            </div>
+            ${autopayInfo.keterangan ? `
+                <div style="margin-top: 8px; padding: 6px 8px; background: #FFF9C4; 
+                           border-radius: 4px; border-left: 3px solid #FBC02D;">
+                    <small style="color: #F57C00; font-size: 11px;">
+                        <strong>Keterangan:</strong> ${autopayInfo.keterangan}
+                    </small>
+                </div>
+            ` : ''}
+        </div>
+    `;
+}
+
+/**
+ * Check if a POS code is autopay-eligible
+ */
+function isAutopayPOS(kodePos) {
+    return kodePos === '522111' || kodePos === '522112';
+}
+
+/**
+ * Get POS name for autopay POS
+ */
+function getAutopayPOSName(kodePos) {
+    if (kodePos === '522111') return 'Belanja Langganan Listrik';
+    if (kodePos === '522112') return 'Belanja Langganan Telepon / Internet';
+    return '';
+}
+
 // ✅ Function untuk update cache dengan data baru
 function updateLocalCache(key, data) {
     localCache[key] = data;
@@ -413,51 +516,8 @@ function isCacheValid(cacheKey) {
     return (Date.now() - cache.timestamp) < cache.ttl;
 }
 
-
-
-
 // Auto-refresh status realisasi setiap 30 detik jika ada yang pending
 let realisasiStatusPoller = null;
-
-// ✅ FIX: Store for realisasi objects to avoid embedding large data in HTML attributes
-const realisasiDataStore = new Map();
-
-// ✅ FIX: Sanitize filename to prevent special characters issues
-// Removes/replaces characters that can cause problems in HTML/JS
-function sanitizeFileName(fileName) {
-    if (!fileName) return fileName;
-    
-    // Get file extension
-    const lastDot = fileName.lastIndexOf('.');
-    const name = lastDot > 0 ? fileName.substring(0, lastDot) : fileName;
-    const ext = lastDot > 0 ? fileName.substring(lastDot) : '';
-    
-    // Replace problematic characters
-    let sanitized = name
-        .replace(/'/g, '') // Remove single quotes
-        .replace(/"/g, '') // Remove double quotes
-        .replace(/`/g, '') // Remove backticks
-        .replace(/\\/g, '-') // Replace backslash
-        .replace(/\//g, '-') // Replace forward slash
-        .replace(/[<>:"|?*]/g, '') // Remove Windows forbidden chars
-        .replace(/\s+/g, '_') // Replace spaces with underscore
-        .replace(/[^\w\-_.]/g, '') // Remove other special chars except dash, underscore, dot
-        .replace(/_+/g, '_') // Replace multiple underscores with single
-        .replace(/^_|_$/g, ''); // Remove leading/trailing underscores
-    
-    // Limit length (keep it reasonable)
-    if (sanitized.length > 100) {
-        sanitized = sanitized.substring(0, 100);
-    }
-    
-    // Add timestamp prefix to ensure uniqueness
-    const timestamp = Date.now();
-    const sanitizedFull = `${timestamp}_${sanitized}${ext}`;
-    
-    console.log('[SANITIZE] Original:', fileName, '→ Sanitized:', sanitizedFull);
-    
-    return sanitizedFull;
-}
 
 function stopRealisasiPolling() {
     if (realisasiStatusPoller) {
@@ -3449,10 +3509,9 @@ async function submitRealisasi(e) {
         
         // Upload to drive
         const uploadResult = await apiCall('uploadFile', {
-          filename: sanitizeFileName(file.name), // ✅ FIX: Sanitize filename
+          filename: file.name,
           fileData: fileData,
-          mimeType: file.type,
-          originalName: file.name // Keep original for display purposes
+          mimeType: file.type
         });
         
         files.push(uploadResult);
@@ -4231,7 +4290,7 @@ function displayUploadedFilesWithPreview() {
                 <div class="file-item" style="flex-direction: column; align-items: flex-start; padding: 15px; margin-bottom: 15px; background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 8px;">
                     <div style="display: flex; justify-content: space-between; width: 100%; align-items: center;">
                         <div>
-                            <span style="font-weight: 500;">📎 ${file.originalName || file.fileName}</span>
+                            <span style="font-weight: 500;">📎 ${file.fileName}</span>
                             <small style="display: block; color: #666; margin-top: 5px;">
                                 ${((file.size || 0) / 1024).toFixed(2)} KB
                                 ${hasFileId ? '<span style="color: #28a745; margin-left: 10px;">✓ Tersimpan</span>' : '<span style="color: #ffc107; margin-left: 10px;">⚠ Belum tersimpan</span>'}
@@ -4241,7 +4300,7 @@ function displayUploadedFilesWithPreview() {
                             ${hasFileId ? `
                                 <button type="button" class="btn btn-sm btn-info" onclick="window.open('${file.fileUrl}', '_blank')">Buka</button>
                             ` : ''}
-                            <button type="button" class="btn btn-danger btn-sm" onclick="removeFileConfirm(${index})">Hapus</button>
+                            <button type="button" class="btn btn-danger btn-sm" onclick="removeFileConfirm(${index}, '${file.fileName.replace(/'/g, "\\'")}')">Hapus</button>
                         </div>
                     </div>
                     ${previewHTML}
@@ -4452,18 +4511,10 @@ function removeUploadedFile(tempId) {
     }
 }
 
-function removeFileConfirm(index) {
+function removeFileConfirm(index, fileName) {
     const file = uploadedFiles[index];
     
-    if (!file) {
-        console.warn('[FILE] File not found at index:', index);
-        return;
-    }
-    
-    // ✅ FIX: Get fileName from the file object, use original name if available for display
-    const displayName = file.originalName || file.fileName || 'file';
-    
-    let message = `Hapus file "${displayName}"?`;
+    let message = `Hapus file "${fileName}"?`;
     if (file && file.fileId) {
         message += '\n\nCatatan: File akan dihapus dari daftar (file di Google Drive tetap ada).';
     }
@@ -4489,7 +4540,7 @@ function removeFile(index) {
     console.log('[FILE] ========== REMOVE FILE END ==========');
 }
 
-function viewRealisasi(realisasi) {
+async function viewRealisasi(realisasi) {
     console.log('[VIEW_REALISASI] Opening detail view');
     console.log('[VIEW_REALISASI] Realisasi data:', realisasi);
     console.log('[VIEW_REALISASI] Files:', realisasi.files);
@@ -4504,6 +4555,23 @@ function viewRealisasi(realisasi) {
     
     // ✅ FIX BUG #3: Format detail dengan logic yang benar
     let detailHTML = '';
+    
+    // ✅ Get autopay info for autopay POS codes (async)
+    const autopayPOSCodes = ['522111', '522112'];
+    const autopayInfoMap = {};
+    
+    for (const code of autopayPOSCodes) {
+        if (realisasi.data[code]) {
+            const autopayInfo = await getAutopayInfo(
+                realisasi.kua,
+                parseInt(realisasi.year),
+                parseInt(realisasi.month),
+                code
+            );
+            autopayInfoMap[code] = autopayInfo;
+        }
+    }
+    
     Object.entries(realisasi.data).forEach(([code, items]) => {
         const param = APP_CONFIG.BOP.RPD_PARAMETERS[code];
         
@@ -4530,6 +4598,11 @@ function viewRealisasi(realisasi) {
                     <strong style="font-size: 16px; color: #667eea;">${formatCurrency(nominalValue)}</strong>
                 </div>
             `;
+            
+            // ✅ Tampilkan autopay info jika POS ini adalah autopay
+            if (autopayInfoMap[code]) {
+                detailHTML += generateAutopayInfoHTML(autopayInfoMap[code], param.name);
+            }
         } else if (hasMultipleItems) {
             // ✅ Jika ada breakdown (multiple items), jangan tampilkan total parent
             detailHTML += `<h4>${code} - ${param.name}</h4>`;
@@ -4542,6 +4615,11 @@ function viewRealisasi(realisasi) {
                     </div>
                 `;
             });
+            
+            // ✅ Tampilkan autopay info jika POS ini adalah autopay
+            if (autopayInfoMap[code]) {
+                detailHTML += generateAutopayInfoHTML(autopayInfoMap[code], param.name);
+            }
         } else {
             // ✅ Untuk kasus lainnya (seharusnya tidak ada)
             detailHTML += `<h4>${code} - ${param.name}</h4>`;
@@ -4553,6 +4631,11 @@ function viewRealisasi(realisasi) {
                     </div>
                 `;
             });
+            
+            // ✅ Tampilkan autopay info jika POS ini adalah autopay
+            if (autopayInfoMap[code]) {
+                detailHTML += generateAutopayInfoHTML(autopayInfoMap[code], param.name);
+            }
         }
         
         detailHTML += `</div>`;
@@ -4881,12 +4964,9 @@ function displayVerifikasi(realisasis) {
             statusText = 'Ditolak';
         }
         
-        // ✅ FIX: Store realisasi in Map and pass only ID to avoid token errors
-        const realisasiId = real.id || `temp-${Date.now()}-${index}`;
-        realisasiDataStore.set(realisasiId, real);
+        const realEscaped = JSON.stringify(real).replace(/"/g, '&quot;');
         
         console.log('[VERIFIKASI] Row', index + 1, ':', {
-            id: realisasiId,
             kua: real.kua,
             month: real.month,
             year: real.year,
@@ -4906,7 +4986,7 @@ function displayVerifikasi(realisasis) {
             <td><span class="badge badge-${statusClass}">${statusText}</span></td>
             <td>
                 <div class="action-buttons">
-                    <button class="btn btn-sm" onclick="verifyRealisasi('${realisasiId}')">Verifikasi</button>
+                    <button class="btn btn-sm" onclick='verifyRealisasi(${realEscaped})'>Verifikasi</button>
                 </div>
             </td>
         </tr>
@@ -5027,16 +5107,7 @@ function onVerifikasiFilterChange() {
 }
 
 // ===== VERIFIKASI REALISASI (UPDATED) =====
-function verifyRealisasi(realisasiId) {
-    // ✅ FIX: Retrieve realisasi from Map by ID
-    const realisasi = realisasiDataStore.get(realisasiId);
-    
-    if (!realisasi) {
-        console.error('[VERIFIKASI] Realisasi not found in store:', realisasiId);
-        showNotification('Data realisasi tidak ditemukan', 'error');
-        return;
-    }
-    
+function verifyRealisasi(realisasi) {
     console.log('[VERIFIKASI] Verifying realisasi:', realisasi);
     console.log('[VERIFIKASI] Files in realisasi:', realisasi.files);
     
@@ -5157,19 +5228,16 @@ function verifyRealisasi(realisasiId) {
                     const previewUrl = getDrivePreviewUrl(file.fileUrl, file.mimeType);
                     const fileId = file.fileId || file.fileUrl.match(/[-\w]{25,}/)?.[0];
                     
-                    // ✅ FIX: Use originalName if available (backward compatible)
-                    const displayName = file.originalName || file.fileName;
-                    
-                    console.log(`[VERIFIKASI] Preview URL for ${displayName}:`, previewUrl);
+                    console.log(`[VERIFIKASI] Preview URL for ${file.fileName}:`, previewUrl);
                     
                     return `
                         <div class="file-item" style="flex-direction: column; align-items: flex-start; padding: 15px; margin-bottom: 10px;">
                             <div style="display: flex; justify-content: space-between; width: 100%; margin-bottom: 10px;">
-                                <span style="font-weight: 500;">📎 ${displayName}</span>
+                                <span style="font-weight: 500;">📎 ${file.fileName}</span>
                                 <span class="file-size">(${formatFileSize(file.size)})</span>
                                 <div style="display: flex; gap: 5px;">
                                     <button type="button" class="btn btn-sm" onclick="window.open('${file.fileUrl}', '_blank')">Buka</button>
-                                    <button type="button" class="btn btn-sm btn-info" onclick="downloadDriveFile('${file.fileUrl}', '${displayName}')">Download</button>
+                                    <button type="button" class="btn btn-sm btn-info" onclick="downloadDriveFile('${file.fileUrl}', '${file.fileName}')">Download</button>
                                 </div>
                             </div>
                             ${isImage ? `
@@ -5191,7 +5259,7 @@ function verifyRealisasi(realisasiId) {
                                     </div>
                                     <div class="image-viewer-wrapper" id="wrapper-${index}">
                                         <img src="${previewUrl}" 
-                                            alt="${displayName}" 
+                                            alt="${file.fileName}" 
                                             class="image-viewer-img"
                                             id="img-${index}"
                                             data-zoom="1"
