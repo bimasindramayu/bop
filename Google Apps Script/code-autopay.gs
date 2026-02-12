@@ -119,17 +119,26 @@ function isAutopayEnabled(kua, kodePos) {
     const configs = getAutopayConfig();
     const config = configs.find(c => c.kua === kua);
     
-    if (!config) return false;
+    if (!config) {
+      Logger.log('[AUTOPAY] No config found for KUA: ' + kua);
+      return false;
+    }
     
-    if (kodePos === '522111') {
+    // ✅ Convert kodePos to string for comparison
+    const kodePosStr = String(kodePos);
+    
+    if (kodePosStr === '522111') {
+      Logger.log('[AUTOPAY] Checking Listrik for ' + kua + ': ' + config.listrikEnabled);
       return config.listrikEnabled;
-    } else if (kodePos === '522112') {
+    } else if (kodePosStr === '522112') {
+      Logger.log('[AUTOPAY] Checking Telepon for ' + kua + ': ' + config.teleponEnabled);
       return config.teleponEnabled;
     }
     
+    Logger.log('[AUTOPAY] Unknown kodePos: ' + kodePos);
     return false;
   } catch (error) {
-    console.error('Error checking autopay status:', error);
+    Logger.log('[AUTOPAY] Error checking autopay status: ' + error.message);
     return false;
   }
 }
@@ -173,9 +182,9 @@ function getAutopayRealisasi(tahun, bulan) {
           tahun: row[1],
           bulan: row[2],
           kua: row[3],
-          kodePos: row[4],
+          kodePos: String(row[4]), // ✅ Ensure kodePos is string
           namaPos: row[5],
-          nominal: row[6],
+          nominal: Number(row[6]) || 0, // ✅ Ensure nominal is number
           keterangan: row[7] || '',
           updatedBy: row[8] || '',
           updatedAt: row[9] || ''
@@ -354,20 +363,27 @@ function getAutopaySummary(tahun, bulan) {
         };
       }
       
-      // ✅ FIX: Convert nominal to number (spreadsheet returns string)
-      const nominal = parseInt(r.nominal) || 0;
+      // ✅ FIX: Convert nominal to number explicitly
+      const nominal = Number(r.nominal) || 0;
       
-      if (r.kodePos === '522111') {
-        summary[r.kua].listrik += nominal;  // ✅ Use += for safety
-      } else if (r.kodePos === '522112') {
-        summary[r.kua].telepon += nominal;  // ✅ Use += for safety
+      if (String(r.kodePos) === '522111') {
+        summary[r.kua].listrik += nominal;
+      } else if (String(r.kodePos) === '522112') {
+        summary[r.kua].telepon += nominal;
       }
       
       summary[r.kua].total += nominal;
     });
     
     Logger.log('[AUTOPAY] Summary generated for ' + tahun + '-' + bulan + ': ' + Object.keys(summary).length + ' KUAs');
-    return Object.values(summary);
+    
+    // ✅ Return array with proper number formatting
+    return Object.values(summary).map(item => ({
+      kua: item.kua,
+      listrik: Number(item.listrik) || 0,
+      telepon: Number(item.telepon) || 0,
+      total: Number(item.total) || 0
+    }));
   } catch (error) {
     Logger.log('[AUTOPAY] Error getting summary: ' + error.message);
     throw new Error('Error getting autopay summary: ' + error.message);

@@ -3534,8 +3534,10 @@ async function showRealisasiInputs(rpd, realisasi = null) {
             Promise.all([
                 autopayApiCall('isAutopayEnabled', { kua: kua, kodePos: pos.kodePos }),
                 autopayApiCall('getAutopayRealisasi', { tahun: tahun, bulan: bulan })
-            ]).then(([enabled, autopayDataList]) => {
-                console.log('[AUTOPAY_BLOCK] POS', pos.kodePos, 'enabled:', enabled);
+            ]).then(([enabledResponse, autopayDataList]) => {
+                // ✅ FIX: Handle response properly - backend returns boolean directly in successResponse wrapper
+                const enabled = enabledResponse; // Should be boolean if autopayApiCall unwraps properly
+                console.log('[AUTOPAY_BLOCK] POS', pos.kodePos, 'enabled:', enabled, 'type:', typeof enabled);
                 
                 if (!enabled) {
                     console.log('[AUTOPAY_BLOCK] Autopay not enabled, allow normal input');
@@ -7292,7 +7294,7 @@ function displayAutopayInput() {
                 <div class="autopay-input-grid">
         `;
         
-        enabledPOS.forEach(pos => {enabledPOS.forEach(pos => {
+        enabledPOS.forEach(pos => {
             // ✅ ADD DETAILED LOGGING
             console.log('[AUTOPAY] Looking for:', { kua, kodePos: pos.kodePos });
             console.log('[AUTOPAY] Available data:', autopayData.map(d => ({ 
@@ -7330,7 +7332,6 @@ function displayAutopayInput() {
                         style="margin-top: 8px;">${existing ? existing.keterangan : ''}</textarea>
                 </div>
             `;
-        });
         });
         
         html += `
@@ -7432,13 +7433,15 @@ async function loadAutopaySummary() {
 }
 
 function displayAutopaySummary(summary) {
+    console.log('[AUTOPAY] Displaying summary, data:', summary);
+    
     const tbody = document.getElementById('autopaySummaryTableBody');
     const tfoot = document.getElementById('autopaySummaryTableFoot');
     
     tbody.innerHTML = '';
     tfoot.innerHTML = '';
     
-    if (summary.length === 0) {
+    if (!summary || summary.length === 0) {
         tbody.innerHTML = '<tr><td colspan="5" style="text-align: center;">Tidak ada data autopay untuk bulan ini</td></tr>';
         return;
     }
@@ -7448,19 +7451,36 @@ function displayAutopaySummary(summary) {
     let grandTotal = 0;
     
     summary.forEach((item, index) => {
+        // ✅ Pastikan convert ke number dengan aman
+        const listrikAmount = parseFloat(item.listrik) || 0;
+        const teleponAmount = parseFloat(item.telepon) || 0;
+        const totalAmount = parseFloat(item.total) || 0;
+        
+        console.log(`[AUTOPAY] KUA ${item.kua}:`, { 
+            listrik: listrikAmount, 
+            telepon: teleponAmount, 
+            total: totalAmount 
+        });
+        
         const tr = document.createElement('tr');
         tr.innerHTML = `
             <td>${index + 1}</td>
             <td>${item.kua}</td>
-            <td style="text-align: right;">${formatCurrency(item.listrik)}</td>
-            <td style="text-align: right;">${formatCurrency(item.telepon)}</td>
-            <td style="text-align: right;"><strong>${formatCurrency(item.total)}</strong></td>
+            <td style="text-align: right;">${formatCurrency(listrikAmount)}</td>
+            <td style="text-align: right;">${formatCurrency(teleponAmount)}</td>
+            <td style="text-align: right;"><strong>${formatCurrency(totalAmount)}</strong></td>
         `;
         tbody.appendChild(tr);
         
-        totalListrik += item.listrik;
-        totalTelepon += item.telepon;
-        grandTotal += item.total;
+        totalListrik += listrikAmount;
+        totalTelepon += teleponAmount;
+        grandTotal += totalAmount;
+    });
+    
+    console.log('[AUTOPAY] Summary totals:', { 
+        totalListrik, 
+        totalTelepon, 
+        grandTotal 
     });
     
     const footerTr = document.createElement('tr');
