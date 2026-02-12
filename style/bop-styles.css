@@ -167,6 +167,17 @@ table th {
     border-bottom: 2px solid #dee2e6;
 }
 
+/* ===== SORT ICON ===== */
+.sort-icon {
+    font-size: 11px;
+    color: #999;
+    margin-left: 5px;
+}
+
+th:hover .sort-icon {
+    color: #667eea;
+}
+
 table td {
     padding: 12px;
     border-bottom: 1px solid #dee2e6;
