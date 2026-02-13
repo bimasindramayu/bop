@@ -153,6 +153,15 @@
                             <option value="2026" selected>2026</option>
                             <option value="2027">2027</option>
                         </select>
+
+                        <!-- Only show for Admin (will be controlled by JS) -->
+                        <div id="realisasiAutopayFilterContainer" style="display: none;">
+                            <label style="margin-left: 10px;">Include Autopay:</label>
+                            <select id="includeAutopayFilter" onchange="loadRealisasis(true)">
+                                <option value="false">Exclude Autopay</option>
+                                <option value="true">Include Autopay</option>
+                            </select>
+                        </div>
                     </div>
                     <div class="table-container">
                         <table id="realisasiTable">
@@ -315,6 +324,10 @@
                                 <option value="2026" selected>2026</option>
                                 <option value="2027">2027</option>
                             </select>
+                            <select id="exportRealisasiPerYearAutopay" style="flex: 1;">
+                                <option value="false">Exclude Autopay</option>
+                                <option value="true">Include Autopay</option>
+                            </select>
                         </div>
                         <div style="display: flex; gap: 10px;">
                             <button class="btn btn-sm" onclick="downloadRealisasiPerYear('excel')">📥 Excel</button>
@@ -326,15 +339,156 @@
                     <div class="summary-box" style="margin-top: 20px;">
                         <h3 style="margin-bottom: 15px;">📑 Realisasi Detail Semua KUA (Setahun)</h3>
                         <p style="font-size: 12px; color: #666; margin-bottom: 10px;">Menampilkan detail per akun untuk semua KUA</p>
-                        <select id="exportRealisasiDetailYear" style="margin-bottom: 10px; width: 100%;">
-                            <option value="2024">2024</option>
-                            <option value="2025">2025</option>
-                            <option value="2026" selected>2026</option>
-                            <option value="2027">2027</option>
-                        </select>
+                        <div style="display: flex; gap: 10px; margin-bottom: 10px;">
+                            <select id="exportRealisasiDetailYear" style="flex: 1;">
+                                <option value="2024">2024</option>
+                                <option value="2025">2025</option>
+                                <option value="2026" selected>2026</option>
+                                <option value="2027">2027</option>
+                            </select>
+                            <select id="exportRealisasiDetailAutopay" style="flex: 1;">
+                                <option value="false">Exclude Autopay</option>
+                                <option value="true">Include Autopay</option>
+                            </select>
+                        </div>
                         <div style="display: flex; gap: 10px;">
                             <button class="btn btn-sm" onclick="downloadRealisasiDetailYear('excel')">📥 Excel</button>
                             <button class="btn btn-sm" onclick="downloadRealisasiDetailYear('pdf')">📄 PDF</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Autopay Page (Admin Only) -->
+                <div class="page" id="autopayPage">
+                    <h2 style="margin-bottom: 20px;">Autopay Management</h2>
+                    <p class="text-muted">Kelola pembayaran otomatis untuk Listrik (522111) dan Telepon/Internet (522112)</p>
+                    
+                    <!-- Sub Navigation -->
+                    <div class="autopay-subnav" style="margin-bottom: 30px;">
+                        <button class="btn btn-sm active" id="btnAutopayConfig" onclick="showAutopaySubPage('config')">
+                            ⚙️ Konfigurasi
+                        </button>
+                        <button class="btn btn-sm" id="btnAutopayInput" onclick="showAutopaySubPage('input')">
+                            💰 Input Nominal
+                        </button>
+                        <button class="btn btn-sm" id="btnAutopaySummary" onclick="showAutopaySubPage('summary')">
+                            📊 Ringkasan
+                        </button>
+                    </div>
+
+                    <!-- Autopay Config Sub-Page -->
+                    <div class="autopay-subpage active" id="autopayConfigPage">
+                        <div class="toolbar">
+                            <button class="btn btn-sm btn-success" onclick="saveAllAutopayConfig()">💾 Simpan Semua</button>
+                            <button class="btn btn-sm btn-secondary" onclick="loadAutopayConfig()">🔄 Refresh</button>
+                        </div>
+
+                        <div class="table-container" style="margin-top: 20px;">
+                            <table id="autopayConfigTable">
+                                <thead>
+                                    <tr>
+                                        <th>No</th>
+                                        <th>KUA</th>
+                                        <th style="text-align: center;">
+                                            Listrik (522111)<br>
+                                            <input type="checkbox" id="checkAllListrik" onchange="checkAllListrik(this.checked)" style="transform: scale(1.3);">
+                                        </th>
+                                        <th style="text-align: center;">
+                                            Telepon/Internet (522112)<br>
+                                            <input type="checkbox" id="checkAllTelepon" onchange="checkAllTelepon(this.checked)" style="transform: scale(1.3);">
+                                        </th>
+                                        <th>Terakhir Update</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="autopayConfigTableBody">
+                                    <tr><td colspan="5" style="text-align: center;">Loading...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Autopay Input Sub-Page -->
+                    <div class="autopay-subpage" id="autopayInputPage">
+                        <div class="toolbar">
+                            <label>Bulan:</label>
+                            <select id="filterBulanInput" onchange="loadAutopayInput()">
+                                <option value="1">Januari</option>
+                                <option value="2">Februari</option>
+                                <option value="3">Maret</option>
+                                <option value="4">April</option>
+                                <option value="5">Mei</option>
+                                <option value="6">Juni</option>
+                                <option value="7">Juli</option>
+                                <option value="8">Agustus</option>
+                                <option value="9">September</option>
+                                <option value="10">Oktober</option>
+                                <option value="11">November</option>
+                                <option value="12">Desember</option>
+                            </select>
+
+                            <label>Tahun:</label>
+                            <select id="filterTahunInput" onchange="loadAutopayInput()">
+                                <option value="2024">2024</option>
+                                <option value="2025">2025</option>
+                                <option value="2026" selected>2026</option>
+                                <option value="2027">2027</option>
+                            </select>
+
+                            <button class="btn btn-sm btn-success" onclick="saveAllAutopayInput()">💾 Simpan Semua</button>
+                            <button class="btn btn-sm btn-secondary" onclick="loadAutopayInput()">🔄 Refresh</button>
+                        </div>
+
+                        <div id="autopayInputContainer" style="margin-top: 30px;">
+                            <!-- Will be populated by JavaScript -->
+                        </div>
+                    </div>
+
+                    <!-- Autopay Summary Sub-Page -->
+                    <div class="autopay-subpage" id="autopaySummaryPage">
+                        <div class="toolbar">
+                            <label>Bulan:</label>
+                            <select id="filterBulanSummary" onchange="loadAutopaySummary()">
+                                <option value="1">Januari</option>
+                                <option value="2">Februari</option>
+                                <option value="3">Maret</option>
+                                <option value="4">April</option>
+                                <option value="5">Mei</option>
+                                <option value="6">Juni</option>
+                                <option value="7">Juli</option>
+                                <option value="8">Agustus</option>
+                                <option value="9">September</option>
+                                <option value="10">Oktober</option>
+                                <option value="11">November</option>
+                                <option value="12">Desember</option>
+                            </select>
+
+                            <label>Tahun:</label>
+                            <select id="filterTahunSummary" onchange="loadAutopaySummary()">
+                                <option value="2024">2024</option>
+                                <option value="2025">2025</option>
+                                <option value="2026" selected>2026</option>
+                                <option value="2027">2027</option>
+                            </select>
+
+                            <button class="btn btn-sm btn-secondary" onclick="loadAutopaySummary()">🔄 Refresh</button>
+                        </div>
+
+                        <div class="table-container" style="margin-top: 20px;">
+                            <table id="autopaySummaryTable">
+                                <thead>
+                                    <tr>
+                                        <th>No</th>
+                                        <th>KUA</th>
+                                        <th style="text-align: right;">Listrik</th>
+                                        <th style="text-align: right;">Telepon/Internet</th>
+                                        <th style="text-align: right;">Total</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="autopaySummaryTableBody">
+                                    <tr><td colspan="5" style="text-align: center;">Pilih bulan dan tahun</td></tr>
+                                </tbody>
+                                <tfoot id="autopaySummaryTableFoot"></tfoot>
+                            </table>
                         </div>
                     </div>
                 </div>
