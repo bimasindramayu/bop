@@ -67,13 +67,13 @@
                         <table id="budgetTable">
                             <thead>
                                 <tr>
-                                    <th>No</th>
-                                    <th>KUA</th>
-                                    <th>Tahun</th>
-                                    <th>Budget</th>
-                                    <th>Total RPD</th>
-                                    <th>Total Realisasi</th>
-                                    <th>Sisa Budget</th>
+                                    <th onclick="sortBudgetTable(0)" style="cursor: pointer;">No <span class="sort-icon">⇅</span></th>
+                                    <th onclick="sortBudgetTable(1)" style="cursor: pointer;">KUA <span class="sort-icon">⇅</span></th>
+                                    <th onclick="sortBudgetTable(2)" style="cursor: pointer;">Tahun <span class="sort-icon">⇅</span></th>
+                                    <th onclick="sortBudgetTable(3)" style="cursor: pointer;">Budget <span class="sort-icon">⇅</span></th>
+                                    <th onclick="sortBudgetTable(4)" style="cursor: pointer;">Total RPD <span class="sort-icon">⇅</span></th>
+                                    <th onclick="sortBudgetTable(5)" style="cursor: pointer;">Total Realisasi <span class="sort-icon">⇅</span></th>
+                                    <th onclick="sortBudgetTable(6)" style="cursor: pointer;">Sisa Budget <span class="sort-icon">⇅</span></th>
                                     <th>Aksi</th>
                                 </tr>
                             </thead>
@@ -87,31 +87,51 @@
                     <h2 style="margin-bottom: 20px;">Rencana Penggunaan Dana (RPD)</h2>
                     <div class="toolbar">
                         <button class="btn btn-success btn-sm" id="btnCreateRPD" onclick="showRPDModal()">Tambah RPD</button>                        
-                        <select id="rpdKUAFilter" onchange="loadRPDs()" style="display: none;">
+                        <select id="rpdKUAFilter" style="display: none;">
                             <option value="">Semua KUA</option>
                         </select>
                         
-                        <select id="rpdYearFilter" onchange="loadRPDs()">
+                        <select id="rpdMonthFilter">
+                            <option value="">Semua Bulan</option>
+                            <option value="Januari">Januari</option>
+                            <option value="Februari">Februari</option>
+                            <option value="Maret">Maret</option>
+                            <option value="April">April</option>
+                            <option value="Mei">Mei</option>
+                            <option value="Juni">Juni</option>
+                            <option value="Juli">Juli</option>
+                            <option value="Agustus">Agustus</option>
+                            <option value="September">September</option>
+                            <option value="Oktober">Oktober</option>
+                            <option value="November">November</option>
+                            <option value="Desember">Desember</option>
+                        </select>
+                        
+                        <select id="rpdYearFilter">
                             <option value="2024">2024</option>
                             <option value="2025">2025</option>
                             <option value="2026" selected>2026</option>
                             <option value="2027">2027</option>
                         </select>
+                        
+                        <button class="btn btn-info btn-sm" onclick="loadRPDsWithFilters()">🔍 Load Data</button>
                     </div>
                     <div class="table-container">
                         <table id="rpdTable">
                             <thead>
                                 <tr>
-                                    <th>No</th>
-                                    <th class="th-kua" style="display: none;">KUA</th>
-                                    <th>Bulan</th>
-                                    <th>Tahun</th>
-                                    <th>Total</th>
-                                    <th>Dibuat</th>
+                                    <th onclick="sortRPDTable(0)" style="cursor: pointer;">No <span class="sort-icon">⇅</span></th>
+                                    <th class="th-kua" style="display: none; cursor: pointer;" onclick="sortRPDTable(1)">KUA <span class="sort-icon">⇅</span></th>
+                                    <th onclick="sortRPDTable(2)" style="cursor: pointer;">Bulan <span class="sort-icon">⇅</span></th>
+                                    <th onclick="sortRPDTable(3)" style="cursor: pointer;">Tahun <span class="sort-icon">⇅</span></th>
+                                    <th onclick="sortRPDTable(4)" style="cursor: pointer;">Total <span class="sort-icon">⇅</span></th>
+                                    <th onclick="sortRPDTable(5)" style="cursor: pointer;">Dibuat <span class="sort-icon">⇅</span></th>
                                     <th>Aksi</th>
                                 </tr>
                             </thead>
-                            <tbody></tbody>
+                            <tbody>
+                                <tr><td colspan="7" style="text-align: center; padding: 40px; color: #999;">Klik tombol "Load Data" untuk menampilkan data RPD</td></tr>
+                            </tbody>
                         </table>
                     </div>
                 </div>
@@ -166,37 +186,55 @@
                 <div class="page" id="verifikasiPage">
                     <h2 style="margin-bottom: 20px;">Verifikasi Realisasi</h2>
                     <div class="toolbar">
-                        <select id="verifikasiYearFilter" onchange="loadVerifikasi()">
+                        <select id="verifikasiYearFilter">
                             <option value="2024">2024</option>
                             <option value="2025">2025</option>
                             <option value="2026" selected>2026</option>
                             <option value="2027">2027</option>
                         </select>                        
-                        <select id="verifikasiKUAFilter" onchange="loadVerifikasi()">
+                        <select id="verifikasiKUAFilter">
                             <option value="">Semua KUA</option>
                         </select>
-                        <select id="verifikasiStatusFilter" onchange="loadVerifikasi()">
+                        <select id="verifikasiMonthFilter">
+                            <option value="">Semua Bulan</option>
+                            <option value="Januari">Januari</option>
+                            <option value="Februari">Februari</option>
+                            <option value="Maret">Maret</option>
+                            <option value="April">April</option>
+                            <option value="Mei">Mei</option>
+                            <option value="Juni">Juni</option>
+                            <option value="Juli">Juli</option>
+                            <option value="Agustus">Agustus</option>
+                            <option value="September">September</option>
+                            <option value="Oktober">Oktober</option>
+                            <option value="November">November</option>
+                            <option value="Desember">Desember</option>
+                        </select>
+                        <select id="verifikasiStatusFilter">
                             <option value="">Semua Status</option>
                             <option value="Pending">Pending</option>
                             <option value="Diterima">Diterima</option>
                             <option value="Ditolak">Ditolak</option>
                         </select>
+                        <button class="btn btn-info btn-sm" onclick="loadVerifikasiWithFilters()">🔍 Load Data</button>
                     </div>
                     <div class="table-container">
                         <table id="verifikasiTable">
                             <thead>
                                 <tr>
-                                    <th>No</th>
-                                    <th>KUA</th>
-                                    <th>Bulan</th>
-                                    <th>Tahun</th>
-                                    <th>Total</th>
-                                    <th>Dibuat</th>
-                                    <th>Status</th>
+                                    <th onclick="sortVerifikasiTable(0)" style="cursor: pointer;">No <span class="sort-icon">⇅</span></th>
+                                    <th onclick="sortVerifikasiTable(1)" style="cursor: pointer;">KUA <span class="sort-icon">⇅</span></th>
+                                    <th onclick="sortVerifikasiTable(2)" style="cursor: pointer;">Bulan <span class="sort-icon">⇅</span></th>
+                                    <th onclick="sortVerifikasiTable(3)" style="cursor: pointer;">Tahun <span class="sort-icon">⇅</span></th>
+                                    <th onclick="sortVerifikasiTable(4)" style="cursor: pointer;">Total <span class="sort-icon">⇅</span></th>
+                                    <th onclick="sortVerifikasiTable(5)" style="cursor: pointer;">Dibuat <span class="sort-icon">⇅</span></th>
+                                    <th onclick="sortVerifikasiTable(6)" style="cursor: pointer;">Status <span class="sort-icon">⇅</span></th>
                                     <th>Aksi</th>
                                 </tr>
                             </thead>
-                            <tbody></tbody>
+                            <tbody>
+                                <tr><td colspan="8" style="text-align: center; padding: 40px; color: #999;">Klik tombol "Load Data" untuk menampilkan data verifikasi</td></tr>
+                            </tbody>
                         </table>
                     </div>
                 </div>
