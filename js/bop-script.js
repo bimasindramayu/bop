@@ -289,10 +289,15 @@ async function preloadAllData() {
             );
         }
         
-        // 3. RPDs - ❌ DISABLED AUTO-LOAD untuk Admin (harus manual click Load Data)
-        // CATATAN: Operator KUA tetap auto-load untuk kemudahan akses
+        // 3. RPDs
         if (currentUser.role === 'Admin') {
-            console.log('[PRELOAD] ⏭️  RPDs - SKIP (Admin harus klik Load Data)');
+            promises.push(
+                apiCall('getRPDs', { year: currentYear }).then(data => {
+                    updateLocalCache('rpds', sortByMonth(data));
+                    console.log('[PRELOAD] ✅ RPDs loaded:', data.length);
+                    return data;
+                })
+            );
         } else {
             promises.push(
                 apiCall('getRPDs', { 
@@ -329,9 +334,15 @@ async function preloadAllData() {
             );
         }
         
-        // 5. Verifikasi - ❌ DISABLED AUTO-LOAD untuk Admin (harus manual click Load Data)
+        // 5. Verifikasi (untuk Admin)
         if (currentUser.role === 'Admin') {
-            console.log('[PRELOAD] ⏭️  Verifikasi - SKIP (Admin harus klik Load Data)');
+            promises.push(
+                apiCall('getRealisasis', { year: currentYear }).then(data => {
+                    updateLocalCache('verifikasi', data);
+                    console.log('[PRELOAD] ✅ Verifikasi data loaded:', data.length);
+                    return data;
+                })
+            );
             
             // ✅ FIX ISSUE #5: Preload RPD Config untuk Admin
             promises.push(
@@ -602,7 +613,6 @@ function showPage(pageId) {
     stopRealisasiPolling();
     stopVerifikasiAutoRefresh();
     
-    // ===== RPD PAGE SETUP =====
     if (pageId === 'rpdPage') {
         const kuaFilter = document.getElementById('rpdKUAFilter');
         const btnCreateRPD = document.getElementById('btnCreateRPD');
@@ -611,65 +621,154 @@ function showPage(pageId) {
         if (currentUser.role === 'Admin') {
             if (kuaFilter) {
                 kuaFilter.style.display = 'block';
+                
                 kuaFilter.innerHTML = '<option value="">Semua KUA</option>' + 
                     APP_CONFIG.KUA_LIST.map(kua => `<option value="${kua}">${kua}</option>`).join('');
-                console.log('[RPD] KUA filter populated');
+                
+                console.log('[RPD] KUA filter populated with', APP_CONFIG.KUA_LIST.length, 'options');
             }
             if (btnCreateRPD) btnCreateRPD.style.display = 'none';
             thKUA.forEach(th => th.style.display = 'table-cell');
-            
-            // ❌ NO AUTO-LOAD untuk Admin
-            console.log('[RPD] Admin - waiting for manual Load Data click');
         } else {
-            // Operator
+            // Operator: Hide KUA filter, show create button, hide KUA column
             if (kuaFilter) kuaFilter.style.display = 'none';
             if (btnCreateRPD) btnCreateRPD.style.display = 'inline-block';
             thKUA.forEach(th => th.style.display = 'none');
-            
-            // ✅ Auto-load untuk Operator
-            loadRPDsWithFilters();
         }
     }
 
-    // ===== VERIFIKASI PAGE SETUP =====
     if (pageId === 'verifikasiPage') {
-        // Populate KUA filter
+        loadVerifikasi();
+        if (currentUser.role === 'Admin') {
+            startVerifikasiAutoRefresh();
+        }
+        
+        // ✅ FIX ISSUE #4: Populate verifikasi KUA filter
         const verifikasiKUAFilter = document.getElementById('verifikasiKUAFilter');
         if (verifikasiKUAFilter) {
+            // ✅ Populate tanpa cek length
             verifikasiKUAFilter.innerHTML = '<option value="">Semua KUA</option>' +
                 APP_CONFIG.KUA_LIST.map(kua => `<option value="${kua}">${kua}</option>`).join('');
+            
             console.log('[VERIFIKASI] KUA filter populated');
         }
         
-        if (currentUser.role === 'Admin') {
-            // ❌ NO AUTO-LOAD untuk Admin
-            console.log('[VERIFIKASI] Admin - waiting for manual Load Data click');
-            startVerifikasiAutoRefresh();
+        // ✅ FIX ISSUE #4: Ensure event listeners are attached
+        const verifikasiYearFilter = document.getElementById('verifikasiYearFilter');
+        const verifikasiStatusFilter = document.getElementById('verifikasiStatusFilter');
+        
+        if (verifikasiYearFilter) {
+            // Remove old listener if exists
+            verifikasiYearFilter.onchange = null;
+            // Add new listener
+            verifikasiYearFilter.addEventListener('change', function() {
+                console.log('[VERIFIKASI] Year filter changed to:', this.value);
+                loadVerifikasi(true); // Force refresh
+            });
+        }
+        
+        if (verifikasiKUAFilter) {
+            verifikasiKUAFilter.onchange = null;
+            verifikasiKUAFilter.addEventListener('change', function() {
+                console.log('[VERIFIKASI] KUA filter changed to:', this.value);
+                loadVerifikasi(); // Use cache, just re-filter
+            });
+        }
+        
+        if (verifikasiStatusFilter) {
+            verifikasiStatusFilter.onchange = null;
+            verifikasiStatusFilter.addEventListener('change', function() {
+                console.log('[VERIFIKASI] Status filter changed to:', this.value);
+                loadVerifikasi(); // Use cache, just re-filter
+            });
         }
     }
     
-    // ===== REALISASI PAGE SETUP =====
+    // ✅ FIX: Setup realisasiPage event listeners
     if (pageId === 'realisasiPage') {
-        loadRealisasis(false);
-        if (currentUser.role === 'Operator KUA') {
-            startRealisasiPolling();
-            updateRealisasiButtonState();
+        const realisasiYearFilter = document.getElementById('realisasiYearFilter');
+        
+        if (realisasiYearFilter) {
+            // Remove old listener if exists
+            realisasiYearFilter.onchange = null;
+            // Add new listener
+            realisasiYearFilter.addEventListener('change', function() {
+                console.log('[REALISASI] Year filter changed to:', this.value);
+                loadRealisasis(true); // Force refresh with new year
+            });
         }
     }
     
-    // ===== BUDGETING PAGE SETUP =====
+    // ✅ FIX: Setup budgetingPage event listeners
     if (pageId === 'budgetingPage') {
-        loadBudgets(false);
+        const budgetYearFilter = document.getElementById('budgetYearFilter');
+        
+        if (budgetYearFilter) {
+            // Remove old listener if exists
+            budgetYearFilter.onchange = null;
+            // Add new listener
+            budgetYearFilter.addEventListener('change', function() {
+                console.log('[BUDGET] Year filter changed to:', this.value);
+                loadBudgets(true); // Force refresh with new year
+            });
+        }
     }
     
-    // ===== DASHBOARD PAGE SETUP =====
-    if (pageId === 'dashboardPage') {
-        loadDashboardStats();
-    }
-    
-    // ===== RPD CONFIG PAGE SETUP =====
-    if (pageId === 'rpdConfigPage') {
-        loadRPDConfig(false);
+    // Load data for specific pages
+    switch(pageId) {
+        case 'dashboardPage':
+            loadDashboardStats();
+            break;
+        case 'budgetingPage':
+            // ✅ FIX: Use cache, data already preloaded
+            loadBudgets(false); // false = use cache
+            break;
+        case 'rpdConfigPage':
+            // ✅ FIX ISSUE #5: Gunakan cache, tidak perlu fetch dari server lagi
+            console.log('[CONFIG] Loading config from cache');
+            loadRPDConfig(false);  // false = use cache
+            break;
+        case 'rpdPage':
+            loadRPDs();
+            break;
+        case 'realisasiPage':
+            // ✅ FIX ISSUE #6: Gunakan cache, tidak perlu fetch dari server lagi
+            loadRealisasis(false); // false = use cache
+            if (currentUser.role === 'Operator KUA') {
+                startRealisasiPolling();
+                // ✅ Update button state saat masuk halaman
+                updateRealisasiButtonState();
+            }
+            break;
+        case 'verifikasiPage':
+            loadVerifikasi();
+            if (currentUser.role === 'Admin') {
+                startVerifikasiAutoRefresh();
+            }
+            // Populate verifikasi KUA filter
+            const verifikasiKUAFilter = document.getElementById('verifikasiKUAFilter');
+            if (verifikasiKUAFilter && verifikasiKUAFilter.children.length === 1) {
+                verifikasiKUAFilter.innerHTML = '<option value="">Semua KUA</option>' +
+                    APP_CONFIG.KUA_LIST.map(kua => `<option value="${kua}">${kua}</option>`).join('');
+            }
+            break;
+        case 'laporanPage':
+            // Populate KUA selects for all export functions
+            const exportRPDPerYearKua = document.getElementById('exportRPDPerYearKua');
+            const exportRealisasiPerYearKua = document.getElementById('exportRealisasiPerYearKua');
+            
+            if (exportRPDPerYearKua && exportRPDPerYearKua.children.length === 1) {
+                exportRPDPerYearKua.innerHTML += APP_CONFIG.KUA_LIST.map(kua => 
+                    `<option value="${kua}">${kua}</option>`
+                ).join('');
+            }
+            
+            if (exportRealisasiPerYearKua && exportRealisasiPerYearKua.children.length === 1) {
+                exportRealisasiPerYearKua.innerHTML += APP_CONFIG.KUA_LIST.map(kua => 
+                    `<option value="${kua}">${kua}</option>`
+                ).join('');
+            }
+            break;
     }
 }
 
@@ -1436,36 +1535,31 @@ function displayRPDs(rpds) {
     const tbody = document.querySelector('#rpdTable tbody');
     const thKUA = document.querySelectorAll('.th-kua');
     
-    // ✅ FIX: READ FILTER VALUE (termasuk bulan)
+    // ✅ FIX: READ FILTER VALUE
     const kuaFilter = document.getElementById('rpdKUAFilter');
-    const monthFilter = document.getElementById('rpdMonthFilter');
     const yearFilter = document.getElementById('rpdYearFilter');
     
     const selectedKUA = kuaFilter ? kuaFilter.value : '';
-    const selectedMonth = monthFilter ? monthFilter.value : '';
     const selectedYear = yearFilter ? yearFilter.value : new Date().getFullYear();
     
     console.log('[RPD] Displaying with filters:', {
         kua: selectedKUA,
-        month: selectedMonth,
         year: selectedYear,
         role: currentUser.role
     });
     
-    // ✅ APPLY FILTERS (termasuk bulan)
+    // ✅ APPLY FILTERS
     let filteredData = rpds.filter(rpd => {
         let passKUA = !selectedKUA || rpd.kua === selectedKUA;
-        let passMonth = !selectedMonth || rpd.month === selectedMonth;
         let passYear = !selectedYear || rpd.year == selectedYear;
         
-        return passKUA && passMonth && passYear;
+        return passKUA && passYear;
     });
     
     console.log('[RPD] Filtered from', rpds.length, 'to', filteredData.length, 'records');
     
     if (filteredData.length === 0) {
-        const colSpan = currentUser.role === 'Admin' ? '7' : '6';
-        tbody.innerHTML = `<tr><td colspan="${colSpan}" style="text-align: center;">Belum ada data RPD</td></tr>`;
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align: center;">Belum ada data RPD</td></tr>';
         return;
     }
     
@@ -1512,7 +1606,7 @@ function displayRPDs(rpds) {
     `;
     
     tbody.innerHTML = rows + totalRow;
-    console.log('[RPD] Displayed', filteredData.length, 'records, Total:', formatCurrency(totalNominal));
+    console.log('[RPD] Displayed', filteredData.length, 'records');
 }
 
 // Handler untuk filter KUA change (Admin only)
@@ -1531,167 +1625,6 @@ function onRPDKUAFilterChange() {
         loadRPDs(true);
     }
 }
-
-// ===== NEW: Load RPDs with Filters Function =====
-async function loadRPDsWithFilters() {
-    console.log('[RPD] Loading RPDs with filters...');
-    showLoading();
-    
-    try {
-        const yearFilter = document.getElementById('rpdYearFilter');
-        const year = yearFilter ? yearFilter.value : new Date().getFullYear();
-        
-        let rpds;
-        
-        if (currentUser.role === 'Admin') {
-            // Admin - Get all KUA RPDs
-            rpds = await apiCall('getRPDs', { year: year });
-        } else {
-            // Operator - Get only own KUA
-            rpds = await apiCall('getRPDs', { kua: currentUser.kua, year: year });
-        }
-        
-        rpds = sortByMonth(rpds);
-        
-        // Update local cache
-        updateLocalCache('rpds', rpds);
-        
-        // Display dengan filter yang sudah dipilih
-        displayRPDs(rpds);
-        
-        hideLoading();
-        showNotification('Data RPD berhasil dimuat', 'success');
-    } catch (error) {
-        hideLoading();
-        console.error('[RPD ERROR]', error);
-        showNotification('Gagal memuat data RPD', 'error');
-    }
-}
-
-// ===== NEW: Sort RPD Table Function =====
-let rpdSortState = {
-    column: -1,
-    ascending: true
-};
-
-function sortRPDTable(columnIndex) {
-    console.log('[RPD SORT] Sorting column', columnIndex);
-    
-    const tbody = document.querySelector('#rpdTable tbody');
-    const rows = Array.from(tbody.querySelectorAll('tr:not(:last-child)')); // Exclude total row
-    
-    if (rows.length === 0 || (rows.length === 1 && rows[0].textContent.includes('Klik tombol'))) {
-        return; // No data to sort
-    }
-    
-    // Determine sort direction
-    if (rpdSortState.column === columnIndex) {
-        rpdSortState.ascending = !rpdSortState.ascending;
-    } else {
-        rpdSortState.column = columnIndex;
-        rpdSortState.ascending = true;
-    }
-    
-    // Adjust column index for Admin (has KUA column)
-    let actualColumnIndex = columnIndex;
-    if (currentUser.role === 'Admin' && columnIndex > 0) {
-        actualColumnIndex = columnIndex;
-    } else if (currentUser.role !== 'Admin' && columnIndex > 0) {
-        actualColumnIndex = columnIndex; // No adjustment needed
-    }
-    
-    // Month order for sorting
-    const monthOrder = {
-        'Januari': 1, 'Februari': 2, 'Maret': 3, 'April': 4,
-        'Mei': 5, 'Juni': 6, 'Juli': 7, 'Agustus': 8,
-        'September': 9, 'Oktober': 10, 'November': 11, 'Desember': 12
-    };
-    
-    // Sort rows
-    rows.sort((a, b) => {
-        let aValue, bValue;
-        
-        // Get cell content based on column
-        const aCells = a.querySelectorAll('td');
-        const bCells = b.querySelectorAll('td');
-        
-        if (currentUser.role === 'Admin') {
-            // For Admin: 0=No, 1=KUA, 2=Bulan, 3=Tahun, 4=Total, 5=Dibuat
-            switch(columnIndex) {
-                case 0: // No
-                    aValue = parseInt(aCells[0].textContent);
-                    bValue = parseInt(bCells[0].textContent);
-                    break;
-                case 1: // KUA
-                    aValue = aCells[1].textContent.trim();
-                    bValue = bCells[1].textContent.trim();
-                    break;
-                case 2: // Bulan
-                    aValue = monthOrder[aCells[2].textContent.trim()] || 0;
-                    bValue = monthOrder[bCells[2].textContent.trim()] || 0;
-                    break;
-                case 3: // Tahun
-                    aValue = parseInt(aCells[3].textContent);
-                    bValue = parseInt(bCells[3].textContent);
-                    break;
-                case 4: // Total
-                    aValue = parseFloat(aCells[4].textContent.replace(/[^0-9,-]/g, '').replace(',', '.')) || 0;
-                    bValue = parseFloat(bCells[4].textContent.replace(/[^0-9,-]/g, '').replace(',', '.')) || 0;
-                    break;
-                case 5: // Dibuat
-                    aValue = new Date(aCells[5].textContent.trim()).getTime() || 0;
-                    bValue = new Date(bCells[5].textContent.trim()).getTime() || 0;
-                    break;
-            }
-        } else {
-            // For Operator: 0=No, 1=Bulan, 2=Tahun, 3=Total, 4=Dibuat
-            switch(columnIndex) {
-                case 0: // No
-                    aValue = parseInt(aCells[0].textContent);
-                    bValue = parseInt(bCells[0].textContent);
-                    break;
-                case 2: // Bulan
-                    aValue = monthOrder[aCells[1].textContent.trim()] || 0;
-                    bValue = monthOrder[bCells[1].textContent.trim()] || 0;
-                    break;
-                case 3: // Tahun
-                    aValue = parseInt(aCells[2].textContent);
-                    bValue = parseInt(bCells[2].textContent);
-                    break;
-                case 4: // Total
-                    aValue = parseFloat(aCells[3].textContent.replace(/[^0-9,-]/g, '').replace(',', '.')) || 0;
-                    bValue = parseFloat(bCells[3].textContent.replace(/[^0-9,-]/g, '').replace(',', '.')) || 0;
-                    break;
-                case 5: // Dibuat
-                    aValue = new Date(aCells[4].textContent.trim()).getTime() || 0;
-                    bValue = new Date(bCells[4].textContent.trim()).getTime() || 0;
-                    break;
-            }
-        }
-        
-        // Compare
-        if (aValue < bValue) return rpdSortState.ascending ? -1 : 1;
-        if (aValue > bValue) return rpdSortState.ascending ? 1 : -1;
-        return 0;
-    });
-    
-    // Re-append rows (this will reorder them)
-    const totalRow = tbody.querySelector('tr:last-child');
-    tbody.innerHTML = '';
-    rows.forEach((row, index) => {
-        // Update No column
-        row.querySelector('td:first-child').textContent = index + 1;
-        tbody.appendChild(row);
-    });
-    
-    // Re-append total row
-    if (totalRow) {
-        tbody.appendChild(totalRow);
-    }
-    
-    console.log('[RPD SORT] Sorted', rows.length, 'rows by column', columnIndex, 'ascending:', rpdSortState.ascending);
-}
-
 
 async function showRPDModal(rpd = null) {
     console.log('[RPD MODAL]', rpd);
@@ -4983,32 +4916,28 @@ async function loadVerifikasi(forceRefresh = false) {
 function displayVerifikasi(realisasis) {
     const tbody = document.querySelector('#verifikasiTable tbody');
     
-    // ✅ FIX: READ FILTER VALUES (termasuk bulan)
+    // ✅ FIX: READ FILTER VALUES
     const kuaFilter = document.getElementById('verifikasiKUAFilter');
-    const monthFilter = document.getElementById('verifikasiMonthFilter');
     const statusFilter = document.getElementById('verifikasiStatusFilter');
     const yearFilter = document.getElementById('verifikasiYearFilter');
     
     const selectedKUA = kuaFilter ? kuaFilter.value : '';
-    const selectedMonth = monthFilter ? monthFilter.value : '';
     const selectedStatus = statusFilter ? statusFilter.value : '';
     const selectedYear = yearFilter ? yearFilter.value : new Date().getFullYear();
     
     console.log('[VERIFIKASI] Displaying data with filters:', {
         kua: selectedKUA,
-        month: selectedMonth,
         status: selectedStatus,
         year: selectedYear
     });
     
-    // ✅ APPLY FILTERS (termasuk bulan)
+    // ✅ APPLY FILTERS
     let filteredData = realisasis.filter(real => {
         let passKUA = !selectedKUA || real.kua === selectedKUA;
-        let passMonth = !selectedMonth || real.month === selectedMonth;
         let passStatus = !selectedStatus || real.status === selectedStatus;
         let passYear = !selectedYear || real.year == selectedYear;
         
-        return passKUA && passMonth && passStatus && passYear;
+        return passKUA && passStatus && passYear;
     });
     
     console.log('[VERIFIKASI] Filtered from', realisasis.length, 'to', filteredData.length, 'records');
@@ -5074,70 +5003,6 @@ function displayVerifikasi(realisasis) {
     
     // Set innerHTML first
     tbody.innerHTML = rows + totalRow;
-    console.log('[VERIFIKASI] Displayed', filteredData.length, 'records, Total:', formatCurrency(totalNominal));
-    
-    // Add dual totals row for Admin (async)
-    if (filteredData.length > 0) {
-        const totalRealisasi = filteredData.reduce((sum, r) => sum + (parseFloat(r.total) || 0), 0);
-        
-        // Get autopay totals for all displayed verifikasi
-        Promise.all(
-            filteredData.map(r => getAutopayTotal(r.year, r.month, r.kua))
-        ).then(autopayTotals => {
-            const totalAutopay = autopayTotals.reduce((sum, t) => sum + t, 0);
-            const totalPencairan = totalRealisasi - totalAutopay;
-            
-            // Create totals row
-            const totalsRow = document.createElement('tr');
-            totalsRow.style.cssText = 'background: #f5f5f5; font-weight: bold; border-top: 2px solid #333;';
-            
-            // Label cell
-            const labelCell = document.createElement('td');
-            labelCell.colSpan = 4; // Columns: No, KUA, Bulan, Tahun
-            labelCell.style.cssText = 'text-align: right; padding: 12px;';
-            labelCell.innerHTML = `
-                <div style="margin-bottom: 4px;">Total Realisasi:</div>
-                ${totalAutopay > 0 ? `
-                    <div style="color: #F57C00; font-size: 12px; margin-bottom: 4px;">Dibayar via Autopay:</div>
-                    <div style="border-top: 1px solid #ccc; margin-top: 4px; padding-top: 4px;">Total Pencairan:</div>
-                ` : ''}
-            `;
-            
-            // Amount cell
-            const amountCell = document.createElement('td');
-            amountCell.style.cssText = 'padding: 12px; text-align: right;';
-            amountCell.innerHTML = `
-                <div style="margin-bottom: 4px; color: #1976D2; font-size: 15px;">${formatCurrency(totalRealisasi)}</div>
-                ${totalAutopay > 0 ? `
-                    <div style="color: #F57C00; font-size: 12px; margin-bottom: 4px;">- ${formatCurrency(totalAutopay)}</div>
-                    <div style="border-top: 1px solid #ccc; margin-top: 4px; padding-top: 4px; color: #2E7D32; font-size: 16px;">
-                        ${formatCurrency(totalPencairan)}
-                    </div>
-                ` : ''}
-            `;
-            
-            // Remaining cells (empty)
-            const cell1 = document.createElement('td');
-            cell1.innerHTML = '';
-            const cell2 = document.createElement('td');
-            cell2.innerHTML = '';
-            const cell3 = document.createElement('td');
-            cell3.innerHTML = '';
-            
-            // Append cells
-            totalsRow.appendChild(labelCell);
-            totalsRow.appendChild(amountCell);
-            totalsRow.appendChild(cell1);
-            totalsRow.appendChild(cell2);
-            totalsRow.appendChild(cell3);
-            
-            // Append row to tbody
-            tbody.appendChild(totalsRow);
-        }).catch(error => {
-            console.error('[VERIFIKASI_TOTALS] Error calculating autopay totals:', error);
-        });
-    }
-    
     console.log('[VERIFIKASI] Displayed', filteredData.length, 'records');
 }
 
@@ -5177,127 +5042,6 @@ function onVerifikasiFilterChange() {
         loadVerifikasi(true);
     }
 }
-
-// ===== NEW: Load Verifikasi with Filters Function =====
-async function loadVerifikasiWithFilters() {
-    console.log('[VERIFIKASI] Loading verifikasi with filters...');
-    showLoading();
-    
-    try {
-        const yearFilter = document.getElementById('verifikasiYearFilter');
-        const year = yearFilter ? yearFilter.value : new Date().getFullYear();
-        
-        // Get all realisasis for the year
-        let realisasis = await apiCall('getRealisasis', { year: year });
-        
-        // Update local cache
-        updateLocalCache('verifikasi', realisasis);
-        
-        // Display dengan filter yang sudah dipilih
-        displayVerifikasi(realisasis);
-        
-        hideLoading();
-        showNotification('Data verifikasi berhasil dimuat', 'success');
-    } catch (error) {
-        hideLoading();
-        console.error('[VERIFIKASI ERROR]', error);
-        showNotification('Gagal memuat data verifikasi', 'error');
-    }
-}
-
-// ===== NEW: Sort Verifikasi Table Function =====
-let verifikasiSortState = {
-    column: -1,
-    ascending: true
-};
-
-function sortVerifikasiTable(columnIndex) {
-    console.log('[VERIFIKASI SORT] Sorting column', columnIndex);
-    
-    const tbody = document.querySelector('#verifikasiTable tbody');
-    const rows = Array.from(tbody.querySelectorAll('tr:not(:last-child)')); // Exclude total row
-    
-    if (rows.length === 0 || (rows.length === 1 && rows[0].textContent.includes('Klik tombol'))) {
-        return; // No data to sort
-    }
-    
-    // Determine sort direction
-    if (verifikasiSortState.column === columnIndex) {
-        verifikasiSortState.ascending = !verifikasiSortState.ascending;
-    } else {
-        verifikasiSortState.column = columnIndex;
-        verifikasiSortState.ascending = true;
-    }
-    
-    // Month order for sorting
-    const monthOrder = {
-        'Januari': 1, 'Februari': 2, 'Maret': 3, 'April': 4,
-        'Mei': 5, 'Juni': 6, 'Juli': 7, 'Agustus': 8,
-        'September': 9, 'Oktober': 10, 'November': 11, 'Desember': 12
-    };
-    
-    // Sort rows
-    rows.sort((a, b) => {
-        let aValue, bValue;
-        
-        const aCells = a.querySelectorAll('td');
-        const bCells = b.querySelectorAll('td');
-        
-        // For Verifikasi: 0=No, 1=KUA, 2=Bulan, 3=Tahun, 4=Total, 5=Dibuat, 6=Status
-        switch(columnIndex) {
-            case 0: // No
-                aValue = parseInt(aCells[0].textContent);
-                bValue = parseInt(bCells[0].textContent);
-                break;
-            case 1: // KUA
-                aValue = aCells[1].textContent.trim();
-                bValue = bCells[1].textContent.trim();
-                break;
-            case 2: // Bulan
-                aValue = monthOrder[aCells[2].textContent.trim()] || 0;
-                bValue = monthOrder[bCells[2].textContent.trim()] || 0;
-                break;
-            case 3: // Tahun
-                aValue = parseInt(aCells[3].textContent);
-                bValue = parseInt(bCells[3].textContent);
-                break;
-            case 4: // Total
-                aValue = parseFloat(aCells[4].textContent.replace(/[^0-9,-]/g, '').replace(',', '.')) || 0;
-                bValue = parseFloat(bCells[4].textContent.replace(/[^0-9,-]/g, '').replace(',', '.')) || 0;
-                break;
-            case 5: // Dibuat
-                aValue = new Date(aCells[5].textContent.trim()).getTime() || 0;
-                bValue = new Date(bCells[5].textContent.trim()).getTime() || 0;
-                break;
-            case 6: // Status
-                aValue = aCells[6].textContent.trim();
-                bValue = bCells[6].textContent.trim();
-                break;
-        }
-        
-        // Compare
-        if (aValue < bValue) return verifikasiSortState.ascending ? -1 : 1;
-        if (aValue > bValue) return verifikasiSortState.ascending ? 1 : -1;
-        return 0;
-    });
-    
-    // Re-append rows (this will reorder them)
-    const totalRow = tbody.querySelector('tr:last-child');
-    tbody.innerHTML = '';
-    rows.forEach((row, index) => {
-        // Update No column
-        row.querySelector('td:first-child').textContent = index + 1;
-        tbody.appendChild(row);
-    });
-    
-    // Re-append total row
-    if (totalRow) {
-        tbody.appendChild(totalRow);
-    }
-    
-    console.log('[VERIFIKASI SORT] Sorted', rows.length, 'rows by column', columnIndex, 'ascending:', verifikasiSortState.ascending);
-}
-
 
 // ===== VERIFIKASI REALISASI (UPDATED) =====
 function verifyRealisasi(realisasi) {
@@ -7339,12 +7083,6 @@ window.removeUploadedFile = removeUploadedFile;
 window.removeExistingFile = removeExistingFile;
 window.handleFileInputChange = handleFileInputChange;
 
-// ===== NEW: Expose Load Data & Sort Functions =====
-window.loadRPDsWithFilters = loadRPDsWithFilters;
-window.loadVerifikasiWithFilters = loadVerifikasiWithFilters;
-window.sortRPDTable = sortRPDTable;
-window.sortVerifikasiTable = sortVerifikasiTable;
-
 // Image Viewer Functions
 window.zoomIn = zoomIn;
 window.zoomOut = zoomOut;
@@ -7534,990 +7272,4 @@ window.zoomOutPDF = zoomOutPDF;
 window.rotatePDF = rotatePDF;
 window.resetPDF = resetPDF;
 window.initPDFViewer = initPDFViewer;
-window.initAllPDFViewers = initAllPDFViewers;// ===== BOP SCRIPT - ROMBAK TOTAL SISTEM FILTER =====
-// File: bop-script-fixed.js
-// Sistem baru dengan raw data storage dan filter yang lebih reliable
-
-// ===== GLOBAL RAW DATA STORAGE =====
-const rawData = {
-    rpds: [],
-    verifikasi: [],
-    budgets: []
-};
-
-// ===== MONTH ORDER FOR SORTING =====
-const MONTH_ORDER = {
-    'Januari': 1, 'Februari': 2, 'Maret': 3, 'April': 4,
-    'Mei': 5, 'Juni': 6, 'Juli': 7, 'Agustus': 8,
-    'September': 9, 'Oktober': 10, 'November': 11, 'Desember': 12
-};
-
-// ===== SORT STATE =====
-const sortState = {
-    rpd: { column: -1, ascending: true },
-    verifikasi: { column: -1, ascending: true },
-    budget: { column: -1, ascending: true }
-};
-
-// ===== FUNGSI UMUM: APPLY FILTER =====
-function applyFilters(data, filters) {
-    return data.filter(item => {
-        for (let key in filters) {
-            const filterValue = filters[key];
-            if (filterValue && item[key] !== filterValue) {
-                return false;
-            }
-        }
-        return true;
-    });
-}
-
-// ===== RPD: LOAD DATA WITH FILTERS =====
-async function loadRPDsWithFilters() {
-    console.log('[RPD] Loading with filters...');
-    showLoading();
-    
-    try {
-        const yearFilter = document.getElementById('rpdYearFilter');
-        const year = yearFilter ? yearFilter.value : new Date().getFullYear();
-        
-        let rpds;
-        
-        if (currentUser.role === 'Admin') {
-            rpds = await apiCall('getRPDs', { year: year });
-        } else {
-            rpds = await apiCall('getRPDs', { kua: currentUser.kua, year: year });
-        }
-        
-        // Simpan ke raw data
-        rawData.rpds = sortByMonth(rpds);
-        
-        // Display dengan filter yang dipilih
-        displayRPDsFiltered();
-        
-        hideLoading();
-        showNotification('Data RPD berhasil dimuat', 'success');
-    } catch (error) {
-        hideLoading();
-        console.error('[RPD ERROR]', error);
-        showNotification('Gagal memuat data RPD', 'error');
-    }
-}
-
-// ===== RPD: DISPLAY FILTERED =====
-function displayRPDsFiltered() {
-    const tbody = document.querySelector('#rpdTable tbody');
-    
-    // Ambil filter values
-    const kuaFilter = document.getElementById('rpdKUAFilter');
-    const monthFilter = document.getElementById('rpdMonthFilter');
-    const yearFilter = document.getElementById('rpdYearFilter');
-    
-    const filters = {};
-    if (kuaFilter && kuaFilter.value) filters.kua = kuaFilter.value;
-    if (monthFilter && monthFilter.value) filters.month = monthFilter.value;
-    if (yearFilter && yearFilter.value) filters.year = parseInt(yearFilter.value);
-    
-    console.log('[RPD] Applying filters:', filters);
-    
-    // Apply filters
-    let filteredData = applyFilters(rawData.rpds, filters);
-    
-    console.log('[RPD] Filtered:', filteredData.length, 'records');
-    
-    if (filteredData.length === 0) {
-        const colSpan = currentUser.role === 'Admin' ? '7' : '6';
-        tbody.innerHTML = `<tr><td colspan="${colSpan}" style="text-align: center;">Belum ada data RPD</td></tr>`;
-        return;
-    }
-    
-    // Calculate total
-    let totalNominal = 0;
-    
-    const rows = filteredData.map((rpd, index) => {
-        totalNominal += parseFloat(rpd.total || 0);
-        
-        const rpdEscaped = JSON.stringify(rpd).replace(/"/g, '&quot;');
-        const kuaColumn = currentUser.role === 'Admin' ? `<td>${rpd.kua || '-'}</td>` : '';
-        
-        return `
-        <tr>
-            <td>${index + 1}</td>
-            ${kuaColumn}
-            <td>${rpd.month || '-'}</td>
-            <td>${rpd.year || '-'}</td>
-            <td>${formatCurrency(rpd.total || 0)}</td>
-            <td>${rpd.createdAt ? formatDate(rpd.createdAt) : '-'}</td>
-            <td>
-                <div class="action-buttons">
-                    <button class="btn btn-sm" onclick='viewRPD(${rpdEscaped})'>Lihat</button>
-                    ${currentUser.role !== 'Admin' ? 
-                        `<button class="btn btn-sm" onclick='editRPD(${rpdEscaped})'>Edit</button>` : ''}
-                </div>
-            </td>
-        </tr>
-        `;
-    }).join('');
-    
-    const kuaTotalColumn = currentUser.role === 'Admin' ? '<td></td>' : '';
-    
-    const totalRow = `
-        <tr style="background: #f8f9fa; font-weight: bold;">
-            <td></td>
-            ${kuaTotalColumn}
-            <td colspan="2" style="text-align: right;">TOTAL:</td>
-            <td>${formatCurrency(totalNominal)}</td>
-            <td colspan="2"></td>
-        </tr>
-    `;
-    
-    tbody.innerHTML = rows + totalRow;
-    console.log('[RPD] Displayed', filteredData.length, 'records, Total:', formatCurrency(totalNominal));
-}
-
-// ===== RPD: SORT TABLE =====
-function sortRPDTable(columnIndex) {
-    console.log('[RPD SORT] Column', columnIndex);
-    
-    const tbody = document.querySelector('#rpdTable tbody');
-    const rows = Array.from(tbody.querySelectorAll('tr:not(:last-child)'));
-    
-    if (rows.length === 0 || (rows.length === 1 && rows[0].textContent.includes('Klik tombol'))) {
-        return;
-    }
-    
-    // Toggle sort direction
-    if (sortState.rpd.column === columnIndex) {
-        sortState.rpd.ascending = !sortState.rpd.ascending;
-    } else {
-        sortState.rpd.column = columnIndex;
-        sortState.rpd.ascending = true;
-    }
-    
-    // Sort
-    rows.sort((a, b) => {
-        const aCells = a.querySelectorAll('td');
-        const bCells = b.querySelectorAll('td');
-        let aValue, bValue;
-        
-        if (currentUser.role === 'Admin') {
-            // Admin: 0=No, 1=KUA, 2=Bulan, 3=Tahun, 4=Total, 5=Dibuat
-            switch(columnIndex) {
-                case 0: aValue = parseInt(aCells[0].textContent); bValue = parseInt(bCells[0].textContent); break;
-                case 1: aValue = aCells[1].textContent.trim(); bValue = bCells[1].textContent.trim(); break;
-                case 2: aValue = MONTH_ORDER[aCells[2].textContent.trim()] || 0; bValue = MONTH_ORDER[bCells[2].textContent.trim()] || 0; break;
-                case 3: aValue = parseInt(aCells[3].textContent); bValue = parseInt(bCells[3].textContent); break;
-                case 4: aValue = parseFloat(aCells[4].textContent.replace(/[^0-9,-]/g, '').replace(',', '.')) || 0; bValue = parseFloat(bCells[4].textContent.replace(/[^0-9,-]/g, '').replace(',', '.')) || 0; break;
-                case 5: aValue = new Date(aCells[5].textContent.trim()).getTime() || 0; bValue = new Date(bCells[5].textContent.trim()).getTime() || 0; break;
-            }
-        } else {
-            // Operator: 0=No, 1=Bulan, 2=Tahun, 3=Total, 4=Dibuat
-            switch(columnIndex) {
-                case 0: aValue = parseInt(aCells[0].textContent); bValue = parseInt(bCells[0].textContent); break;
-                case 2: aValue = MONTH_ORDER[aCells[1].textContent.trim()] || 0; bValue = MONTH_ORDER[bCells[1].textContent.trim()] || 0; break;
-                case 3: aValue = parseInt(aCells[2].textContent); bValue = parseInt(bCells[2].textContent); break;
-                case 4: aValue = parseFloat(aCells[3].textContent.replace(/[^0-9,-]/g, '').replace(',', '.')) || 0; bValue = parseFloat(bCells[3].textContent.replace(/[^0-9,-]/g, '').replace(',', '.')) || 0; break;
-                case 5: aValue = new Date(aCells[4].textContent.trim()).getTime() || 0; bValue = new Date(bCells[4].textContent.trim()).getTime() || 0; break;
-            }
-        }
-        
-        if (aValue < bValue) return sortState.rpd.ascending ? -1 : 1;
-        if (aValue > bValue) return sortState.rpd.ascending ? 1 : -1;
-        return 0;
-    });
-    
-    // Re-render
-    const totalRow = tbody.querySelector('tr:last-child');
-    tbody.innerHTML = '';
-    rows.forEach((row, index) => {
-        row.querySelector('td:first-child').textContent = index + 1;
-        tbody.appendChild(row);
-    });
-    if (totalRow) tbody.appendChild(totalRow);
-    
-    console.log('[RPD SORT] Done, direction:', sortState.rpd.ascending ? 'ASC' : 'DESC');
-}
-
-// ===== VERIFIKASI: LOAD DATA WITH FILTERS =====
-async function loadVerifikasiWithFilters() {
-    console.log('[VERIFIKASI] Loading with filters...');
-    showLoading();
-    
-    try {
-        const yearFilter = document.getElementById('verifikasiYearFilter');
-        const year = yearFilter ? yearFilter.value : new Date().getFullYear();
-        
-        let realisasis = await apiCall('getRealisasis', { year: year });
-        
-        // Simpan ke raw data
-        rawData.verifikasi = realisasis;
-        
-        // Display dengan filter yang dipilih
-        displayVerifikasiFiltered();
-        
-        hideLoading();
-        showNotification('Data verifikasi berhasil dimuat', 'success');
-    } catch (error) {
-        hideLoading();
-        console.error('[VERIFIKASI ERROR]', error);
-        showNotification('Gagal memuat data verifikasi', 'error');
-    }
-}
-
-// ===== VERIFIKASI: DISPLAY FILTERED =====
-function displayVerifikasiFiltered() {
-    const tbody = document.querySelector('#verifikasiTable tbody');
-    
-    // Ambil filter values
-    const kuaFilter = document.getElementById('verifikasiKUAFilter');
-    const monthFilter = document.getElementById('verifikasiMonthFilter');
-    const statusFilter = document.getElementById('verifikasiStatusFilter');
-    const yearFilter = document.getElementById('verifikasiYearFilter');
-    
-    const filters = {};
-    if (kuaFilter && kuaFilter.value) filters.kua = kuaFilter.value;
-    if (monthFilter && monthFilter.value) filters.month = monthFilter.value;
-    if (statusFilter && statusFilter.value) filters.status = statusFilter.value;
-    if (yearFilter && yearFilter.value) filters.year = parseInt(yearFilter.value);
-    
-    console.log('[VERIFIKASI] Applying filters:', filters);
-    
-    // Apply filters
-    let filteredData = applyFilters(rawData.verifikasi, filters);
-    
-    console.log('[VERIFIKASI] Filtered:', filteredData.length, 'records');
-    
-    if (filteredData.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="8" style="text-align: center;">Tidak ada data realisasi</td></tr>';
-        return;
-    }
-    
-    // Calculate total
-    let totalNominal = 0;
-    
-    const rows = filteredData.map((real, index) => {
-        totalNominal += parseFloat(real.total || 0);
-        
-        let statusClass = 'warning';
-        let statusText = 'Pending';
-        
-        if (real.status === 'Diterima') {
-            statusClass = 'success';
-            statusText = 'Diterima';
-        } else if (real.status === 'Ditolak') {
-            statusClass = 'danger';
-            statusText = 'Ditolak';
-        }
-        
-        const realisasiId = real.id || `temp-${Date.now()}-${index}`;
-        realisasiDataStore.set(realisasiId, real);
-        
-        return `
-        <tr>
-            <td>${index + 1}</td>
-            <td>${real.kua || '-'}</td>
-            <td>${real.month || '-'}</td>
-            <td>${real.year || '-'}</td>
-            <td>${formatCurrency(real.total || 0)}</td>
-            <td>${real.createdAt ? formatDate(real.createdAt) : '-'}</td>
-            <td><span class="badge badge-${statusClass}">${statusText}</span></td>
-            <td>
-                <div class="action-buttons">
-                    <button class="btn btn-sm" onclick="verifyRealisasi('${realisasiId}')">Verifikasi</button>
-                </div>
-            </td>
-        </tr>
-        `;
-    }).join('');
-    
-    const totalRow = `
-        <tr style="background: #f8f9fa; font-weight: bold;">
-            <td colspan="4" style="text-align: right;">TOTAL:</td>
-            <td>${formatCurrency(totalNominal)}</td>
-            <td colspan="3"></td>
-        </tr>
-    `;
-    
-    tbody.innerHTML = rows + totalRow;
-    console.log('[VERIFIKASI] Displayed', filteredData.length, 'records, Total:', formatCurrency(totalNominal));
-}
-
-// ===== VERIFIKASI: SORT TABLE =====
-function sortVerifikasiTable(columnIndex) {
-    console.log('[VERIFIKASI SORT] Column', columnIndex);
-    
-    const tbody = document.querySelector('#verifikasiTable tbody');
-    const rows = Array.from(tbody.querySelectorAll('tr:not(:last-child)'));
-    
-    if (rows.length === 0 || (rows.length === 1 && rows[0].textContent.includes('Klik tombol'))) {
-        return;
-    }
-    
-    // Toggle sort direction
-    if (sortState.verifikasi.column === columnIndex) {
-        sortState.verifikasi.ascending = !sortState.verifikasi.ascending;
-    } else {
-        sortState.verifikasi.column = columnIndex;
-        sortState.verifikasi.ascending = true;
-    }
-    
-    // Sort
-    rows.sort((a, b) => {
-        const aCells = a.querySelectorAll('td');
-        const bCells = b.querySelectorAll('td');
-        let aValue, bValue;
-        
-        // 0=No, 1=KUA, 2=Bulan, 3=Tahun, 4=Total, 5=Dibuat, 6=Status
-        switch(columnIndex) {
-            case 0: aValue = parseInt(aCells[0].textContent); bValue = parseInt(bCells[0].textContent); break;
-            case 1: aValue = aCells[1].textContent.trim(); bValue = bCells[1].textContent.trim(); break;
-            case 2: aValue = MONTH_ORDER[aCells[2].textContent.trim()] || 0; bValue = MONTH_ORDER[bCells[2].textContent.trim()] || 0; break;
-            case 3: aValue = parseInt(aCells[3].textContent); bValue = parseInt(bCells[3].textContent); break;
-            case 4: aValue = parseFloat(aCells[4].textContent.replace(/[^0-9,-]/g, '').replace(',', '.')) || 0; bValue = parseFloat(bCells[4].textContent.replace(/[^0-9,-]/g, '').replace(',', '.')) || 0; break;
-            case 5: aValue = new Date(aCells[5].textContent.trim()).getTime() || 0; bValue = new Date(bCells[5].textContent.trim()).getTime() || 0; break;
-            case 6: aValue = aCells[6].textContent.trim(); bValue = bCells[6].textContent.trim(); break;
-        }
-        
-        if (aValue < bValue) return sortState.verifikasi.ascending ? -1 : 1;
-        if (aValue > bValue) return sortState.verifikasi.ascending ? 1 : -1;
-        return 0;
-    });
-    
-    // Re-render
-    const totalRow = tbody.querySelector('tr:last-child');
-    tbody.innerHTML = '';
-    rows.forEach((row, index) => {
-        row.querySelector('td:first-child').textContent = index + 1;
-        tbody.appendChild(row);
-    });
-    if (totalRow) tbody.appendChild(totalRow);
-    
-    console.log('[VERIFIKASI SORT] Done, direction:', sortState.verifikasi.ascending ? 'ASC' : 'DESC');
-}
-
-// ===== BUDGET: SORT TABLE =====
-function sortBudgetTable(columnIndex) {
-    console.log('[BUDGET SORT] Column', columnIndex);
-    
-    const tbody = document.querySelector('#budgetTable tbody');
-    const rows = Array.from(tbody.querySelectorAll('tr'));
-    
-    if (rows.length === 0) return;
-    
-    // Toggle sort direction
-    if (sortState.budget.column === columnIndex) {
-        sortState.budget.ascending = !sortState.budget.ascending;
-    } else {
-        sortState.budget.column = columnIndex;
-        sortState.budget.ascending = true;
-    }
-    
-    // Sort
-    rows.sort((a, b) => {
-        const aCells = a.querySelectorAll('td');
-        const bCells = b.querySelectorAll('td');
-        let aValue, bValue;
-        
-        // 0=No, 1=KUA, 2=Tahun, 3=Budget, 4=TotalRPD, 5=TotalRealisasi, 6=SisaBudget
-        switch(columnIndex) {
-            case 0: aValue = parseInt(aCells[0].textContent); bValue = parseInt(bCells[0].textContent); break;
-            case 1: aValue = aCells[1].textContent.trim(); bValue = bCells[1].textContent.trim(); break;
-            case 2: aValue = parseInt(aCells[2].textContent); bValue = parseInt(bCells[2].textContent); break;
-            case 3: aValue = parseFloat(aCells[3].textContent.replace(/[^0-9,-]/g, '').replace(',', '.')) || 0; bValue = parseFloat(bCells[3].textContent.replace(/[^0-9,-]/g, '').replace(',', '.')) || 0; break;
-            case 4: aValue = parseFloat(aCells[4].textContent.replace(/[^0-9,-]/g, '').replace(',', '.')) || 0; bValue = parseFloat(bCells[4].textContent.replace(/[^0-9,-]/g, '').replace(',', '.')) || 0; break;
-            case 5: aValue = parseFloat(aCells[5].textContent.replace(/[^0-9,-]/g, '').replace(',', '.')) || 0; bValue = parseFloat(bCells[5].textContent.replace(/[^0-9,-]/g, '').replace(',', '.')) || 0; break;
-            case 6: aValue = parseFloat(aCells[6].textContent.replace(/[^0-9,-]/g, '').replace(',', '.')) || 0; bValue = parseFloat(bCells[6].textContent.replace(/[^0-9,-]/g, '').replace(',', '.')) || 0; break;
-        }
-        
-        if (aValue < bValue) return sortState.budget.ascending ? -1 : 1;
-        if (aValue > bValue) return sortState.budget.ascending ? 1 : -1;
-        return 0;
-    });
-    
-    // Re-render
-    tbody.innerHTML = '';
-    rows.forEach((row, index) => {
-        row.querySelector('td:first-child').textContent = index + 1;
-        tbody.appendChild(row);
-    });
-    
-    console.log('[BUDGET SORT] Done, direction:', sortState.budget.ascending ? 'ASC' : 'DESC');
-}
-
-// ===== EXPOSE TO WINDOW =====
-window.loadRPDsWithFilters = loadRPDsWithFilters;
-window.displayRPDsFiltered = displayRPDsFiltered;
-window.sortRPDTable = sortRPDTable;
-
-window.loadVerifikasiWithFilters = loadVerifikasiWithFilters;
-window.displayVerifikasiFiltered = displayVerifikasiFiltered;
-window.sortVerifikasiTable = sortVerifikasiTable;
-
-window.sortBudgetTable = sortBudgetTable;
-
-console.log('[BOP FIXED] ✅ New filter system loaded');
 window.initAllPDFViewers = initAllPDFViewers;
-
-// ===== AUTOPAY FUNCTIONS =====
-
-// IMPORTANT: Bypass cache for autopay operations
-const AUTOPAY_OPERATIONS = [
-    'getAutopayConfig', 'saveAutopayConfig', 
-    'getAutopayRealisasi', 'saveAutopayRealisasi',
-    'deleteAutopayRealisasi', 'getAutopaySummary',
-    'getKUAList', 'isAutopayEnabled'
-];
-
-// Wrapper untuk autopay API calls yang bypass cache
-async function autopayApiCall(action, data = {}) {
-    console.log('[AUTOPAY_API_DIRECT]', action, data);
-    
-    // Check if APP_CONFIG.API_URL is defined
-    if (!APP_CONFIG || !APP_CONFIG.API_URL || APP_CONFIG.API_URL === 'undefined') {
-        console.warn('[AUTOPAY_API_DIRECT] API_URL not configured, falling back to apiCall');
-        
-        // Fallback to existing apiCall function
-        if (typeof apiCall === 'function') {
-            try {
-                const result = await apiCall(action, data);
-                console.log('[AUTOPAY_API_DIRECT] Fallback result:', result);
-                return result;
-            } catch (error) {
-                console.error('[AUTOPAY_API_DIRECT] Fallback error:', error);
-                throw error;
-            }
-        } else {
-            throw new Error('API_URL not configured and apiCall not available');
-        }
-    }
-    
-    // Direct API call if URL is configured
-    try {
-        const payload = {
-            action: action,
-            ...data
-        };
-        
-        console.log('[AUTOPAY_API_DIRECT] Payload:', payload);
-        console.log('[AUTOPAY_API_DIRECT] URL:', APP_CONFIG.API_URL);
-        
-        const response = await fetch(APP_CONFIG.API_URL, {
-            method: 'POST',
-            headers: { 
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(payload)
-        });
-        
-        console.log('[AUTOPAY_API_DIRECT] HTTP status:', response.status);
-        
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        
-        const result = await response.json();
-        console.log('[AUTOPAY_API_DIRECT] Response:', result);
-        
-        if (result.success === true) {
-            return result.data;
-        } else if (result.success === false) {
-            throw new Error(result.message || 'API call failed');
-        } else {
-            return result;
-        }
-    } catch (error) {
-        console.error('[AUTOPAY_API_DIRECT] Error:', error);
-        throw error;
-    }
-}
-
-function formatInputNumber(input) {
-    let value = input.value.replace(/\D/g, ''); // Remove non-digits
-    if (value) {
-        input.value = formatNumber(parseInt(value));
-    } else {
-        input.value = '';
-    }
-}
-
-function getInputNumber(input) {
-    return parseInt(input.value.replace(/\D/g, '') || '0');
-}
-
-function showAutopaySubPage(subPageName) {
-    console.log('[AUTOPAY] Showing sub-page:', subPageName);
-    
-    document.querySelectorAll('.autopay-subnav button').forEach(btn => {
-        btn.classList.remove('active');
-    });
-    
-    document.querySelectorAll('.autopay-subpage').forEach(page => {
-        page.classList.remove('active');
-    });
-    
-    document.getElementById('btnAutopay' + capitalizeFirst(subPageName)).classList.add('active');
-    document.getElementById('autopay' + capitalizeFirst(subPageName) + 'Page').classList.add('active');
-    
-    switch(subPageName) {
-        case 'config':
-            loadAutopayConfig();
-            break;
-        case 'input':
-            loadAutopayInput();
-            break;
-        case 'summary':
-            loadAutopaySummary();
-            break;
-    }
-}
-
-function capitalizeFirst(str) {
-    return str.charAt(0).toUpperCase() + str.slice(1);
-}
-
-async function loadAutopayConfig() {
-    console.log('[AUTOPAY] Loading config');
-    
-    try {
-        showLoading();
-        
-        const [kuas, configs] = await Promise.all([
-            autopayApiCall('getKUAList'),
-            autopayApiCall('getAutopayConfig')
-        ]);
-        
-        autopayKUAList = kuas || [];
-        autopayConfigs = configs || [];
-        
-        hideLoading();
-        displayAutopayConfig();
-    } catch (error) {
-        hideLoading();
-        console.error('[AUTOPAY] Error loading config:', error);
-        showNotification('Gagal memuat konfigurasi: ' + error.message, 'error');
-    }
-}
-
-function displayAutopayConfig() {
-    const tbody = document.getElementById('autopayConfigTableBody');
-    tbody.innerHTML = '';
-    
-    if (autopayKUAList.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="5" style="text-align: center;">Tidak ada data KUA</td></tr>';
-        return;
-    }
-    
-    autopayKUAList.forEach((kua, index) => {
-        const config = autopayConfigs.find(c => c.kua === kua) || {
-            kua: kua,
-            listrikEnabled: false,
-            teleponEnabled: false,
-            updatedBy: '',
-            updatedAt: ''
-        };
-        
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-            <td>${index + 1}</td>
-            <td><strong>${kua}</strong></td>
-            <td style="text-align: center;">
-                <input type="checkbox" 
-                       class="autopay-checkbox listrik-checkbox" 
-                       data-kua="${kua}" 
-                       data-type="listrik"
-                       style="transform: scale(1.3); cursor: pointer;"
-                       ${config.listrikEnabled ? 'checked' : ''}>
-            </td>
-            <td style="text-align: center;">
-                <input type="checkbox" 
-                       class="autopay-checkbox telepon-checkbox" 
-                       data-kua="${kua}" 
-                       data-type="telepon"
-                       style="transform: scale(1.3); cursor: pointer;"
-                       ${config.teleponEnabled ? 'checked' : ''}>
-            </td>
-            <td>
-                ${config.updatedBy ? `${config.updatedBy}<br><small>${formatDate(config.updatedAt)}</small>` : '-'}
-            </td>
-        `;
-        tbody.appendChild(tr);
-    });
-}
-
-function checkAllListrik(checked) {
-    document.querySelectorAll('.listrik-checkbox').forEach(cb => {
-        cb.checked = checked;
-    });
-}
-
-function checkAllTelepon(checked) {
-    document.querySelectorAll('.telepon-checkbox').forEach(cb => {
-        cb.checked = checked;
-    });
-}
-
-async function saveAllAutopayConfig() {
-    console.log('[AUTOPAY] Saving all config');
-    
-    try {
-        showLoading();
-        
-        const checkboxes = document.querySelectorAll('.autopay-checkbox');
-        const configMap = {};
-        
-        checkboxes.forEach(cb => {
-            const kua = cb.dataset.kua;
-            const type = cb.dataset.type;
-            
-            if (!configMap[kua]) {
-                configMap[kua] = {
-                    kua: kua,
-                    listrikEnabled: false,
-                    teleponEnabled: false
-                };
-            }
-            
-            if (type === 'listrik') {
-                configMap[kua].listrikEnabled = cb.checked;
-            } else if (type === 'telepon') {
-                configMap[kua].teleponEnabled = cb.checked;
-            }
-        });
-        
-        const savePromises = Object.values(configMap).map(config => 
-            autopayApiCall('saveAutopayConfig', {
-                kua: config.kua,
-                listrikEnabled: config.listrikEnabled,
-                teleponEnabled: config.teleponEnabled,
-                updatedBy: currentUser.username
-            })
-        );
-        
-        await Promise.all(savePromises);
-        
-        hideLoading();
-        showNotification('Konfigurasi autopay berhasil disimpan', 'success');
-        loadAutopayConfig();
-    } catch (error) {
-        hideLoading();
-        console.error('[AUTOPAY] Error saving config:', error);
-        showNotification('Gagal menyimpan konfigurasi: ' + error.message, 'error');
-    }
-}
-
-async function loadAutopayInput() {
-    console.log('[AUTOPAY] Loading input');
-    
-    const bulan = parseInt(document.getElementById('filterBulanInput').value);
-    const tahun = parseInt(document.getElementById('filterTahunInput').value);
-    
-    try {
-        showLoading();
-        
-        const [configs, existingData] = await Promise.all([
-            autopayApiCall('getAutopayConfig'),
-            autopayApiCall('getAutopayRealisasi', { tahun: tahun, bulan: bulan })
-        ]);
-        
-        autopayConfigs = configs || [];
-        autopayData = existingData || [];
-        
-        hideLoading();
-        displayAutopayInput(bulan, tahun);
-    } catch (error) {
-        hideLoading();
-        console.error('[AUTOPAY] Error loading input:', error);
-        showNotification('Gagal memuat data: ' + error.message, 'error');
-    }
-}
-
-function displayAutopayInput() {
-    console.log('[AUTOPAY] Displaying input');
-    console.log('[AUTOPAY] autopayConfigs:', autopayConfigs);
-    console.log('[AUTOPAY] autopayData:', autopayData);
-    
-    const container = document.getElementById('autopayInputContainer');
-    if (!container) {
-        console.error('[AUTOPAY] Container not found');
-        return;
-    }
-    
-    if (!autopayConfigs || autopayConfigs.length === 0) {
-        container.innerHTML = '<p>Tidak ada konfigurasi autopay. Silakan ke tab Konfigurasi terlebih dahulu.</p>';
-        return;
-    }
-    
-    // Group by KUA
-    const byKUA = {};
-    autopayConfigs.forEach(config => {
-        if (config.listrikEnabled || config.teleponEnabled) {
-            if (!byKUA[config.kua]) {
-                byKUA[config.kua] = { 
-                    listrik: config.listrikEnabled, 
-                    telepon: config.teleponEnabled 
-                };
-            }
-        }
-    });
-    
-    if (Object.keys(byKUA).length === 0) {
-        container.innerHTML = '<p>Tidak ada KUA yang mengaktifkan autopay. Silakan aktifkan di tab Konfigurasi.</p>';
-        return;
-    }
-    
-    let html = '';
-    
-    Object.keys(byKUA).sort().forEach(kua => {
-        const config = byKUA[kua];
-        const enabledPOS = [];
-        
-        if (config.listrik) {
-            enabledPOS.push({ 
-                kodePos: '522111', 
-                namaPos: 'Belanja Langganan Listrik' 
-            });
-        }
-        if (config.telepon) {
-            enabledPOS.push({ 
-                kodePos: '522112', 
-                namaPos: 'Belanja Langganan Telepon / Internet' 
-            });
-        }
-        
-        if (enabledPOS.length === 0) return;
-        
-        html += `
-            <div class="autopay-kua-card">
-                <h4 style="margin: 0 0 15px 0; color: #1976D2;">
-                    <i class="fas fa-building"></i> ${kua}
-                </h4>
-                <div class="autopay-input-grid">
-        `;
-        
-        enabledPOS.forEach(pos => {
-            // ✅ ADD DETAILED LOGGING
-            console.log('[AUTOPAY] Looking for:', { kua, kodePos: pos.kodePos });
-            console.log('[AUTOPAY] Available data:', autopayData.map(d => ({ 
-                kua: d.kua, 
-                kodePos: d.kodePos, 
-                nominal: d.nominal 
-            })));
-            
-            const existing = autopayData.find(d => 
-                String(d.kua).trim() === String(kua).trim() && 
-                String(d.kodePos).trim() === String(pos.kodePos).trim()
-            );
-            
-            console.log('[AUTOPAY] Found existing:', existing);
-            
-            html += `
-                <div class="autopay-input-item">
-                    <label style="font-weight: 500; color: #333; margin-bottom: 8px; display: block;">
-                        ${pos.kodePos} - ${pos.namaPos}
-                    </label>
-                    <input 
-                        type="text" 
-                        class="autopay-nominal-input" 
-                        value="${existing ? formatNumber(existing.nominal) : ''}"
-                        data-kua="${kua}"
-                        data-kode-pos="${pos.kodePos}"
-                        data-nama-pos="${pos.namaPos}"
-                        placeholder="0"
-                        oninput="formatInputNumber(this)">
-                    <textarea 
-                        class="autopay-notes-input" 
-                        data-kua="${kua}"
-                        data-kode-pos="${pos.kodePos}"
-                        placeholder="Keterangan (opsional)"
-                        style="margin-top: 8px;">${existing ? existing.keterangan : ''}</textarea>
-                </div>
-            `;
-        });
-        
-        html += `
-                </div>
-            </div>
-        `;
-    });
-    
-    container.innerHTML = html;
-}
-
-async function saveAllAutopayInput() {
-    console.log('[AUTOPAY] Saving all input');
-    
-    const bulan = parseInt(document.getElementById('filterBulanInput').value);
-    const tahun = parseInt(document.getElementById('filterTahunInput').value);
-    
-    try {
-        showLoading();
-        
-        const inputs = document.querySelectorAll('.autopay-nominal-input');
-        const savePromises = [];
-        
-        inputs.forEach(input => {
-            const kua = input.dataset.kua;
-            const kodePos = input.dataset.kodePos;  // ✅ FIXED - camelCase (was: kodepos)
-            const namaPos = input.dataset.namaPos;  // ✅ FIXED - camelCase (was: namapos)
-            const nominal = getInputNumber(input);
-            
-            // ✅ FIXED - attribute selector (was: data-kodepos)
-            const notesEl = document.querySelector(`.autopay-notes-input[data-kua="${kua}"][data-kode-pos="${kodePos}"]`);
-            const keterangan = notesEl ? notesEl.value : '';
-            
-            console.log('[AUTOPAY] Processing:', { kua, kodePos, namaPos, nominal, keterangan });
-            
-            if (nominal > 0) {
-                savePromises.push(
-                    autopayApiCall('saveAutopayRealisasi', {
-                        tahun: tahun,
-                        bulan: bulan,
-                        kua: kua,
-                        kodePos: kodePos,
-                        namaPos: namaPos,
-                        nominal: nominal,
-                        keterangan: keterangan,
-                        updatedBy: currentUser.username
-                    })
-                );
-            } else if (nominal === 0 && input.value !== '') {
-                savePromises.push(
-                    autopayApiCall('deleteAutopayRealisasi', {
-                        tahun: tahun,
-                        bulan: bulan,
-                        kua: kua,
-                        kodePos: kodePos
-                    })
-                );
-            }
-        });
-        
-        if (savePromises.length === 0) {
-            hideLoading();
-            showNotification('Tidak ada data untuk disimpan', 'warning');
-            return;
-        }
-        
-        await Promise.all(savePromises);
-        
-        hideLoading();
-        showNotification('Data autopay berhasil disimpan', 'success');
-        
-        // Reload data to show saved values
-        await loadAutopayInput();
-    } catch (error) {
-        hideLoading();
-        console.error('[AUTOPAY] Error saving input:', error);
-        showNotification('Gagal menyimpan data: ' + error.message, 'error');
-    }
-}
-
-async function loadAutopaySummary() {
-    console.log('[AUTOPAY] Loading summary');
-    
-    const bulan = parseInt(document.getElementById('filterBulanSummary').value);
-    const tahun = parseInt(document.getElementById('filterTahunSummary').value);
-    
-    try {
-        showLoading();
-        
-        const summary = await autopayApiCall('getAutopaySummary', { tahun: tahun, bulan: bulan });
-        
-        hideLoading();
-        displayAutopaySummary(summary);
-    } catch (error) {
-        hideLoading();
-        console.error('[AUTOPAY] Error loading summary:', error);
-        showNotification('Gagal memuat ringkasan: ' + error.message, 'error');
-    }
-}
-
-function displayAutopaySummary(summary) {
-    console.log('[AUTOPAY] Displaying summary, data:', summary);
-    
-    const tbody = document.getElementById('autopaySummaryTableBody');
-    const tfoot = document.getElementById('autopaySummaryTableFoot');
-    
-    tbody.innerHTML = '';
-    tfoot.innerHTML = '';
-    
-    if (!summary || summary.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="5" style="text-align: center;">Tidak ada data autopay untuk bulan ini</td></tr>';
-        return;
-    }
-    
-    let totalListrik = 0;
-    let totalTelepon = 0;
-    let grandTotal = 0;
-    
-    summary.forEach((item, index) => {
-        // ✅ Pastikan convert ke number dengan aman
-        const listrikAmount = parseFloat(item.listrik) || 0;
-        const teleponAmount = parseFloat(item.telepon) || 0;
-        const totalAmount = parseFloat(item.total) || 0;
-        
-        console.log(`[AUTOPAY] KUA ${item.kua}:`, { 
-            listrik: listrikAmount, 
-            telepon: teleponAmount, 
-            total: totalAmount 
-        });
-        
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-            <td>${index + 1}</td>
-            <td>${item.kua}</td>
-            <td style="text-align: right;">${formatCurrency(listrikAmount)}</td>
-            <td style="text-align: right;">${formatCurrency(teleponAmount)}</td>
-            <td style="text-align: right;"><strong>${formatCurrency(totalAmount)}</strong></td>
-        `;
-        tbody.appendChild(tr);
-        
-        totalListrik += listrikAmount;
-        totalTelepon += teleponAmount;
-        grandTotal += totalAmount;
-    });
-    
-    console.log('[AUTOPAY] Summary totals:', { 
-        totalListrik, 
-        totalTelepon, 
-        grandTotal 
-    });
-    
-    const footerTr = document.createElement('tr');
-    footerTr.innerHTML = `
-        <th colspan="2">Total</th>
-        <th style="text-align: right;">${formatCurrency(totalListrik)}</th>
-        <th style="text-align: right;">${formatCurrency(totalTelepon)}</th>
-        <th style="text-align: right;">${formatCurrency(grandTotal)}</th>
-    `;
-    tfoot.appendChild(footerTr);
-}
-
-function initializeAutopay() {
-    const currentMonth = new Date().getMonth() + 1;
-    
-    const inputMonth = document.getElementById('filterBulanInput');
-    const summaryMonth = document.getElementById('filterBulanSummary');
-    
-    if (inputMonth) inputMonth.value = currentMonth;
-    if (summaryMonth) summaryMonth.value = currentMonth;
-}
-
-// Expose functions to window
-window.showAutopaySubPage = showAutopaySubPage;
-window.loadAutopayConfig = loadAutopayConfig;
-window.checkAllListrik = checkAllListrik;
-window.checkAllTelepon = checkAllTelepon;
-window.saveAllAutopayConfig = saveAllAutopayConfig;
-window.loadAutopayInput = loadAutopayInput;
-window.saveAllAutopayInput = saveAllAutopayInput;
-window.loadAutopaySummary = loadAutopaySummary;
-
-// Initialize on page load
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initializeAutopay);
-} else {
-    initializeAutopay();
-}
-
-// ===== END OF AUTOPAY FUNCTIONS =====
