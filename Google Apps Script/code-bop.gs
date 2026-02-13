@@ -524,7 +524,7 @@ function deleteRPD(data) {
 
 // ===== REALISASI MANAGEMENT =====
 function getRealisasis(data) {
-  Logger.log('[GET_REALISASIS] KUA: ' + data.kua + ', Year: ' + data.year + ', Include Autopay: ' + data.includeAutopay);
+  Logger.log('[GET_REALISASIS] KUA: ' + data.kua + ', Year: ' + data.year);
   
   try {
     const sheet = getSheet(SHEETS.REALISASI);
@@ -585,90 +585,7 @@ function getRealisasis(data) {
       }
     }
     
-    // ✅ AUTOPAY INTEGRATION - Merge autopay data if includeAutopay is true
-    if (data.includeAutopay === true || data.includeAutopay === 'true') {
-      Logger.log('[GET_REALISASIS] Including autopay data');
-      
-      try {
-        // Get autopay data for the specified year
-        const autopaySheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Autopay_Realisasi');
-        
-        if (autopaySheet) {
-          const autopayRows = autopaySheet.getDataRange().getValues();
-          
-          // Group autopay data by KUA, Month, Year
-          for (let i = 1; i < autopayRows.length; i++) {
-            const autopayRow = autopayRows[i];
-            
-            // Filter by KUA and Year
-            if ((!data.kua || autopayRow[3] === data.kua) && 
-                (!data.year || autopayRow[1] == data.year)) {
-              
-              const kua = autopayRow[3];
-              const month = autopayRow[2];
-              const year = autopayRow[1];
-              const kodePos = autopayRow[4];
-              const namaPos = autopayRow[5];
-              const nominal = autopayRow[6];
-              
-              // Find corresponding realisasi entry
-              let realisasi = realisasis.find(r => 
-                r.kua === kua && r.month == month && r.year == year
-              );
-              
-              if (realisasi) {
-                // Add autopay nominal to existing realisasi data
-                if (!realisasi.data[kodePos]) {
-                  realisasi.data[kodePos] = {
-                    kodePos: kodePos,
-                    namaPos: namaPos,
-                    nominal: 0,
-                    isAutopay: true
-                  };
-                }
-                realisasi.data[kodePos].nominal += nominal;
-                realisasi.data[kodePos].isAutopay = true;
-                realisasi.total += nominal;
-              } else {
-                // Create new realisasi entry for autopay data
-                const newData = {};
-                newData[kodePos] = {
-                  kodePos: kodePos,
-                  namaPos: namaPos,
-                  nominal: nominal,
-                  isAutopay: true
-                };
-                
-                realisasis.push({
-                  id: 'AUTOPAY-' + kua + '-' + year + '-' + month,
-                  kua: kua,
-                  month: month,
-                  rpdId: '',
-                  year: year,
-                  total: nominal,
-                  data: newData,
-                  files: [],
-                  status: 'Verified', // Autopay is auto-verified
-                  notes: 'Autopay - Generated from Autopay System',
-                  createdAt: '',
-                  updatedAt: safeFormatDate(autopayRow[9]),
-                  verifiedAt: safeFormatDate(autopayRow[9]),
-                  userId: '',
-                  username: 'Autopay System',
-                  verifiedBy: autopayRow[8] || 'Admin',
-                  isAutopay: true
-                });
-              }
-            }
-          }
-        }
-      } catch (autopayError) {
-        Logger.log('[GET_REALISASIS] Error including autopay data:', autopayError);
-        // Continue without autopay data if error occurs
-      }
-    }
-    
-    Logger.log('[GET_REALISASIS] Found: ' + realisasis.length + ' realisasis (including autopay)');
+    Logger.log('[GET_REALISASIS] Found: ' + realisasis.length + ' realisasis');
     return successResponse(realisasis);
     
   } catch (error) {

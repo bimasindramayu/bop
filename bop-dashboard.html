@@ -67,13 +67,13 @@
                         <table id="budgetTable">
                             <thead>
                                 <tr>
-                                    <th>No</th>
-                                    <th>KUA</th>
-                                    <th>Tahun</th>
-                                    <th>Budget</th>
-                                    <th>Total RPD</th>
-                                    <th>Total Realisasi</th>
-                                    <th>Sisa Budget</th>
+                                    <th onclick="sortBudgetTable(0)" style="cursor: pointer;">No <span class="sort-icon">⇅</span></th>
+                                    <th onclick="sortBudgetTable(1)" style="cursor: pointer;">KUA <span class="sort-icon">⇅</span></th>
+                                    <th onclick="sortBudgetTable(2)" style="cursor: pointer;">Tahun <span class="sort-icon">⇅</span></th>
+                                    <th onclick="sortBudgetTable(3)" style="cursor: pointer;">Budget <span class="sort-icon">⇅</span></th>
+                                    <th onclick="sortBudgetTable(4)" style="cursor: pointer;">Total RPD <span class="sort-icon">⇅</span></th>
+                                    <th onclick="sortBudgetTable(5)" style="cursor: pointer;">Total Realisasi <span class="sort-icon">⇅</span></th>
+                                    <th onclick="sortBudgetTable(6)" style="cursor: pointer;">Sisa Budget <span class="sort-icon">⇅</span></th>
                                     <th>Aksi</th>
                                 </tr>
                             </thead>
@@ -87,31 +87,51 @@
                     <h2 style="margin-bottom: 20px;">Rencana Penggunaan Dana (RPD)</h2>
                     <div class="toolbar">
                         <button class="btn btn-success btn-sm" id="btnCreateRPD" onclick="showRPDModal()">Tambah RPD</button>                        
-                        <select id="rpdKUAFilter" onchange="loadRPDs()" style="display: none;">
+                        <select id="rpdKUAFilter" style="display: none;">
                             <option value="">Semua KUA</option>
                         </select>
                         
-                        <select id="rpdYearFilter" onchange="loadRPDs()">
+                        <select id="rpdMonthFilter">
+                            <option value="">Semua Bulan</option>
+                            <option value="Januari">Januari</option>
+                            <option value="Februari">Februari</option>
+                            <option value="Maret">Maret</option>
+                            <option value="April">April</option>
+                            <option value="Mei">Mei</option>
+                            <option value="Juni">Juni</option>
+                            <option value="Juli">Juli</option>
+                            <option value="Agustus">Agustus</option>
+                            <option value="September">September</option>
+                            <option value="Oktober">Oktober</option>
+                            <option value="November">November</option>
+                            <option value="Desember">Desember</option>
+                        </select>
+                        
+                        <select id="rpdYearFilter">
                             <option value="2024">2024</option>
                             <option value="2025">2025</option>
                             <option value="2026" selected>2026</option>
                             <option value="2027">2027</option>
                         </select>
+                        
+                        <button class="btn btn-info btn-sm" onclick="loadRPDsWithFilters()">🔍 Load Data</button>
                     </div>
                     <div class="table-container">
                         <table id="rpdTable">
                             <thead>
                                 <tr>
-                                    <th>No</th>
-                                    <th class="th-kua" style="display: none;">KUA</th>
-                                    <th>Bulan</th>
-                                    <th>Tahun</th>
-                                    <th>Total</th>
-                                    <th>Dibuat</th>
+                                    <th onclick="sortRPDTable(0)" style="cursor: pointer;">No <span class="sort-icon">⇅</span></th>
+                                    <th class="th-kua" style="display: none; cursor: pointer;" onclick="sortRPDTable(1)">KUA <span class="sort-icon">⇅</span></th>
+                                    <th onclick="sortRPDTable(2)" style="cursor: pointer;">Bulan <span class="sort-icon">⇅</span></th>
+                                    <th onclick="sortRPDTable(3)" style="cursor: pointer;">Tahun <span class="sort-icon">⇅</span></th>
+                                    <th onclick="sortRPDTable(4)" style="cursor: pointer;">Total <span class="sort-icon">⇅</span></th>
+                                    <th onclick="sortRPDTable(5)" style="cursor: pointer;">Dibuat <span class="sort-icon">⇅</span></th>
                                     <th>Aksi</th>
                                 </tr>
                             </thead>
-                            <tbody></tbody>
+                            <tbody>
+                                <tr><td colspan="7" style="text-align: center; padding: 40px; color: #999;">Klik tombol "Load Data" untuk menampilkan data RPD</td></tr>
+                            </tbody>
                         </table>
                     </div>
                 </div>
@@ -133,15 +153,6 @@
                             <option value="2026" selected>2026</option>
                             <option value="2027">2027</option>
                         </select>
-
-                        <!-- Only show for Admin (will be controlled by JS) -->
-                        <div id="realisasiAutopayFilterContainer" style="display: none;">
-                            <label style="margin-left: 10px;">Include Autopay:</label>
-                            <select id="includeAutopayFilter" onchange="loadRealisasis(true)">
-                                <option value="false">Exclude Autopay</option>
-                                <option value="true">Include Autopay</option>
-                            </select>
-                        </div>
                     </div>
                     <div class="table-container">
                         <table id="realisasiTable">
@@ -166,37 +177,55 @@
                 <div class="page" id="verifikasiPage">
                     <h2 style="margin-bottom: 20px;">Verifikasi Realisasi</h2>
                     <div class="toolbar">
-                        <select id="verifikasiYearFilter" onchange="loadVerifikasi()">
+                        <select id="verifikasiYearFilter">
                             <option value="2024">2024</option>
                             <option value="2025">2025</option>
                             <option value="2026" selected>2026</option>
                             <option value="2027">2027</option>
                         </select>                        
-                        <select id="verifikasiKUAFilter" onchange="loadVerifikasi()">
+                        <select id="verifikasiKUAFilter">
                             <option value="">Semua KUA</option>
                         </select>
-                        <select id="verifikasiStatusFilter" onchange="loadVerifikasi()">
+                        <select id="verifikasiMonthFilter">
+                            <option value="">Semua Bulan</option>
+                            <option value="Januari">Januari</option>
+                            <option value="Februari">Februari</option>
+                            <option value="Maret">Maret</option>
+                            <option value="April">April</option>
+                            <option value="Mei">Mei</option>
+                            <option value="Juni">Juni</option>
+                            <option value="Juli">Juli</option>
+                            <option value="Agustus">Agustus</option>
+                            <option value="September">September</option>
+                            <option value="Oktober">Oktober</option>
+                            <option value="November">November</option>
+                            <option value="Desember">Desember</option>
+                        </select>
+                        <select id="verifikasiStatusFilter">
                             <option value="">Semua Status</option>
                             <option value="Pending">Pending</option>
                             <option value="Diterima">Diterima</option>
                             <option value="Ditolak">Ditolak</option>
                         </select>
+                        <button class="btn btn-info btn-sm" onclick="loadVerifikasiWithFilters()">🔍 Load Data</button>
                     </div>
                     <div class="table-container">
                         <table id="verifikasiTable">
                             <thead>
                                 <tr>
-                                    <th>No</th>
-                                    <th>KUA</th>
-                                    <th>Bulan</th>
-                                    <th>Tahun</th>
-                                    <th>Total</th>
-                                    <th>Dibuat</th>
-                                    <th>Status</th>
+                                    <th onclick="sortVerifikasiTable(0)" style="cursor: pointer;">No <span class="sort-icon">⇅</span></th>
+                                    <th onclick="sortVerifikasiTable(1)" style="cursor: pointer;">KUA <span class="sort-icon">⇅</span></th>
+                                    <th onclick="sortVerifikasiTable(2)" style="cursor: pointer;">Bulan <span class="sort-icon">⇅</span></th>
+                                    <th onclick="sortVerifikasiTable(3)" style="cursor: pointer;">Tahun <span class="sort-icon">⇅</span></th>
+                                    <th onclick="sortVerifikasiTable(4)" style="cursor: pointer;">Total <span class="sort-icon">⇅</span></th>
+                                    <th onclick="sortVerifikasiTable(5)" style="cursor: pointer;">Dibuat <span class="sort-icon">⇅</span></th>
+                                    <th onclick="sortVerifikasiTable(6)" style="cursor: pointer;">Status <span class="sort-icon">⇅</span></th>
                                     <th>Aksi</th>
                                 </tr>
                             </thead>
-                            <tbody></tbody>
+                            <tbody>
+                                <tr><td colspan="8" style="text-align: center; padding: 40px; color: #999;">Klik tombol "Load Data" untuk menampilkan data verifikasi</td></tr>
+                            </tbody>
                         </table>
                     </div>
                 </div>
@@ -286,10 +315,6 @@
                                 <option value="2026" selected>2026</option>
                                 <option value="2027">2027</option>
                             </select>
-                            <select id="exportRealisasiPerYearAutopay" style="flex: 1;">
-                                <option value="false">Exclude Autopay</option>
-                                <option value="true">Include Autopay</option>
-                            </select>
                         </div>
                         <div style="display: flex; gap: 10px;">
                             <button class="btn btn-sm" onclick="downloadRealisasiPerYear('excel')">📥 Excel</button>
@@ -301,156 +326,15 @@
                     <div class="summary-box" style="margin-top: 20px;">
                         <h3 style="margin-bottom: 15px;">📑 Realisasi Detail Semua KUA (Setahun)</h3>
                         <p style="font-size: 12px; color: #666; margin-bottom: 10px;">Menampilkan detail per akun untuk semua KUA</p>
-                        <div style="display: flex; gap: 10px; margin-bottom: 10px;">
-                            <select id="exportRealisasiDetailYear" style="flex: 1;">
-                                <option value="2024">2024</option>
-                                <option value="2025">2025</option>
-                                <option value="2026" selected>2026</option>
-                                <option value="2027">2027</option>
-                            </select>
-                            <select id="exportRealisasiDetailAutopay" style="flex: 1;">
-                                <option value="false">Exclude Autopay</option>
-                                <option value="true">Include Autopay</option>
-                            </select>
-                        </div>
+                        <select id="exportRealisasiDetailYear" style="margin-bottom: 10px; width: 100%;">
+                            <option value="2024">2024</option>
+                            <option value="2025">2025</option>
+                            <option value="2026" selected>2026</option>
+                            <option value="2027">2027</option>
+                        </select>
                         <div style="display: flex; gap: 10px;">
                             <button class="btn btn-sm" onclick="downloadRealisasiDetailYear('excel')">📥 Excel</button>
                             <button class="btn btn-sm" onclick="downloadRealisasiDetailYear('pdf')">📄 PDF</button>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Autopay Page (Admin Only) -->
-                <div class="page" id="autopayPage">
-                    <h2 style="margin-bottom: 20px;">Autopay Management</h2>
-                    <p class="text-muted">Kelola pembayaran otomatis untuk Listrik (522111) dan Telepon/Internet (522112)</p>
-                    
-                    <!-- Sub Navigation -->
-                    <div class="autopay-subnav" style="margin-bottom: 30px;">
-                        <button class="btn btn-sm active" id="btnAutopayConfig" onclick="showAutopaySubPage('config')">
-                            ⚙️ Konfigurasi
-                        </button>
-                        <button class="btn btn-sm" id="btnAutopayInput" onclick="showAutopaySubPage('input')">
-                            💰 Input Nominal
-                        </button>
-                        <button class="btn btn-sm" id="btnAutopaySummary" onclick="showAutopaySubPage('summary')">
-                            📊 Ringkasan
-                        </button>
-                    </div>
-
-                    <!-- Autopay Config Sub-Page -->
-                    <div class="autopay-subpage active" id="autopayConfigPage">
-                        <div class="toolbar">
-                            <button class="btn btn-sm btn-success" onclick="saveAllAutopayConfig()">💾 Simpan Semua</button>
-                            <button class="btn btn-sm btn-secondary" onclick="loadAutopayConfig()">🔄 Refresh</button>
-                        </div>
-
-                        <div class="table-container" style="margin-top: 20px;">
-                            <table id="autopayConfigTable">
-                                <thead>
-                                    <tr>
-                                        <th>No</th>
-                                        <th>KUA</th>
-                                        <th style="text-align: center;">
-                                            Listrik (522111)<br>
-                                            <input type="checkbox" id="checkAllListrik" onchange="checkAllListrik(this.checked)" style="transform: scale(1.3);">
-                                        </th>
-                                        <th style="text-align: center;">
-                                            Telepon/Internet (522112)<br>
-                                            <input type="checkbox" id="checkAllTelepon" onchange="checkAllTelepon(this.checked)" style="transform: scale(1.3);">
-                                        </th>
-                                        <th>Terakhir Update</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="autopayConfigTableBody">
-                                    <tr><td colspan="5" style="text-align: center;">Loading...</td></tr>
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-
-                    <!-- Autopay Input Sub-Page -->
-                    <div class="autopay-subpage" id="autopayInputPage">
-                        <div class="toolbar">
-                            <label>Bulan:</label>
-                            <select id="filterBulanInput" onchange="loadAutopayInput()">
-                                <option value="1">Januari</option>
-                                <option value="2">Februari</option>
-                                <option value="3">Maret</option>
-                                <option value="4">April</option>
-                                <option value="5">Mei</option>
-                                <option value="6">Juni</option>
-                                <option value="7">Juli</option>
-                                <option value="8">Agustus</option>
-                                <option value="9">September</option>
-                                <option value="10">Oktober</option>
-                                <option value="11">November</option>
-                                <option value="12">Desember</option>
-                            </select>
-
-                            <label>Tahun:</label>
-                            <select id="filterTahunInput" onchange="loadAutopayInput()">
-                                <option value="2024">2024</option>
-                                <option value="2025">2025</option>
-                                <option value="2026" selected>2026</option>
-                                <option value="2027">2027</option>
-                            </select>
-
-                            <button class="btn btn-sm btn-success" onclick="saveAllAutopayInput()">💾 Simpan Semua</button>
-                            <button class="btn btn-sm btn-secondary" onclick="loadAutopayInput()">🔄 Refresh</button>
-                        </div>
-
-                        <div id="autopayInputContainer" style="margin-top: 30px;">
-                            <!-- Will be populated by JavaScript -->
-                        </div>
-                    </div>
-
-                    <!-- Autopay Summary Sub-Page -->
-                    <div class="autopay-subpage" id="autopaySummaryPage">
-                        <div class="toolbar">
-                            <label>Bulan:</label>
-                            <select id="filterBulanSummary" onchange="loadAutopaySummary()">
-                                <option value="1">Januari</option>
-                                <option value="2">Februari</option>
-                                <option value="3">Maret</option>
-                                <option value="4">April</option>
-                                <option value="5">Mei</option>
-                                <option value="6">Juni</option>
-                                <option value="7">Juli</option>
-                                <option value="8">Agustus</option>
-                                <option value="9">September</option>
-                                <option value="10">Oktober</option>
-                                <option value="11">November</option>
-                                <option value="12">Desember</option>
-                            </select>
-
-                            <label>Tahun:</label>
-                            <select id="filterTahunSummary" onchange="loadAutopaySummary()">
-                                <option value="2024">2024</option>
-                                <option value="2025">2025</option>
-                                <option value="2026" selected>2026</option>
-                                <option value="2027">2027</option>
-                            </select>
-
-                            <button class="btn btn-sm btn-secondary" onclick="loadAutopaySummary()">🔄 Refresh</button>
-                        </div>
-
-                        <div class="table-container" style="margin-top: 20px;">
-                            <table id="autopaySummaryTable">
-                                <thead>
-                                    <tr>
-                                        <th>No</th>
-                                        <th>KUA</th>
-                                        <th style="text-align: right;">Listrik</th>
-                                        <th style="text-align: right;">Telepon/Internet</th>
-                                        <th style="text-align: right;">Total</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="autopaySummaryTableBody">
-                                    <tr><td colspan="5" style="text-align: center;">Pilih bulan dan tahun</td></tr>
-                                </tbody>
-                                <tfoot id="autopaySummaryTableFoot"></tfoot>
-                            </table>
                         </div>
                     </div>
                 </div>

@@ -14,9 +14,6 @@ let uploadConfig = {
     maxFileSize: 10  // MB
 };
 
-// ✅ Realisasi data for autopay integration
-let realisasiData = {};
-
 // ✅ LOCAL CACHE - persisten selama session, tidak ada timeout
 const localCache = {
     budgets: null,
@@ -27,114 +24,6 @@ const localCache = {
     riwayat: null,
     lastUpdate: {}
 };
-
-// Autopay state
-let autopayConfigs = [];
-let autopayData = [];
-let autopayKUAList = [];
-
-// ===== AUTOPAY HELPER FUNCTIONS =====
-
-/**
- * Get autopay info for a specific KUA, month, year, and POS
- * Returns nominal dari Autopay_Realisasi atau 0 jika belum ada data
- */
-async function getAutopayInfo(kua, tahun, bulan, kodePos) {
-    try {
-        console.log('[AUTOPAY_INFO] Getting autopay info:', { kua, tahun, bulan, kodePos });
-        
-        // Check if autopay enabled for this KUA and POS
-        const isEnabled = await autopayApiCall('isAutopayEnabled', { kua, kodePos });
-        
-        if (!isEnabled) {
-            console.log('[AUTOPAY_INFO] Autopay not enabled');
-            return { enabled: false, nominal: 0 };
-        }
-        
-        // Get autopay realisasi data
-        const autopayDataList = await autopayApiCall('getAutopayRealisasi', { tahun, bulan });
-        
-        // Find data for this KUA and POS
-        const autopayRecord = autopayDataList.find(r => 
-            String(r.kua).trim() === String(kua).trim() && 
-            String(r.kodePos).trim() === String(kodePos).trim()
-        );
-        
-        const nominal = autopayRecord ? (parseFloat(autopayRecord.nominal) || 0) : 0;
-        
-        console.log('[AUTOPAY_INFO] Result:', { enabled: true, nominal });
-        
-        return {
-            enabled: true,
-            nominal: nominal,
-            keterangan: autopayRecord ? autopayRecord.keterangan : ''
-        };
-        
-    } catch (error) {
-        console.error('[AUTOPAY_INFO] Error:', error);
-        return { enabled: false, nominal: 0 };
-    }
-}
-
-/**
- * Generate HTML untuk tampilkan info autopay
- * Untuk dipakai di detail view / modal
- */
-function generateAutopayInfoHTML(autopayInfo, posName) {
-    if (!autopayInfo || !autopayInfo.enabled) {
-        return '';
-    }
-    
-    return `
-        <div style="margin-top: 10px; padding: 12px; background: linear-gradient(135deg, #E3F2FD 0%, #BBDEFB 100%); 
-                    border-left: 4px solid #2196F3; border-radius: 6px;">
-            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
-                <span style="background: white; color: #1976D2; padding: 4px 10px; 
-                             border-radius: 4px; font-weight: bold; font-size: 11px;">
-                    🤖 AUTOPAY - DIBAYAR VIA SAKTI
-                </span>
-            </div>
-            <div style="display: flex; justify-content: space-between; align-items: center; 
-                       padding: 8px; background: white; border-radius: 4px;">
-                <div>
-                    <small style="color: #666; display: block; font-size: 11px; margin-bottom: 4px;">
-                        ℹ️ POS ini menggunakan Autopay. Admin input nominal via SAKTI.
-                    </small>
-                    <div style="color: #1976D2; font-size: 13px; font-weight: 500;">
-                        Nominal Autopay:
-                    </div>
-                </div>
-                <strong style="color: #1976D2; font-size: 18px;">
-                    ${formatCurrency(autopayInfo.nominal)}
-                </strong>
-            </div>
-            ${autopayInfo.keterangan ? `
-                <div style="margin-top: 8px; padding: 6px 8px; background: #FFF9C4; 
-                           border-radius: 4px; border-left: 3px solid #FBC02D;">
-                    <small style="color: #F57C00; font-size: 11px;">
-                        <strong>Keterangan:</strong> ${autopayInfo.keterangan}
-                    </small>
-                </div>
-            ` : ''}
-        </div>
-    `;
-}
-
-/**
- * Check if a POS code is autopay-eligible
- */
-function isAutopayPOS(kodePos) {
-    return kodePos === '522111' || kodePos === '522112';
-}
-
-/**
- * Get POS name for autopay POS
- */
-function getAutopayPOSName(kodePos) {
-    if (kodePos === '522111') return 'Belanja Langganan Listrik';
-    if (kodePos === '522112') return 'Belanja Langganan Telepon / Internet';
-    return '';
-}
 
 // ✅ Function untuk update cache dengan data baru
 function updateLocalCache(key, data) {
@@ -289,15 +178,10 @@ async function preloadAllData() {
             );
         }
         
-        // 3. RPDs
+        // 3. RPDs - ❌ DISABLED AUTO-LOAD untuk Admin (harus manual click Load Data)
+        // CATATAN: Operator KUA tetap auto-load untuk kemudahan akses
         if (currentUser.role === 'Admin') {
-            promises.push(
-                apiCall('getRPDs', { year: currentYear }).then(data => {
-                    updateLocalCache('rpds', sortByMonth(data));
-                    console.log('[PRELOAD] ✅ RPDs loaded:', data.length);
-                    return data;
-                })
-            );
+            console.log('[PRELOAD] ⏭️  RPDs - SKIP (Admin harus klik Load Data)');
         } else {
             promises.push(
                 apiCall('getRPDs', { 
@@ -334,15 +218,9 @@ async function preloadAllData() {
             );
         }
         
-        // 5. Verifikasi (untuk Admin)
+        // 5. Verifikasi - ❌ DISABLED AUTO-LOAD untuk Admin (harus manual click Load Data)
         if (currentUser.role === 'Admin') {
-            promises.push(
-                apiCall('getRealisasis', { year: currentYear }).then(data => {
-                    updateLocalCache('verifikasi', data);
-                    console.log('[PRELOAD] ✅ Verifikasi data loaded:', data.length);
-                    return data;
-                })
-            );
+            console.log('[PRELOAD] ⏭️  Verifikasi - SKIP (Admin harus klik Load Data)');
             
             // ✅ FIX ISSUE #5: Preload RPD Config untuk Admin
             promises.push(
@@ -398,13 +276,6 @@ function showDashboard() {
         currentPage = 'dashboardPage';
         showPage('dashboardPage');
     });
-    // Show/hide autopay filter based on role
-    // Filter should only be visible for Admin in Laporan page
-    const includeAutopayFilterContainer = document.getElementById('includeAutopayFilterContainer');
-    if (includeAutopayFilterContainer) {
-        // Always hide in Realisasi page (will be shown only in Laporan via other code)
-        includeAutopayFilterContainer.style.display = 'none';
-    }
 }
 
 function populateYearFilters() {
@@ -471,7 +342,6 @@ function buildNavMenu() {
             { id: 'budgetingPage', label: 'Budget' },
             { id: 'rpdPage', label: 'Lihat RPD' },
             { id: 'verifikasiPage', label: 'Verifikasi' },
-            { id: 'autopayPage', label: 'Autopay' },
             { id: 'laporanPage', label: 'Laporan' },
             { id: 'rpdConfigPage', label: 'Konfigurasi' }
         ];
@@ -516,8 +386,51 @@ function isCacheValid(cacheKey) {
     return (Date.now() - cache.timestamp) < cache.ttl;
 }
 
+
+
+
 // Auto-refresh status realisasi setiap 30 detik jika ada yang pending
 let realisasiStatusPoller = null;
+
+// ✅ FIX: Store for realisasi objects to avoid embedding large data in HTML attributes
+const realisasiDataStore = new Map();
+
+// ✅ FIX: Sanitize filename to prevent special characters issues
+// Removes/replaces characters that can cause problems in HTML/JS
+function sanitizeFileName(fileName) {
+    if (!fileName) return fileName;
+    
+    // Get file extension
+    const lastDot = fileName.lastIndexOf('.');
+    const name = lastDot > 0 ? fileName.substring(0, lastDot) : fileName;
+    const ext = lastDot > 0 ? fileName.substring(lastDot) : '';
+    
+    // Replace problematic characters
+    let sanitized = name
+        .replace(/'/g, '') // Remove single quotes
+        .replace(/"/g, '') // Remove double quotes
+        .replace(/`/g, '') // Remove backticks
+        .replace(/\\/g, '-') // Replace backslash
+        .replace(/\//g, '-') // Replace forward slash
+        .replace(/[<>:"|?*]/g, '') // Remove Windows forbidden chars
+        .replace(/\s+/g, '_') // Replace spaces with underscore
+        .replace(/[^\w\-_.]/g, '') // Remove other special chars except dash, underscore, dot
+        .replace(/_+/g, '_') // Replace multiple underscores with single
+        .replace(/^_|_$/g, ''); // Remove leading/trailing underscores
+    
+    // Limit length (keep it reasonable)
+    if (sanitized.length > 100) {
+        sanitized = sanitized.substring(0, 100);
+    }
+    
+    // Add timestamp prefix to ensure uniqueness
+    const timestamp = Date.now();
+    const sanitizedFull = `${timestamp}_${sanitized}${ext}`;
+    
+    console.log('[SANITIZE] Original:', fileName, '→ Sanitized:', sanitizedFull);
+    
+    return sanitizedFull;
+}
 
 function stopRealisasiPolling() {
     if (realisasiStatusPoller) {
@@ -563,25 +476,9 @@ function navigateTo(pageId) {
                 // ✅ Start polling HANYA untuk halaman realisasi
                 startRealisasiPolling();
                 break;
-            case 'autopayPage':
-                if (currentUser.role === 'Admin') {
-                    loadAutopayConfig();
-                }
-                break;
             case 'verifikasiPage':
                 if (currentUser.role === 'Admin') {
                     loadVerifikasi();
-                }
-                break;
-            case 'laporanPage':
-                // ... existing code ...
-                
-                // Show autopay filter only for Admin in Laporan page
-                if (user.role === 'Admin') {
-                    const filterContainer = document.getElementById('includeAutopayFilterContainer');
-                    if (filterContainer) {
-                        filterContainer.style.display = 'inline';
-                    }
                 }
                 break;
         }
@@ -613,6 +510,7 @@ function showPage(pageId) {
     stopRealisasiPolling();
     stopVerifikasiAutoRefresh();
     
+    // ===== RPD PAGE SETUP =====
     if (pageId === 'rpdPage') {
         const kuaFilter = document.getElementById('rpdKUAFilter');
         const btnCreateRPD = document.getElementById('btnCreateRPD');
@@ -621,154 +519,65 @@ function showPage(pageId) {
         if (currentUser.role === 'Admin') {
             if (kuaFilter) {
                 kuaFilter.style.display = 'block';
-                
                 kuaFilter.innerHTML = '<option value="">Semua KUA</option>' + 
                     APP_CONFIG.KUA_LIST.map(kua => `<option value="${kua}">${kua}</option>`).join('');
-                
-                console.log('[RPD] KUA filter populated with', APP_CONFIG.KUA_LIST.length, 'options');
+                console.log('[RPD] KUA filter populated');
             }
             if (btnCreateRPD) btnCreateRPD.style.display = 'none';
             thKUA.forEach(th => th.style.display = 'table-cell');
+            
+            // ❌ NO AUTO-LOAD untuk Admin
+            console.log('[RPD] Admin - waiting for manual Load Data click');
         } else {
-            // Operator: Hide KUA filter, show create button, hide KUA column
+            // Operator
             if (kuaFilter) kuaFilter.style.display = 'none';
             if (btnCreateRPD) btnCreateRPD.style.display = 'inline-block';
             thKUA.forEach(th => th.style.display = 'none');
+            
+            // ✅ Auto-load untuk Operator
+            loadRPDsWithFilters();
         }
     }
 
+    // ===== VERIFIKASI PAGE SETUP =====
     if (pageId === 'verifikasiPage') {
-        loadVerifikasi();
-        if (currentUser.role === 'Admin') {
-            startVerifikasiAutoRefresh();
-        }
-        
-        // ✅ FIX ISSUE #4: Populate verifikasi KUA filter
+        // Populate KUA filter
         const verifikasiKUAFilter = document.getElementById('verifikasiKUAFilter');
         if (verifikasiKUAFilter) {
-            // ✅ Populate tanpa cek length
             verifikasiKUAFilter.innerHTML = '<option value="">Semua KUA</option>' +
                 APP_CONFIG.KUA_LIST.map(kua => `<option value="${kua}">${kua}</option>`).join('');
-            
             console.log('[VERIFIKASI] KUA filter populated');
         }
         
-        // ✅ FIX ISSUE #4: Ensure event listeners are attached
-        const verifikasiYearFilter = document.getElementById('verifikasiYearFilter');
-        const verifikasiStatusFilter = document.getElementById('verifikasiStatusFilter');
-        
-        if (verifikasiYearFilter) {
-            // Remove old listener if exists
-            verifikasiYearFilter.onchange = null;
-            // Add new listener
-            verifikasiYearFilter.addEventListener('change', function() {
-                console.log('[VERIFIKASI] Year filter changed to:', this.value);
-                loadVerifikasi(true); // Force refresh
-            });
-        }
-        
-        if (verifikasiKUAFilter) {
-            verifikasiKUAFilter.onchange = null;
-            verifikasiKUAFilter.addEventListener('change', function() {
-                console.log('[VERIFIKASI] KUA filter changed to:', this.value);
-                loadVerifikasi(); // Use cache, just re-filter
-            });
-        }
-        
-        if (verifikasiStatusFilter) {
-            verifikasiStatusFilter.onchange = null;
-            verifikasiStatusFilter.addEventListener('change', function() {
-                console.log('[VERIFIKASI] Status filter changed to:', this.value);
-                loadVerifikasi(); // Use cache, just re-filter
-            });
+        if (currentUser.role === 'Admin') {
+            // ❌ NO AUTO-LOAD untuk Admin
+            console.log('[VERIFIKASI] Admin - waiting for manual Load Data click');
+            startVerifikasiAutoRefresh();
         }
     }
     
-    // ✅ FIX: Setup realisasiPage event listeners
+    // ===== REALISASI PAGE SETUP =====
     if (pageId === 'realisasiPage') {
-        const realisasiYearFilter = document.getElementById('realisasiYearFilter');
-        
-        if (realisasiYearFilter) {
-            // Remove old listener if exists
-            realisasiYearFilter.onchange = null;
-            // Add new listener
-            realisasiYearFilter.addEventListener('change', function() {
-                console.log('[REALISASI] Year filter changed to:', this.value);
-                loadRealisasis(true); // Force refresh with new year
-            });
+        loadRealisasis(false);
+        if (currentUser.role === 'Operator KUA') {
+            startRealisasiPolling();
+            updateRealisasiButtonState();
         }
     }
     
-    // ✅ FIX: Setup budgetingPage event listeners
+    // ===== BUDGETING PAGE SETUP =====
     if (pageId === 'budgetingPage') {
-        const budgetYearFilter = document.getElementById('budgetYearFilter');
-        
-        if (budgetYearFilter) {
-            // Remove old listener if exists
-            budgetYearFilter.onchange = null;
-            // Add new listener
-            budgetYearFilter.addEventListener('change', function() {
-                console.log('[BUDGET] Year filter changed to:', this.value);
-                loadBudgets(true); // Force refresh with new year
-            });
-        }
+        loadBudgets(false);
     }
     
-    // Load data for specific pages
-    switch(pageId) {
-        case 'dashboardPage':
-            loadDashboardStats();
-            break;
-        case 'budgetingPage':
-            // ✅ FIX: Use cache, data already preloaded
-            loadBudgets(false); // false = use cache
-            break;
-        case 'rpdConfigPage':
-            // ✅ FIX ISSUE #5: Gunakan cache, tidak perlu fetch dari server lagi
-            console.log('[CONFIG] Loading config from cache');
-            loadRPDConfig(false);  // false = use cache
-            break;
-        case 'rpdPage':
-            loadRPDs();
-            break;
-        case 'realisasiPage':
-            // ✅ FIX ISSUE #6: Gunakan cache, tidak perlu fetch dari server lagi
-            loadRealisasis(false); // false = use cache
-            if (currentUser.role === 'Operator KUA') {
-                startRealisasiPolling();
-                // ✅ Update button state saat masuk halaman
-                updateRealisasiButtonState();
-            }
-            break;
-        case 'verifikasiPage':
-            loadVerifikasi();
-            if (currentUser.role === 'Admin') {
-                startVerifikasiAutoRefresh();
-            }
-            // Populate verifikasi KUA filter
-            const verifikasiKUAFilter = document.getElementById('verifikasiKUAFilter');
-            if (verifikasiKUAFilter && verifikasiKUAFilter.children.length === 1) {
-                verifikasiKUAFilter.innerHTML = '<option value="">Semua KUA</option>' +
-                    APP_CONFIG.KUA_LIST.map(kua => `<option value="${kua}">${kua}</option>`).join('');
-            }
-            break;
-        case 'laporanPage':
-            // Populate KUA selects for all export functions
-            const exportRPDPerYearKua = document.getElementById('exportRPDPerYearKua');
-            const exportRealisasiPerYearKua = document.getElementById('exportRealisasiPerYearKua');
-            
-            if (exportRPDPerYearKua && exportRPDPerYearKua.children.length === 1) {
-                exportRPDPerYearKua.innerHTML += APP_CONFIG.KUA_LIST.map(kua => 
-                    `<option value="${kua}">${kua}</option>`
-                ).join('');
-            }
-            
-            if (exportRealisasiPerYearKua && exportRealisasiPerYearKua.children.length === 1) {
-                exportRealisasiPerYearKua.innerHTML += APP_CONFIG.KUA_LIST.map(kua => 
-                    `<option value="${kua}">${kua}</option>`
-                ).join('');
-            }
-            break;
+    // ===== DASHBOARD PAGE SETUP =====
+    if (pageId === 'dashboardPage') {
+        loadDashboardStats();
+    }
+    
+    // ===== RPD CONFIG PAGE SETUP =====
+    if (pageId === 'rpdConfigPage') {
+        loadRPDConfig(false);
     }
 }
 
@@ -1535,31 +1344,36 @@ function displayRPDs(rpds) {
     const tbody = document.querySelector('#rpdTable tbody');
     const thKUA = document.querySelectorAll('.th-kua');
     
-    // ✅ FIX: READ FILTER VALUE
+    // ✅ FIX: READ FILTER VALUE (termasuk bulan)
     const kuaFilter = document.getElementById('rpdKUAFilter');
+    const monthFilter = document.getElementById('rpdMonthFilter');
     const yearFilter = document.getElementById('rpdYearFilter');
     
     const selectedKUA = kuaFilter ? kuaFilter.value : '';
+    const selectedMonth = monthFilter ? monthFilter.value : '';
     const selectedYear = yearFilter ? yearFilter.value : new Date().getFullYear();
     
     console.log('[RPD] Displaying with filters:', {
         kua: selectedKUA,
+        month: selectedMonth,
         year: selectedYear,
         role: currentUser.role
     });
     
-    // ✅ APPLY FILTERS
+    // ✅ APPLY FILTERS (termasuk bulan)
     let filteredData = rpds.filter(rpd => {
         let passKUA = !selectedKUA || rpd.kua === selectedKUA;
+        let passMonth = !selectedMonth || rpd.month === selectedMonth;
         let passYear = !selectedYear || rpd.year == selectedYear;
         
-        return passKUA && passYear;
+        return passKUA && passMonth && passYear;
     });
     
     console.log('[RPD] Filtered from', rpds.length, 'to', filteredData.length, 'records');
     
     if (filteredData.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="7" style="text-align: center;">Belum ada data RPD</td></tr>';
+        const colSpan = currentUser.role === 'Admin' ? '7' : '6';
+        tbody.innerHTML = `<tr><td colspan="${colSpan}" style="text-align: center;">Belum ada data RPD</td></tr>`;
         return;
     }
     
@@ -1606,7 +1420,7 @@ function displayRPDs(rpds) {
     `;
     
     tbody.innerHTML = rows + totalRow;
-    console.log('[RPD] Displayed', filteredData.length, 'records');
+    console.log('[RPD] Displayed', filteredData.length, 'records, Total:', formatCurrency(totalNominal));
 }
 
 // Handler untuk filter KUA change (Admin only)
@@ -1625,6 +1439,167 @@ function onRPDKUAFilterChange() {
         loadRPDs(true);
     }
 }
+
+// ===== NEW: Load RPDs with Filters Function =====
+async function loadRPDsWithFilters() {
+    console.log('[RPD] Loading RPDs with filters...');
+    showLoading();
+    
+    try {
+        const yearFilter = document.getElementById('rpdYearFilter');
+        const year = yearFilter ? yearFilter.value : new Date().getFullYear();
+        
+        let rpds;
+        
+        if (currentUser.role === 'Admin') {
+            // Admin - Get all KUA RPDs
+            rpds = await apiCall('getRPDs', { year: year });
+        } else {
+            // Operator - Get only own KUA
+            rpds = await apiCall('getRPDs', { kua: currentUser.kua, year: year });
+        }
+        
+        rpds = sortByMonth(rpds);
+        
+        // Update local cache
+        updateLocalCache('rpds', rpds);
+        
+        // Display dengan filter yang sudah dipilih
+        displayRPDs(rpds);
+        
+        hideLoading();
+        showNotification('Data RPD berhasil dimuat', 'success');
+    } catch (error) {
+        hideLoading();
+        console.error('[RPD ERROR]', error);
+        showNotification('Gagal memuat data RPD', 'error');
+    }
+}
+
+// ===== NEW: Sort RPD Table Function =====
+let rpdSortState = {
+    column: -1,
+    ascending: true
+};
+
+function sortRPDTable(columnIndex) {
+    console.log('[RPD SORT] Sorting column', columnIndex);
+    
+    const tbody = document.querySelector('#rpdTable tbody');
+    const rows = Array.from(tbody.querySelectorAll('tr:not(:last-child)')); // Exclude total row
+    
+    if (rows.length === 0 || (rows.length === 1 && rows[0].textContent.includes('Klik tombol'))) {
+        return; // No data to sort
+    }
+    
+    // Determine sort direction
+    if (rpdSortState.column === columnIndex) {
+        rpdSortState.ascending = !rpdSortState.ascending;
+    } else {
+        rpdSortState.column = columnIndex;
+        rpdSortState.ascending = true;
+    }
+    
+    // Adjust column index for Admin (has KUA column)
+    let actualColumnIndex = columnIndex;
+    if (currentUser.role === 'Admin' && columnIndex > 0) {
+        actualColumnIndex = columnIndex;
+    } else if (currentUser.role !== 'Admin' && columnIndex > 0) {
+        actualColumnIndex = columnIndex; // No adjustment needed
+    }
+    
+    // Month order for sorting
+    const monthOrder = {
+        'Januari': 1, 'Februari': 2, 'Maret': 3, 'April': 4,
+        'Mei': 5, 'Juni': 6, 'Juli': 7, 'Agustus': 8,
+        'September': 9, 'Oktober': 10, 'November': 11, 'Desember': 12
+    };
+    
+    // Sort rows
+    rows.sort((a, b) => {
+        let aValue, bValue;
+        
+        // Get cell content based on column
+        const aCells = a.querySelectorAll('td');
+        const bCells = b.querySelectorAll('td');
+        
+        if (currentUser.role === 'Admin') {
+            // For Admin: 0=No, 1=KUA, 2=Bulan, 3=Tahun, 4=Total, 5=Dibuat
+            switch(columnIndex) {
+                case 0: // No
+                    aValue = parseInt(aCells[0].textContent);
+                    bValue = parseInt(bCells[0].textContent);
+                    break;
+                case 1: // KUA
+                    aValue = aCells[1].textContent.trim();
+                    bValue = bCells[1].textContent.trim();
+                    break;
+                case 2: // Bulan
+                    aValue = monthOrder[aCells[2].textContent.trim()] || 0;
+                    bValue = monthOrder[bCells[2].textContent.trim()] || 0;
+                    break;
+                case 3: // Tahun
+                    aValue = parseInt(aCells[3].textContent);
+                    bValue = parseInt(bCells[3].textContent);
+                    break;
+                case 4: // Total
+                    aValue = parseFloat(aCells[4].textContent.replace(/[^0-9,-]/g, '').replace(',', '.')) || 0;
+                    bValue = parseFloat(bCells[4].textContent.replace(/[^0-9,-]/g, '').replace(',', '.')) || 0;
+                    break;
+                case 5: // Dibuat
+                    aValue = new Date(aCells[5].textContent.trim()).getTime() || 0;
+                    bValue = new Date(bCells[5].textContent.trim()).getTime() || 0;
+                    break;
+            }
+        } else {
+            // For Operator: 0=No, 1=Bulan, 2=Tahun, 3=Total, 4=Dibuat
+            switch(columnIndex) {
+                case 0: // No
+                    aValue = parseInt(aCells[0].textContent);
+                    bValue = parseInt(bCells[0].textContent);
+                    break;
+                case 2: // Bulan
+                    aValue = monthOrder[aCells[1].textContent.trim()] || 0;
+                    bValue = monthOrder[bCells[1].textContent.trim()] || 0;
+                    break;
+                case 3: // Tahun
+                    aValue = parseInt(aCells[2].textContent);
+                    bValue = parseInt(bCells[2].textContent);
+                    break;
+                case 4: // Total
+                    aValue = parseFloat(aCells[3].textContent.replace(/[^0-9,-]/g, '').replace(',', '.')) || 0;
+                    bValue = parseFloat(bCells[3].textContent.replace(/[^0-9,-]/g, '').replace(',', '.')) || 0;
+                    break;
+                case 5: // Dibuat
+                    aValue = new Date(aCells[4].textContent.trim()).getTime() || 0;
+                    bValue = new Date(bCells[4].textContent.trim()).getTime() || 0;
+                    break;
+            }
+        }
+        
+        // Compare
+        if (aValue < bValue) return rpdSortState.ascending ? -1 : 1;
+        if (aValue > bValue) return rpdSortState.ascending ? 1 : -1;
+        return 0;
+    });
+    
+    // Re-append rows (this will reorder them)
+    const totalRow = tbody.querySelector('tr:last-child');
+    tbody.innerHTML = '';
+    rows.forEach((row, index) => {
+        // Update No column
+        row.querySelector('td:first-child').textContent = index + 1;
+        tbody.appendChild(row);
+    });
+    
+    // Re-append total row
+    if (totalRow) {
+        tbody.appendChild(totalRow);
+    }
+    
+    console.log('[RPD SORT] Sorted', rows.length, 'rows by column', columnIndex, 'ascending:', rpdSortState.ascending);
+}
+
 
 async function showRPDModal(rpd = null) {
     console.log('[RPD MODAL]', rpd);
@@ -2213,15 +2188,7 @@ async function loadRealisasis(forceRefresh = false) {
             const yearFilter = document.getElementById('realisasiYearFilter');
             const year = yearFilter ? yearFilter.value : new Date().getFullYear();
             
-            // Get includeAutopay filter value
-            const includeAutopayEl = document.getElementById('includeAutopayFilter');
-            const includeAutopay = includeAutopayEl ? (includeAutopayEl.value === 'true') : false;
-
-            let realisasis = await apiCall('getRealisasis', { 
-                kua: currentUser.kua, 
-                year: year,
-                includeAutopay: includeAutopay
-            });
+            let realisasis = await apiCall('getRealisasis', { kua: currentUser.kua, year: year });
             realisasis = sortByMonth(realisasis);
             
             // ✅ Update local cache
@@ -2259,27 +2226,6 @@ async function updateRealisasiButtonState() {
         btnCreateRealisasi.title = 'Tambah Realisasi';
         
         console.log('[REALISASI] Button enabled - status open');
-    }
-}
-
-async function getAutopayTotal(tahun, bulan, kua) {
-    try {
-        const autopayData = await autopayApiCall('getAutopayRealisasi', { 
-            tahun: parseInt(tahun), 
-            bulan: parseInt(bulan) 
-        });
-        
-        // Filter for specific KUA
-        const kuaAutopay = autopayData.filter(r => r.kua === kua);
-        
-        // Sum all autopay nominals
-        const total = kuaAutopay.reduce((sum, r) => sum + (parseInt(r.nominal) || 0), 0);
-        
-        console.log(`[AUTOPAY_TOTAL] ${kua} ${tahun}-${bulan}: ${total}`);
-        return total;
-    } catch (error) {
-        console.error('[AUTOPAY_TOTAL] Error:', error);
-        return 0;
     }
 }
 
@@ -2340,74 +2286,7 @@ function displayRealisasis(realisasis) {
         </tr>
     `;
     
-    // Set innerHTML first
     tbody.innerHTML = rows + totalRow;
-    
-    // Add dual totals row for Operator (async)
-    if (currentUser.role === 'Operator KUA' && realisasis.length > 0) {
-        const totalRealisasi = realisasis.reduce((sum, r) => sum + (parseFloat(r.total) || 0), 0);
-        
-        // Calculate autopay total for displayed realisasis
-        Promise.all(
-            realisasis.map(r => getAutopayTotal(r.year, r.month, r.kua))
-        ).then(autopayTotals => {
-            const totalAutopay = autopayTotals.reduce((sum, t) => sum + t, 0);
-            const totalPencairan = totalRealisasi - totalAutopay;
-            
-            // Create totals row
-            const totalsRow = document.createElement('tr');
-            totalsRow.style.cssText = 'background: #f5f5f5; font-weight: bold; border-top: 2px solid #333;';
-            
-            // Label cell
-            const labelCell = document.createElement('td');
-            labelCell.colSpan = 3; // Columns: No, Bulan, Tahun
-            labelCell.style.cssText = 'text-align: right; padding: 12px;';
-            labelCell.innerHTML = `
-                <div style="margin-bottom: 4px;">Total Realisasi:</div>
-                ${totalAutopay > 0 ? `
-                    <div style="color: #F57C00; font-size: 12px; margin-bottom: 4px;">Dibayar via Autopay:</div>
-                    <div style="border-top: 1px solid #ccc; margin-top: 4px; padding-top: 4px;">Total Pencairan KUA:</div>
-                ` : ''}
-            `;
-            
-            // Amount cell
-            const amountCell = document.createElement('td');
-            amountCell.style.cssText = 'padding: 12px; text-align: right;';
-            amountCell.innerHTML = `
-                <div style="margin-bottom: 4px; color: #1976D2; font-size: 15px;">${formatCurrency(totalRealisasi)}</div>
-                ${totalAutopay > 0 ? `
-                    <div style="color: #F57C00; font-size: 12px; margin-bottom: 4px;">- ${formatCurrency(totalAutopay)}</div>
-                    <div style="border-top: 1px solid #ccc; margin-top: 4px; padding-top: 4px; color: #2E7D32; font-size: 16px;">
-                        ${formatCurrency(totalPencairan)}
-                    </div>
-                ` : ''}
-            `;
-            
-            // Status cell (empty)
-            const statusCell = document.createElement('td');
-            statusCell.innerHTML = '';
-            
-            // Date cell (empty)
-            const dateCell = document.createElement('td');
-            dateCell.innerHTML = '';
-            
-            // Action cell (empty)
-            const actionCell = document.createElement('td');
-            actionCell.innerHTML = '';
-            
-            // Append cells
-            totalsRow.appendChild(labelCell);
-            totalsRow.appendChild(amountCell);
-            totalsRow.appendChild(statusCell);
-            totalsRow.appendChild(dateCell);
-            totalsRow.appendChild(actionCell);
-            
-            // Append row to tbody
-            tbody.appendChild(totalsRow);
-        }).catch(error => {
-            console.error('[TOTALS] Error calculating autopay totals:', error);
-        });
-    }
 }
 
 async function showRealisasiModal(realisasi = null) {
@@ -2432,10 +2311,6 @@ async function showRealisasiModal(realisasi = null) {
     
     // ✅ PERBAIKAN: Reset uploadedFiles (harus pakai 'let' di global, bukan 'const')
     uploadedFiles = [];
-    
-    // ✅ Reset global realisasiData for autopay
-    window.realisasiData = {};
-    console.log('[REALISASI MODAL] Reset realisasiData for autopay');
     
     // Get modal - FIXED: menggunakan let agar bisa di-reassign
     let modal = document.getElementById('realisasiModal');
@@ -2871,11 +2746,11 @@ async function showRealisasiModal(realisasi = null) {
         }
         
         // Collect data
-        const realisasiDataToSave = {};
+        const realisasiData = {};
         let total = 0;
         
         Object.entries(APP_CONFIG.BOP.RPD_PARAMETERS).forEach(([code, param]) => {
-            realisasiDataToSave[code] = {};
+            realisasiData[code] = {};
             
             param.items.forEach(item => {
                 const inputId = `realisasi_${code}_${item.replace(/\s+/g, '_')}`;
@@ -2883,38 +2758,13 @@ async function showRealisasiModal(realisasi = null) {
                 
                 if (input) {
                     const value = parseFormattedNumber(input.value);
-                    realisasiDataToSave[code][item] = value;
+                    realisasiData[code][item] = value;
                     total += value;
                 }
             });
         });
         
-        console.log('[REALISASI FORM] Data from inputs:', realisasiDataToSave);
-        console.log('[REALISASI FORM] Total from inputs:', total);
-        
-        // ✅ Merge with global realisasiData (contains autopay values)
-        if (window.realisasiData && Object.keys(window.realisasiData).length > 0) {
-            console.log('[AUTOPAY_SUBMIT] Merging autopay data:', window.realisasiData);
-            
-            Object.keys(window.realisasiData).forEach(code => {
-                if (!realisasiDataToSave[code]) {
-                    realisasiDataToSave[code] = {};
-                }
-                
-                Object.keys(window.realisasiData[code]).forEach(item => {
-                    const autopayValue = parseFloat(window.realisasiData[code][item]) || 0;
-                    
-                    // Only add if not already in collected data (because input was blocked)
-                    if (realisasiDataToSave[code][item] === undefined || realisasiDataToSave[code][item] === 0) {
-                        console.log('[AUTOPAY_SUBMIT] Adding autopay value:', { code, item, value: autopayValue });
-                        realisasiDataToSave[code][item] = autopayValue;
-                        total += autopayValue;
-                    }
-                });
-            });
-        }
-        
-        console.log('[REALISASI FORM] Final data to save (with autopay):', { realisasiData: realisasiDataToSave, total });
+        console.log('[REALISASI FORM] Data collected:', { realisasiData, total });
         
         // ✅ VALIDASI WAJIB UPLOAD DOKUMEN LPJ
         // Check if there are any files (existing or new)
@@ -3027,7 +2877,7 @@ async function showRealisasiModal(realisasi = null) {
             kua: currentUser.kua,
             month: month,
             year: year,
-            data: realisasiDataToSave,  // ✅ Use merged data with autopay
+            data: realisasiData,
             total: total,
             files: allFiles,  // ✅ Send all files
             userId: currentUser.id,
@@ -3237,8 +3087,8 @@ function loadRPDDataFromSelect() {
         if (parametersDiv) {
             parametersDiv.innerHTML = parametersHTML;
             
-            // Setup auto-format dan autopay block
-            setTimeout(async () => {
+            // Setup auto-format untuk input baru
+            setTimeout(() => {
                 console.log('[LOAD_RPD_DATA_FROM_SELECT] Setting up auto-format for new inputs');
                 setupAllAutoFormatInputs('.auto-format-number');
                 
@@ -3248,144 +3098,6 @@ function loadRPDDataFromSelect() {
                     input.addEventListener('input', calculateRealisasiTotal);
                 });
                 
-                // ✅ AUTOPAY BLOCK for Operator KUA
-                if (currentUser.role === 'Operator KUA') {
-                    const tahun = parseInt(year);
-                    const bulan = parseInt(month);
-                    const kua = currentUser.kua;
-                    
-                    console.log('[AUTOPAY_BLOCK] ========== START AUTOPAY BLOCK ==========');
-                    console.log('[AUTOPAY_BLOCK] User:', { kua, tahun, bulan, role: currentUser.role });
-                    
-                    // Check autopay for Listrik (522111) and Telepon (522112)
-                    const autopayPOS = [
-                        { kodePos: '522111', namaPos: 'Belanja Langganan Listrik' },
-                        { kodePos: '522112', namaPos: 'Belanja Langganan Telepon / Internet' }
-                    ];
-                    
-                    // Process autopay check sequentially for each POS
-                    for (const pos of autopayPOS) {
-                        try {
-                            console.log('[AUTOPAY_BLOCK] Processing POS:', pos.kodePos);
-                            
-                            // Call both APIs in parallel
-                            const [isEnabled, autopayDataList] = await Promise.all([
-                                autopayApiCall('isAutopayEnabled', { kua: kua, kodePos: pos.kodePos }),
-                                autopayApiCall('getAutopayRealisasi', { tahun: tahun, bulan: bulan })
-                            ]);
-                            
-                            console.log('[AUTOPAY_BLOCK] POS', pos.kodePos, 'enabled:', isEnabled, 'type:', typeof isEnabled);
-                            console.log('[AUTOPAY_BLOCK] Autopay data list:', autopayDataList);
-                            
-                            if (!isEnabled) {
-                                console.log('[AUTOPAY_BLOCK] Autopay not enabled for', pos.kodePos);
-                                continue;
-                            }
-                            
-                            console.log('[AUTOPAY_BLOCK] ✅ Autopay ENABLED for', pos.kodePos);
-                            
-                            // Find autopay data for this KUA and POS
-                            const autopayRecord = autopayDataList.find(r => {
-                                const matchKua = String(r.kua).trim() === String(kua).trim();
-                                const matchPos = String(r.kodePos).trim() === String(pos.kodePos).trim();
-                                return matchKua && matchPos;
-                            });
-                            
-                            console.log('[AUTOPAY_BLOCK] Autopay record found:', autopayRecord);
-                            
-                            // Find input field for this POS code
-                            const inputField = document.querySelector(
-                                `.realisasi-input[data-code="${pos.kodePos}"]`
-                            );
-                            
-                            if (!inputField) {
-                                console.warn('[AUTOPAY_BLOCK] ⚠️ No input field found for POS', pos.kodePos);
-                                continue;
-                            }
-                            
-                            console.log('[AUTOPAY_BLOCK] Found input field for POS', pos.kodePos);
-                            
-                            const item = inputField.dataset.item;
-                            const container = inputField.parentElement;
-                            
-                            if (autopayRecord && autopayRecord.nominal > 0) {
-                                // Replace input with readonly autopay display
-                                console.log('[AUTOPAY_BLOCK] 🔒 BLOCKING input for', item, 'with nominal', autopayRecord.nominal);
-                                
-                                container.innerHTML = `
-                                    <div style="padding: 10px; background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%); 
-                                                border-radius: 6px; border: 2px solid #4CAF50;">
-                                        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
-                                            <span style="background: white; color: #4CAF50; padding: 4px 8px; 
-                                                         border-radius: 4px; font-weight: bold; font-size: 12px;">
-                                                🤖 DIBAYAR VIA SAKTI
-                                            </span>
-                                        </div>
-                                        <div style="background: white; padding: 10px; border-radius: 4px; margin-bottom: 8px;">
-                                            <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
-                                                <small style="color: #666;">Nominal:</small>
-                                                <strong style="color: #2E7D32; font-size: 16px;">
-                                                    ${formatCurrency(autopayRecord.nominal)}
-                                                </strong>
-                                            </div>
-                                            ${autopayRecord.keterangan ? `
-                                                <div style="border-top: 1px solid #e0e0e0; padding-top: 4px; margin-top: 4px;">
-                                                    <small style="color: #666;">Keterangan:</small>
-                                                    <div style="color: #333; font-size: 13px; margin-top: 2px;">
-                                                        ${autopayRecord.keterangan}
-                                                    </div>
-                                                </div>
-                                            ` : ''}
-                                        </div>
-                                        <div style="background: #FFF9C4; padding: 8px; border-radius: 4px; 
-                                                   border-left: 3px solid #F57C00;">
-                                            <small style="color: #E65100; font-size: 11px;">
-                                                ⚠️ POS ini tidak dapat diinput manual karena pembayaran 
-                                                dilakukan otomatis melalui sistem SAKTI (Autopay).
-                                            </small>
-                                        </div>
-                                    </div>
-                                `;
-                                
-                                // Store value in global realisasiData
-                                if (!window.realisasiData[pos.kodePos]) {
-                                    window.realisasiData[pos.kodePos] = {};
-                                }
-                                window.realisasiData[pos.kodePos][item] = autopayRecord.nominal;
-                                
-                                console.log('[AUTOPAY_BLOCK] ✅ Input blocked and value set:', window.realisasiData[pos.kodePos]);
-                                
-                            } else if (isEnabled && (!autopayRecord || autopayRecord.nominal === 0)) {
-                                // Autopay enabled but no data yet - disable input
-                                console.log('[AUTOPAY_BLOCK] ⚠️ Autopay enabled but no data - disabling input');
-                                
-                                inputField.disabled = true;
-                                inputField.placeholder = 'Menunggu input Admin via SAKTI';
-                                inputField.style.background = '#f5f5f5';
-                                inputField.style.cursor = 'not-allowed';
-                                
-                                // Add info message after input
-                                const infoDiv = document.createElement('div');
-                                infoDiv.style.cssText = 'grid-column: 1 / -1; padding: 8px; background: #E3F2FD; border-radius: 4px; margin-top: 5px;';
-                                infoDiv.innerHTML = `
-                                    <small style="color: #1976D2; font-size: 11px;">
-                                        ℹ️ POS ini menggunakan Autopay. Admin akan input nominal via SAKTI.
-                                    </small>
-                                `;
-                                container.parentElement.appendChild(infoDiv);
-                                
-                                console.log('[AUTOPAY_BLOCK] ✅ Input disabled');
-                            }
-                            
-                        } catch (error) {
-                            console.error('[AUTOPAY_BLOCK] ❌ Error processing POS', pos.kodePos, ':', error);
-                        }
-                    }
-                    
-                    console.log('[AUTOPAY_BLOCK] ========== END AUTOPAY BLOCK ==========');
-                }
-                
-                // Calculate total after autopay block
                 calculateRealisasiTotal();
             }, 100);
         }
@@ -3509,9 +3221,10 @@ async function submitRealisasi(e) {
         
         // Upload to drive
         const uploadResult = await apiCall('uploadFile', {
-          filename: file.name,
+          filename: sanitizeFileName(file.name), // ✅ FIX: Sanitize filename
           fileData: fileData,
-          mimeType: file.type
+          mimeType: file.type,
+          originalName: file.name // Keep original for display purposes
         });
         
         files.push(uploadResult);
@@ -3567,17 +3280,6 @@ async function continueToRealisasiForm() {
 async function showRealisasiForm(rpd, realisasi = null) {
     console.log('[REALISASI FORM] Showing form for RPD:', rpd);
     console.log('[REALISASI FORM] Existing realisasi:', realisasi);
-    
-    // ✅ Reset realisasiData for autopay
-    window.realisasiData = {};
-    console.log('[REALISASI FORM] Reset realisasiData');
-    
-    // ✅ Populate realisasiData from existing realisasi for edit mode
-    if (realisasi && realisasi.data) {
-        console.log('[REALISASI FORM] Populating realisasiData from existing realisasi');
-        window.realisasiData = JSON.parse(JSON.stringify(realisasi.data)); // Deep copy
-        console.log('[REALISASI FORM] Populated realisasiData:', window.realisasiData);
-    }
     
     // Get max file info from config
     let maxFileSize = '5';
@@ -3739,40 +3441,7 @@ async function showRealisasiInputs(rpd, realisasi = null) {
             <h4>${code} - ${param.name}</h4>`;
         
         Object.entries(items).forEach(([item, rpdValue]) => {
-            // ✅ Get realisasi value from existing data or default to 0
-            const realValue = (realisasi && realisasi.data && realisasi.data[code] && realisasi.data[code][item]) 
-                ? realisasi.data[code][item] 
-                : 0;
-            
-            // Check if this is an autopay pos (Listrik or Telepon)
-            const isAutopayPos = (code === '522111' || code === '522112');
-            let inputHTML = '';
-            
-            if (isAutopayPos && currentUser.role === 'Operator KUA') {
-                // ✅ Show input with autopay placeholder - will be replaced by autopay block
-                inputHTML = `
-                    <input type="text" 
-                        class="realisasi-input autopay-placeholder" 
-                        data-code="${code}" 
-                        data-item="${item}" 
-                        value="${realValue > 0 ? formatNumber(realValue) : ''}" 
-                        placeholder="⚡ Checking autopay..."
-                        oninput="formatInputNumber(this)"
-                        style="background: #fff3cd; border-color: #ffc107;">
-                `;
-            } else {
-                // ✅ Normal input for non-autopay or Admin - use text input with formatting
-                inputHTML = `
-                    <input type="text" 
-                        class="realisasi-input" 
-                        data-code="${code}" 
-                        data-item="${item}" 
-                        value="${realValue > 0 ? formatNumber(realValue) : ''}" 
-                        placeholder="0"
-                        oninput="formatInputNumber(this)">
-                `;
-            }
-            
+            const realValue = realisasiData[code] && realisasiData[code][item] ? realisasiData[code][item] : 0;
             parametersHTML += `
                 <div class="rpd-subitem" style="grid-template-columns: 2fr 1fr 1fr; gap: 10px;">
                     <label>${item}</label>
@@ -3780,7 +3449,14 @@ async function showRealisasiInputs(rpd, realisasi = null) {
                         <small style="display: block; color: #666; font-size: 11px;">RPD</small>
                         <strong style="color: #333;">${formatCurrency(rpdValue)}</strong>
                     </div>
-                    ${inputHTML}
+                    <input type="number" 
+                        class="realisasi-input" 
+                        data-code="${code}" 
+                        data-item="${item}" 
+                        value="${realValue}" 
+                        min="0"
+                        step="1000"
+                        placeholder="Realisasi">
                 </div>
             `;
         });
@@ -3789,164 +3465,6 @@ async function showRealisasiInputs(rpd, realisasi = null) {
     });
     
     document.getElementById('realisasiParameters').innerHTML = parametersHTML;
-    
-    // ✅ Autopay check for Operator KUA - FIXED with async/await
-    if (currentUser.role === 'Operator KUA') {
-        const tahun = parseInt(rpd.year);
-        const bulan = parseInt(rpd.month);
-        const kua = currentUser.kua;
-        
-        console.log('[AUTOPAY_BLOCK] ========== START AUTOPAY BLOCK ==========');
-        console.log('[AUTOPAY_BLOCK] User:', { kua, tahun, bulan, role: currentUser.role });
-        
-        // Check autopay for Listrik (522111) and Telepon (522112)
-        const autopayPOS = [
-            { kodePos: '522111', namaPos: 'Belanja Langganan Listrik' },
-            { kodePos: '522112', namaPos: 'Belanja Langganan Telepon / Internet' }
-        ];
-        
-        // ✅ Process autopay check sequentially for each POS
-        for (const pos of autopayPOS) {
-            try {
-                console.log('[AUTOPAY_BLOCK] Processing POS:', pos.kodePos);
-                
-                // ✅ Call both APIs in parallel
-                const [isEnabled, autopayDataList] = await Promise.all([
-                    autopayApiCall('isAutopayEnabled', { kua: kua, kodePos: pos.kodePos }),
-                    autopayApiCall('getAutopayRealisasi', { tahun: tahun, bulan: bulan })
-                ]);
-                
-                console.log('[AUTOPAY_BLOCK] POS', pos.kodePos, 'enabled:', isEnabled, 'type:', typeof isEnabled);
-                console.log('[AUTOPAY_BLOCK] Autopay data list:', autopayDataList);
-                
-                if (!isEnabled) {
-                    console.log('[AUTOPAY_BLOCK] Autopay not enabled for', pos.kodePos, '- allow normal input');
-                    continue; // Skip to next POS
-                }
-                
-                console.log('[AUTOPAY_BLOCK] ✅ Autopay ENABLED for', pos.kodePos);
-                
-                // Find autopay data for this KUA and POS
-                const autopayRecord = autopayDataList.find(r => {
-                    const matchKua = String(r.kua).trim() === String(kua).trim();
-                    const matchPos = String(r.kodePos).trim() === String(pos.kodePos).trim();
-                    console.log('[AUTOPAY_BLOCK] Comparing:', {
-                        record: { kua: r.kua, kodePos: r.kodePos },
-                        target: { kua, kodePos: pos.kodePos },
-                        match: matchKua && matchPos
-                    });
-                    return matchKua && matchPos;
-                });
-                
-                console.log('[AUTOPAY_BLOCK] Autopay record found:', autopayRecord);
-                
-                // ✅ Find all input fields for this POS code
-                const inputs = document.querySelectorAll(
-                    `.realisasi-input[data-code="${pos.kodePos}"]`
-                );
-                
-                console.log('[AUTOPAY_BLOCK] Found', inputs.length, 'input fields for POS', pos.kodePos);
-                
-                if (inputs.length === 0) {
-                    console.warn('[AUTOPAY_BLOCK] ⚠️ No input fields found for POS', pos.kodePos);
-                    console.log('[AUTOPAY_BLOCK] Available inputs:', 
-                        Array.from(document.querySelectorAll('.realisasi-input')).map(inp => ({
-                            id: inp.id,
-                            code: inp.dataset.code,
-                            item: inp.dataset.item
-                        }))
-                    );
-                }
-                
-                inputs.forEach(input => {
-                    const item = input.dataset.item;
-                    const container = input.parentElement;
-                    
-                    console.log('[AUTOPAY_BLOCK] Processing input:', { item, hasAutopayRecord: !!autopayRecord });
-                    
-                    if (autopayRecord && autopayRecord.nominal > 0) {
-                        // ✅ Replace input with readonly autopay display
-                        console.log('[AUTOPAY_BLOCK] 🔒 BLOCKING input for', item, 'with nominal', autopayRecord.nominal);
-                        
-                        container.innerHTML = `
-                            <div style="padding: 10px; background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%); 
-                                        border-radius: 6px; border: 2px solid #4CAF50;">
-                                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
-                                    <span style="background: white; color: #4CAF50; padding: 4px 8px; 
-                                                 border-radius: 4px; font-weight: bold; font-size: 12px;">
-                                        🤖 DIBAYAR VIA SAKTI
-                                    </span>
-                                </div>
-                                <div style="background: white; padding: 10px; border-radius: 4px; margin-bottom: 8px;">
-                                    <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
-                                        <small style="color: #666;">Nominal:</small>
-                                        <strong style="color: #2E7D32; font-size: 16px;">
-                                            ${formatCurrency(autopayRecord.nominal)}
-                                        </strong>
-                                    </div>
-                                    ${autopayRecord.keterangan ? `
-                                        <div style="border-top: 1px solid #e0e0e0; padding-top: 4px; margin-top: 4px;">
-                                            <small style="color: #666;">Keterangan:</small>
-                                            <div style="color: #333; font-size: 13px; margin-top: 2px;">
-                                                ${autopayRecord.keterangan}
-                                            </div>
-                                        </div>
-                                    ` : ''}
-                                </div>
-                                <div style="background: #FFF9C4; padding: 8px; border-radius: 4px; 
-                                           border-left: 3px solid #F57C00;">
-                                    <small style="color: #E65100; font-size: 11px;">
-                                        ⚠️ POS ini tidak dapat diinput manual karena pembayaran 
-                                        dilakukan otomatis melalui sistem SAKTI (Autopay).
-                                    </small>
-                                </div>
-                            </div>
-                        `;
-                        
-                        // ✅ Set value in realisasi data for auto-saving
-                        if (!window.realisasiData[pos.kodePos]) {
-                            window.realisasiData[pos.kodePos] = {};
-                        }
-                        window.realisasiData[pos.kodePos][item] = autopayRecord.nominal;
-                        
-                        console.log('[AUTOPAY_BLOCK] ✅ Input blocked and value set:', window.realisasiData[pos.kodePos]);
-                        
-                    } else if (isEnabled && (!autopayRecord || autopayRecord.nominal === 0)) {
-                        // ✅ Autopay enabled but no data yet - show info and disable
-                        console.log('[AUTOPAY_BLOCK] ⚠️ Autopay enabled but no data yet - disabling input');
-                        
-                        const infoDiv = document.createElement('div');
-                        infoDiv.style.cssText = 'padding: 8px; background: #E3F2FD; border-radius: 4px; margin-top: 5px;';
-                        infoDiv.innerHTML = `
-                            <small style="color: #1976D2; font-size: 11px;">
-                                ℹ️ POS ini menggunakan Autopay. Admin akan input nominal via SAKTI.
-                            </small>
-                        `;
-                        container.appendChild(infoDiv);
-                        
-                        // ✅ Disable input
-                        input.disabled = true;
-                        input.placeholder = 'Menunggu input Admin via SAKTI';
-                        input.style.background = '#f5f5f5';
-                        input.style.cursor = 'not-allowed';
-                        
-                        console.log('[AUTOPAY_BLOCK] ✅ Input disabled, waiting for admin input');
-                    }
-                });
-                
-            } catch (error) {
-                console.error('[AUTOPAY_BLOCK] ❌ Error processing POS', pos.kodePos, ':', error);
-            }
-        }
-        
-        console.log('[AUTOPAY_BLOCK] ========== END AUTOPAY BLOCK ==========');
-        
-        // ✅ Recalculate total after autopay block to include autopay amounts
-        setTimeout(() => {
-            calculateRealisasiTotal();
-            console.log('[AUTOPAY_BLOCK] Total recalculated after autopay block');
-        }, 100);
-    }
     
     // Calculate total on input change
     const inputs = document.querySelectorAll('.realisasi-input');
@@ -4040,46 +3558,15 @@ async function showRealisasiInputs(rpd, realisasi = null) {
             const realisasiDataToSave = {};
             let total = 0;
             
-            // ✅ STEP 1: Collect data from input fields (manual input)
             newForm.querySelectorAll('.realisasi-input').forEach(input => {
                 const code = input.dataset.code;
                 const item = input.dataset.item;
-                const value = parseFormattedNumber(input.value); // Use parseFormattedNumber instead of parseFloat
+                const value = parseFloat(input.value) || 0;
                 
                 if (!realisasiDataToSave[code]) realisasiDataToSave[code] = {};
                 realisasiDataToSave[code][item] = value;
                 total += value;
             });
-            
-            console.log('[REALISASI] Data from inputs:', realisasiDataToSave);
-            console.log('[REALISASI] Total from inputs:', total);
-            
-            // ✅ STEP 2: Add autopay data from global realisasiData variable
-            // This includes values that were blocked/disabled by autopay
-            if (realisasiData && Object.keys(realisasiData).length > 0) {
-                console.log('[AUTOPAY_SUBMIT] Merging autopay data:', realisasiData);
-                
-                Object.keys(realisasiData).forEach(code => {
-                    if (!realisasiDataToSave[code]) {
-                        realisasiDataToSave[code] = {};
-                    }
-                    
-                    Object.keys(realisasiData[code]).forEach(item => {
-                        const autopayValue = parseFloat(realisasiData[code][item]) || 0;
-                        
-                        // Only add autopay value if it's not already in realisasiDataToSave
-                        // (meaning the input was blocked and replaced with autopay display)
-                        if (realisasiDataToSave[code][item] === undefined) {
-                            console.log('[AUTOPAY_SUBMIT] Adding autopay value:', { code, item, value: autopayValue });
-                            realisasiDataToSave[code][item] = autopayValue;
-                            total += autopayValue;
-                        }
-                    });
-                });
-            }
-            
-            console.log('[REALISASI] Final data to save (with autopay):', realisasiDataToSave);
-            console.log('[REALISASI] Final total (with autopay):', total);
             
             try {
                 let newStatus = realisasi ? realisasi.status : 'Menunggu';
@@ -4290,7 +3777,7 @@ function displayUploadedFilesWithPreview() {
                 <div class="file-item" style="flex-direction: column; align-items: flex-start; padding: 15px; margin-bottom: 15px; background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 8px;">
                     <div style="display: flex; justify-content: space-between; width: 100%; align-items: center;">
                         <div>
-                            <span style="font-weight: 500;">📎 ${file.fileName}</span>
+                            <span style="font-weight: 500;">📎 ${file.originalName || file.fileName}</span>
                             <small style="display: block; color: #666; margin-top: 5px;">
                                 ${((file.size || 0) / 1024).toFixed(2)} KB
                                 ${hasFileId ? '<span style="color: #28a745; margin-left: 10px;">✓ Tersimpan</span>' : '<span style="color: #ffc107; margin-left: 10px;">⚠ Belum tersimpan</span>'}
@@ -4300,7 +3787,7 @@ function displayUploadedFilesWithPreview() {
                             ${hasFileId ? `
                                 <button type="button" class="btn btn-sm btn-info" onclick="window.open('${file.fileUrl}', '_blank')">Buka</button>
                             ` : ''}
-                            <button type="button" class="btn btn-danger btn-sm" onclick="removeFileConfirm(${index}, '${file.fileName.replace(/'/g, "\\'")}')">Hapus</button>
+                            <button type="button" class="btn btn-danger btn-sm" onclick="removeFileConfirm(${index})">Hapus</button>
                         </div>
                     </div>
                     ${previewHTML}
@@ -4511,10 +3998,18 @@ function removeUploadedFile(tempId) {
     }
 }
 
-function removeFileConfirm(index, fileName) {
+function removeFileConfirm(index) {
     const file = uploadedFiles[index];
     
-    let message = `Hapus file "${fileName}"?`;
+    if (!file) {
+        console.warn('[FILE] File not found at index:', index);
+        return;
+    }
+    
+    // ✅ FIX: Get fileName from the file object, use original name if available for display
+    const displayName = file.originalName || file.fileName || 'file';
+    
+    let message = `Hapus file "${displayName}"?`;
     if (file && file.fileId) {
         message += '\n\nCatatan: File akan dihapus dari daftar (file di Google Drive tetap ada).';
     }
@@ -4540,7 +4035,7 @@ function removeFile(index) {
     console.log('[FILE] ========== REMOVE FILE END ==========');
 }
 
-async function viewRealisasi(realisasi) {
+function viewRealisasi(realisasi) {
     console.log('[VIEW_REALISASI] Opening detail view');
     console.log('[VIEW_REALISASI] Realisasi data:', realisasi);
     console.log('[VIEW_REALISASI] Files:', realisasi.files);
@@ -4555,23 +4050,6 @@ async function viewRealisasi(realisasi) {
     
     // ✅ FIX BUG #3: Format detail dengan logic yang benar
     let detailHTML = '';
-    
-    // ✅ Get autopay info for autopay POS codes (async)
-    const autopayPOSCodes = ['522111', '522112'];
-    const autopayInfoMap = {};
-    
-    for (const code of autopayPOSCodes) {
-        if (realisasi.data[code]) {
-            const autopayInfo = await getAutopayInfo(
-                realisasi.kua,
-                parseInt(realisasi.year),
-                parseInt(realisasi.month),
-                code
-            );
-            autopayInfoMap[code] = autopayInfo;
-        }
-    }
-    
     Object.entries(realisasi.data).forEach(([code, items]) => {
         const param = APP_CONFIG.BOP.RPD_PARAMETERS[code];
         
@@ -4598,11 +4076,6 @@ async function viewRealisasi(realisasi) {
                     <strong style="font-size: 16px; color: #667eea;">${formatCurrency(nominalValue)}</strong>
                 </div>
             `;
-            
-            // ✅ Tampilkan autopay info jika POS ini adalah autopay
-            if (autopayInfoMap[code]) {
-                detailHTML += generateAutopayInfoHTML(autopayInfoMap[code], param.name);
-            }
         } else if (hasMultipleItems) {
             // ✅ Jika ada breakdown (multiple items), jangan tampilkan total parent
             detailHTML += `<h4>${code} - ${param.name}</h4>`;
@@ -4615,11 +4088,6 @@ async function viewRealisasi(realisasi) {
                     </div>
                 `;
             });
-            
-            // ✅ Tampilkan autopay info jika POS ini adalah autopay
-            if (autopayInfoMap[code]) {
-                detailHTML += generateAutopayInfoHTML(autopayInfoMap[code], param.name);
-            }
         } else {
             // ✅ Untuk kasus lainnya (seharusnya tidak ada)
             detailHTML += `<h4>${code} - ${param.name}</h4>`;
@@ -4631,11 +4099,6 @@ async function viewRealisasi(realisasi) {
                     </div>
                 `;
             });
-            
-            // ✅ Tampilkan autopay info jika POS ini adalah autopay
-            if (autopayInfoMap[code]) {
-                detailHTML += generateAutopayInfoHTML(autopayInfoMap[code], param.name);
-            }
         }
         
         detailHTML += `</div>`;
@@ -4805,72 +4268,10 @@ async function viewRealisasi(realisasi) {
                     <strong>${formatCurrency(realisasi.total)}</strong>
                 </div>
             </div>
-            
-            <!-- Dual Totals Placeholder -->
-            <div id="dualTotalsContainer"></div>
         </div>
     `;
     
     modal.classList.add('active');
-    
-    // Calculate and display dual totals (async)
-    getAutopayTotal(realisasi.year, realisasi.month, realisasi.kua).then(autopayTotal => {
-        const totalRealisasi = realisasi.total || 0;
-        const totalPencairan = totalRealisasi - autopayTotal;
-        
-        const totalsHTML = `
-            <div style="margin-top: 20px; padding: 15px; background: linear-gradient(to bottom, #f9f9f9, #ffffff); border-radius: 8px; border: 1px solid #e0e0e0; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-                <h4 style="margin: 0 0 15px 0; color: #333; font-size: 14px; border-bottom: 2px solid #1976D2; padding-bottom: 8px;">
-                    <i class="fas fa-calculator"></i> Ringkasan Total
-                </h4>
-                
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; padding: 10px; background: #E3F2FD; border-radius: 4px;">
-                    <strong style="color: #1565C0;">Total Realisasi:</strong>
-                    <strong style="color: #1976D2; font-size: 18px;">${formatCurrency(totalRealisasi)}</strong>
-                </div>
-                
-                ${autopayTotal > 0 ? `
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; padding: 10px; background: #FFF3E0; border-radius: 4px;">
-                        <span style="color: #E65100;">
-                            <i class="fas fa-robot"></i> Dibayar via Autopay:
-                        </span>
-                        <span style="color: #F57C00; font-size: 16px;">- ${formatCurrency(autopayTotal)}</span>
-                    </div>
-                    
-                    <div style="height: 1px; background: linear-gradient(to right, transparent, #ccc, transparent); margin: 15px 0;"></div>
-                    
-                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px; background: #E8F5E9; border-radius: 4px; border: 2px solid #4CAF50;">
-                        <strong style="color: #2E7D32; font-size: 16px;">
-                            <i class="fas fa-money-bill-wave"></i> Total Pencairan KUA:
-                        </strong>
-                        <strong style="color: #2E7D32; font-size: 20px;">${formatCurrency(totalPencairan)}</strong>
-                    </div>
-                    
-                    <div style="margin-top: 12px; padding: 10px; background: #FFFDE7; border-left: 4px solid #FBC02D; border-radius: 4px;">
-                        <small style="color: #F57C00; font-size: 11px; display: block; line-height: 1.5;">
-                            <i class="fas fa-info-circle"></i> 
-                            <strong>Total Pencairan KUA</strong> adalah jumlah yang sebenarnya diterima oleh KUA setelah dikurangi pembayaran yang dilakukan melalui sistem SAKTI (Autopay).
-                        </small>
-                    </div>
-                ` : `
-                    <div style="margin-top: 10px; padding: 10px; background: #E8F5E9; border-left: 4px solid #4CAF50; border-radius: 4px;">
-                        <small style="color: #2E7D32; font-size: 12px;">
-                            <i class="fas fa-check-circle"></i> 
-                            Tidak ada pembayaran autopay untuk periode ini. Total Pencairan sama dengan Total Realisasi.
-                        </small>
-                    </div>
-                `}
-            </div>
-        `;
-        
-        // Insert into modal
-        const container = document.getElementById('dualTotalsContainer');
-        if (container) {
-            container.innerHTML = totalsHTML;
-        }
-    }).catch(error => {
-        console.error('[DETAIL_TOTALS] Error:', error);
-    });
 }
 
 function editRealisasi(realisasi) {
@@ -4916,28 +4317,32 @@ async function loadVerifikasi(forceRefresh = false) {
 function displayVerifikasi(realisasis) {
     const tbody = document.querySelector('#verifikasiTable tbody');
     
-    // ✅ FIX: READ FILTER VALUES
+    // ✅ FIX: READ FILTER VALUES (termasuk bulan)
     const kuaFilter = document.getElementById('verifikasiKUAFilter');
+    const monthFilter = document.getElementById('verifikasiMonthFilter');
     const statusFilter = document.getElementById('verifikasiStatusFilter');
     const yearFilter = document.getElementById('verifikasiYearFilter');
     
     const selectedKUA = kuaFilter ? kuaFilter.value : '';
+    const selectedMonth = monthFilter ? monthFilter.value : '';
     const selectedStatus = statusFilter ? statusFilter.value : '';
     const selectedYear = yearFilter ? yearFilter.value : new Date().getFullYear();
     
     console.log('[VERIFIKASI] Displaying data with filters:', {
         kua: selectedKUA,
+        month: selectedMonth,
         status: selectedStatus,
         year: selectedYear
     });
     
-    // ✅ APPLY FILTERS
+    // ✅ APPLY FILTERS (termasuk bulan)
     let filteredData = realisasis.filter(real => {
         let passKUA = !selectedKUA || real.kua === selectedKUA;
+        let passMonth = !selectedMonth || real.month === selectedMonth;
         let passStatus = !selectedStatus || real.status === selectedStatus;
         let passYear = !selectedYear || real.year == selectedYear;
         
-        return passKUA && passStatus && passYear;
+        return passKUA && passMonth && passStatus && passYear;
     });
     
     console.log('[VERIFIKASI] Filtered from', realisasis.length, 'to', filteredData.length, 'records');
@@ -4964,9 +4369,12 @@ function displayVerifikasi(realisasis) {
             statusText = 'Ditolak';
         }
         
-        const realEscaped = JSON.stringify(real).replace(/"/g, '&quot;');
+        // ✅ FIX: Store realisasi in Map and pass only ID to avoid token errors
+        const realisasiId = real.id || `temp-${Date.now()}-${index}`;
+        realisasiDataStore.set(realisasiId, real);
         
         console.log('[VERIFIKASI] Row', index + 1, ':', {
+            id: realisasiId,
             kua: real.kua,
             month: real.month,
             year: real.year,
@@ -4986,7 +4394,7 @@ function displayVerifikasi(realisasis) {
             <td><span class="badge badge-${statusClass}">${statusText}</span></td>
             <td>
                 <div class="action-buttons">
-                    <button class="btn btn-sm" onclick='verifyRealisasi(${realEscaped})'>Verifikasi</button>
+                    <button class="btn btn-sm" onclick="verifyRealisasi('${realisasiId}')">Verifikasi</button>
                 </div>
             </td>
         </tr>
@@ -5001,9 +4409,8 @@ function displayVerifikasi(realisasis) {
         </tr>
     `;
     
-    // Set innerHTML first
     tbody.innerHTML = rows + totalRow;
-    console.log('[VERIFIKASI] Displayed', filteredData.length, 'records');
+    console.log('[VERIFIKASI] Displayed', filteredData.length, 'records, Total:', formatCurrency(totalNominal));
 }
 
 // ✅ Handler untuk filter changes (gunakan cache, hanya re-display)
@@ -5043,8 +4450,138 @@ function onVerifikasiFilterChange() {
     }
 }
 
+// ===== NEW: Load Verifikasi with Filters Function =====
+async function loadVerifikasiWithFilters() {
+    console.log('[VERIFIKASI] Loading verifikasi with filters...');
+    showLoading();
+    
+    try {
+        const yearFilter = document.getElementById('verifikasiYearFilter');
+        const year = yearFilter ? yearFilter.value : new Date().getFullYear();
+        
+        // Get all realisasis for the year
+        let realisasis = await apiCall('getRealisasis', { year: year });
+        
+        // Update local cache
+        updateLocalCache('verifikasi', realisasis);
+        
+        // Display dengan filter yang sudah dipilih
+        displayVerifikasi(realisasis);
+        
+        hideLoading();
+        showNotification('Data verifikasi berhasil dimuat', 'success');
+    } catch (error) {
+        hideLoading();
+        console.error('[VERIFIKASI ERROR]', error);
+        showNotification('Gagal memuat data verifikasi', 'error');
+    }
+}
+
+// ===== NEW: Sort Verifikasi Table Function =====
+let verifikasiSortState = {
+    column: -1,
+    ascending: true
+};
+
+function sortVerifikasiTable(columnIndex) {
+    console.log('[VERIFIKASI SORT] Sorting column', columnIndex);
+    
+    const tbody = document.querySelector('#verifikasiTable tbody');
+    const rows = Array.from(tbody.querySelectorAll('tr:not(:last-child)')); // Exclude total row
+    
+    if (rows.length === 0 || (rows.length === 1 && rows[0].textContent.includes('Klik tombol'))) {
+        return; // No data to sort
+    }
+    
+    // Determine sort direction
+    if (verifikasiSortState.column === columnIndex) {
+        verifikasiSortState.ascending = !verifikasiSortState.ascending;
+    } else {
+        verifikasiSortState.column = columnIndex;
+        verifikasiSortState.ascending = true;
+    }
+    
+    // Month order for sorting
+    const monthOrder = {
+        'Januari': 1, 'Februari': 2, 'Maret': 3, 'April': 4,
+        'Mei': 5, 'Juni': 6, 'Juli': 7, 'Agustus': 8,
+        'September': 9, 'Oktober': 10, 'November': 11, 'Desember': 12
+    };
+    
+    // Sort rows
+    rows.sort((a, b) => {
+        let aValue, bValue;
+        
+        const aCells = a.querySelectorAll('td');
+        const bCells = b.querySelectorAll('td');
+        
+        // For Verifikasi: 0=No, 1=KUA, 2=Bulan, 3=Tahun, 4=Total, 5=Dibuat, 6=Status
+        switch(columnIndex) {
+            case 0: // No
+                aValue = parseInt(aCells[0].textContent);
+                bValue = parseInt(bCells[0].textContent);
+                break;
+            case 1: // KUA
+                aValue = aCells[1].textContent.trim();
+                bValue = bCells[1].textContent.trim();
+                break;
+            case 2: // Bulan
+                aValue = monthOrder[aCells[2].textContent.trim()] || 0;
+                bValue = monthOrder[bCells[2].textContent.trim()] || 0;
+                break;
+            case 3: // Tahun
+                aValue = parseInt(aCells[3].textContent);
+                bValue = parseInt(bCells[3].textContent);
+                break;
+            case 4: // Total
+                aValue = parseFloat(aCells[4].textContent.replace(/[^0-9,-]/g, '').replace(',', '.')) || 0;
+                bValue = parseFloat(bCells[4].textContent.replace(/[^0-9,-]/g, '').replace(',', '.')) || 0;
+                break;
+            case 5: // Dibuat
+                aValue = new Date(aCells[5].textContent.trim()).getTime() || 0;
+                bValue = new Date(bCells[5].textContent.trim()).getTime() || 0;
+                break;
+            case 6: // Status
+                aValue = aCells[6].textContent.trim();
+                bValue = bCells[6].textContent.trim();
+                break;
+        }
+        
+        // Compare
+        if (aValue < bValue) return verifikasiSortState.ascending ? -1 : 1;
+        if (aValue > bValue) return verifikasiSortState.ascending ? 1 : -1;
+        return 0;
+    });
+    
+    // Re-append rows (this will reorder them)
+    const totalRow = tbody.querySelector('tr:last-child');
+    tbody.innerHTML = '';
+    rows.forEach((row, index) => {
+        // Update No column
+        row.querySelector('td:first-child').textContent = index + 1;
+        tbody.appendChild(row);
+    });
+    
+    // Re-append total row
+    if (totalRow) {
+        tbody.appendChild(totalRow);
+    }
+    
+    console.log('[VERIFIKASI SORT] Sorted', rows.length, 'rows by column', columnIndex, 'ascending:', verifikasiSortState.ascending);
+}
+
+
 // ===== VERIFIKASI REALISASI (UPDATED) =====
-function verifyRealisasi(realisasi) {
+function verifyRealisasi(realisasiId) {
+    // ✅ FIX: Retrieve realisasi from Map by ID
+    const realisasi = realisasiDataStore.get(realisasiId);
+    
+    if (!realisasi) {
+        console.error('[VERIFIKASI] Realisasi not found in store:', realisasiId);
+        showNotification('Data realisasi tidak ditemukan', 'error');
+        return;
+    }
+    
     console.log('[VERIFIKASI] Verifying realisasi:', realisasi);
     console.log('[VERIFIKASI] Files in realisasi:', realisasi.files);
     
@@ -5143,8 +4680,26 @@ function verifyRealisasi(realisasi) {
     }
     
     // ✅ FIX: Build files HTML dengan validasi yang benar
-    let filesHTML = '';
-    
+    let filesHTML = files.map(file => {
+        const isImage = file.mimeType && file.mimeType.startsWith('image/');
+        const previewUrl = getDrivePreviewUrl(file.fileUrl, file.mimeType);
+        
+        return `
+            <div class="file-item">
+                <strong>📎 ${file.fileName}</strong>
+                <button onclick="window.open('${file.fileUrl}', '_blank')">Buka File</button>
+                
+                ${isImage ? `
+                    <img src="${previewUrl}" 
+                         style="max-width: 100%; max-height: 400px;"
+                         onclick="window.open('${file.fileUrl}', '_blank')">
+                ` : `
+                    <p>Preview tidak tersedia. Klik "Buka File" untuk melihat.</p>
+                `}
+            </div>
+        `;
+    }).join('');
+
     if (Array.isArray(files) && files.length > 0) {
         console.log('[VERIFIKASI] Processing files for display:', files.length);
         
@@ -5165,16 +4720,19 @@ function verifyRealisasi(realisasi) {
                     const previewUrl = getDrivePreviewUrl(file.fileUrl, file.mimeType);
                     const fileId = file.fileId || file.fileUrl.match(/[-\w]{25,}/)?.[0];
                     
-                    console.log(`[VERIFIKASI] Preview URL for ${file.fileName}:`, previewUrl);
+                    // ✅ FIX: Use originalName if available (backward compatible)
+                    const displayName = file.originalName || file.fileName;
+                    
+                    console.log(`[VERIFIKASI] Preview URL for ${displayName}:`, previewUrl);
                     
                     return `
                         <div class="file-item" style="flex-direction: column; align-items: flex-start; padding: 15px; margin-bottom: 10px;">
                             <div style="display: flex; justify-content: space-between; width: 100%; margin-bottom: 10px;">
-                                <span style="font-weight: 500;">📎 ${file.fileName}</span>
+                                <span style="font-weight: 500;">📎 ${displayName}</span>
                                 <span class="file-size">(${formatFileSize(file.size)})</span>
                                 <div style="display: flex; gap: 5px;">
                                     <button type="button" class="btn btn-sm" onclick="window.open('${file.fileUrl}', '_blank')">Buka</button>
-                                    <button type="button" class="btn btn-sm btn-info" onclick="downloadDriveFile('${file.fileUrl}', '${file.fileName}')">Download</button>
+                                    <button type="button" class="btn btn-sm btn-info" onclick="downloadDriveFile('${file.fileUrl}', '${displayName}')">Download</button>
                                 </div>
                             </div>
                             ${isImage ? `
@@ -5196,7 +4754,7 @@ function verifyRealisasi(realisasi) {
                                     </div>
                                     <div class="image-viewer-wrapper" id="wrapper-${index}">
                                         <img src="${previewUrl}" 
-                                            alt="${file.fileName}" 
+                                            alt="${displayName}" 
                                             class="image-viewer-img"
                                             id="img-${index}"
                                             data-zoom="1"
@@ -5322,9 +4880,6 @@ function verifyRealisasi(realisasi) {
                         </div>
                         ` : ''}
                     </div>
-                    
-                    <!-- Dual Totals Placeholder -->
-                    <div id="verifikasiDualTotalsContainer"></div>
                 </div>
                 
                 <div class="verify-right">
@@ -5358,65 +4913,6 @@ function verifyRealisasi(realisasi) {
         initAllImageViewers();
         initAllPDFViewers();
     }, 100);
-    
-    // Calculate and display dual totals (async)
-    getAutopayTotal(realisasi.year, realisasi.month, realisasi.kua).then(autopayTotal => {
-        const totalRealisasi = realisasi.total || 0;
-        const totalPencairan = totalRealisasi - autopayTotal;
-        
-        const totalsHTML = `
-            <div style="margin-top: 20px; padding: 15px; background: linear-gradient(to bottom, #f9f9f9, #ffffff); border-radius: 8px; border: 1px solid #e0e0e0; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-                <h4 style="margin: 0 0 15px 0; color: #333; font-size: 14px; border-bottom: 2px solid #1976D2; padding-bottom: 8px;">
-                    <i class="fas fa-calculator"></i> Ringkasan Total Verifikasi
-                </h4>
-                
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; padding: 10px; background: #E3F2FD; border-radius: 4px;">
-                    <strong style="color: #1565C0;">Total Realisasi:</strong>
-                    <strong style="color: #1976D2; font-size: 18px;">${formatCurrency(totalRealisasi)}</strong>
-                </div>
-                
-                ${autopayTotal > 0 ? `
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; padding: 10px; background: #FFF3E0; border-radius: 4px;">
-                        <span style="color: #E65100;">
-                            <i class="fas fa-robot"></i> Dibayar via Autopay:
-                        </span>
-                        <span style="color: #F57C00; font-size: 16px;">- ${formatCurrency(autopayTotal)}</span>
-                    </div>
-                    
-                    <div style="height: 1px; background: linear-gradient(to right, transparent, #ccc, transparent); margin: 15px 0;"></div>
-                    
-                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px; background: #E8F5E9; border-radius: 4px; border: 2px solid #4CAF50;">
-                        <strong style="color: #2E7D32; font-size: 16px;">
-                            <i class="fas fa-money-bill-wave"></i> Total Pencairan KUA:
-                        </strong>
-                        <strong style="color: #2E7D32; font-size: 20px;">${formatCurrency(totalPencairan)}</strong>
-                    </div>
-                    
-                    <div style="margin-top: 12px; padding: 10px; background: #FFFDE7; border-left: 4px solid #FBC02D; border-radius: 4px;">
-                        <small style="color: #F57C00; font-size: 11px; display: block; line-height: 1.5;">
-                            <i class="fas fa-info-circle"></i> 
-                            <strong>Total Pencairan</strong> adalah jumlah yang sebenarnya dicairkan ke KUA setelah dikurangi pembayaran autopay yang dilakukan melalui SAKTI.
-                        </small>
-                    </div>
-                ` : `
-                    <div style="margin-top: 10px; padding: 10px; background: #E8F5E9; border-left: 4px solid #4CAF50; border-radius: 4px;">
-                        <small style="color: #2E7D32; font-size: 12px;">
-                            <i class="fas fa-check-circle"></i> 
-                            Tidak ada pembayaran autopay untuk periode ini. Total Pencairan sama dengan Total Realisasi.
-                        </small>
-                    </div>
-                `}
-            </div>
-        `;
-        
-        // Insert into modal
-        const container = document.getElementById('verifikasiDualTotalsContainer');
-        if (container) {
-            container.innerHTML = totalsHTML;
-        }
-    }).catch(error => {
-        console.error('[VERIFIKASI_MODAL_TOTALS] Error:', error);
-    });
     
     document.getElementById('verifyForm').addEventListener('submit', async (e) => {
         e.preventDefault();
@@ -6332,11 +5828,6 @@ function formatFileSize(bytes) {
     return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
 }
 
-function formatNumber(num) {
-    if (!num && num !== 0) return '';
-    return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
-}
-
 function formatNumberInput(input) {
     // Get raw value (tanpa separator)
     let value = input.value.replace(/\./g, '');
@@ -7083,6 +6574,12 @@ window.removeUploadedFile = removeUploadedFile;
 window.removeExistingFile = removeExistingFile;
 window.handleFileInputChange = handleFileInputChange;
 
+// ===== NEW: Expose Load Data & Sort Functions =====
+window.loadRPDsWithFilters = loadRPDsWithFilters;
+window.loadVerifikasiWithFilters = loadVerifikasiWithFilters;
+window.sortRPDTable = sortRPDTable;
+window.sortVerifikasiTable = sortVerifikasiTable;
+
 // Image Viewer Functions
 window.zoomIn = zoomIn;
 window.zoomOut = zoomOut;
@@ -7272,4 +6769,425 @@ window.zoomOutPDF = zoomOutPDF;
 window.rotatePDF = rotatePDF;
 window.resetPDF = resetPDF;
 window.initPDFViewer = initPDFViewer;
-window.initAllPDFViewers = initAllPDFViewers;
+window.initAllPDFViewers = initAllPDFViewers;// ===== BOP SCRIPT - ROMBAK TOTAL SISTEM FILTER =====
+// File: bop-script-fixed.js
+// Sistem baru dengan raw data storage dan filter yang lebih reliable
+
+// ===== GLOBAL RAW DATA STORAGE =====
+const rawData = {
+    rpds: [],
+    verifikasi: [],
+    budgets: []
+};
+
+// ===== MONTH ORDER FOR SORTING =====
+const MONTH_ORDER = {
+    'Januari': 1, 'Februari': 2, 'Maret': 3, 'April': 4,
+    'Mei': 5, 'Juni': 6, 'Juli': 7, 'Agustus': 8,
+    'September': 9, 'Oktober': 10, 'November': 11, 'Desember': 12
+};
+
+// ===== SORT STATE =====
+const sortState = {
+    rpd: { column: -1, ascending: true },
+    verifikasi: { column: -1, ascending: true },
+    budget: { column: -1, ascending: true }
+};
+
+// ===== FUNGSI UMUM: APPLY FILTER =====
+function applyFilters(data, filters) {
+    return data.filter(item => {
+        for (let key in filters) {
+            const filterValue = filters[key];
+            if (filterValue && item[key] !== filterValue) {
+                return false;
+            }
+        }
+        return true;
+    });
+}
+
+// ===== RPD: LOAD DATA WITH FILTERS =====
+async function loadRPDsWithFilters() {
+    console.log('[RPD] Loading with filters...');
+    showLoading();
+    
+    try {
+        const yearFilter = document.getElementById('rpdYearFilter');
+        const year = yearFilter ? yearFilter.value : new Date().getFullYear();
+        
+        let rpds;
+        
+        if (currentUser.role === 'Admin') {
+            rpds = await apiCall('getRPDs', { year: year });
+        } else {
+            rpds = await apiCall('getRPDs', { kua: currentUser.kua, year: year });
+        }
+        
+        // Simpan ke raw data
+        rawData.rpds = sortByMonth(rpds);
+        
+        // Display dengan filter yang dipilih
+        displayRPDsFiltered();
+        
+        hideLoading();
+        showNotification('Data RPD berhasil dimuat', 'success');
+    } catch (error) {
+        hideLoading();
+        console.error('[RPD ERROR]', error);
+        showNotification('Gagal memuat data RPD', 'error');
+    }
+}
+
+// ===== RPD: DISPLAY FILTERED =====
+function displayRPDsFiltered() {
+    const tbody = document.querySelector('#rpdTable tbody');
+    
+    // Ambil filter values
+    const kuaFilter = document.getElementById('rpdKUAFilter');
+    const monthFilter = document.getElementById('rpdMonthFilter');
+    const yearFilter = document.getElementById('rpdYearFilter');
+    
+    const filters = {};
+    if (kuaFilter && kuaFilter.value) filters.kua = kuaFilter.value;
+    if (monthFilter && monthFilter.value) filters.month = monthFilter.value;
+    if (yearFilter && yearFilter.value) filters.year = parseInt(yearFilter.value);
+    
+    console.log('[RPD] Applying filters:', filters);
+    
+    // Apply filters
+    let filteredData = applyFilters(rawData.rpds, filters);
+    
+    console.log('[RPD] Filtered:', filteredData.length, 'records');
+    
+    if (filteredData.length === 0) {
+        const colSpan = currentUser.role === 'Admin' ? '7' : '6';
+        tbody.innerHTML = `<tr><td colspan="${colSpan}" style="text-align: center;">Belum ada data RPD</td></tr>`;
+        return;
+    }
+    
+    // Calculate total
+    let totalNominal = 0;
+    
+    const rows = filteredData.map((rpd, index) => {
+        totalNominal += parseFloat(rpd.total || 0);
+        
+        const rpdEscaped = JSON.stringify(rpd).replace(/"/g, '&quot;');
+        const kuaColumn = currentUser.role === 'Admin' ? `<td>${rpd.kua || '-'}</td>` : '';
+        
+        return `
+        <tr>
+            <td>${index + 1}</td>
+            ${kuaColumn}
+            <td>${rpd.month || '-'}</td>
+            <td>${rpd.year || '-'}</td>
+            <td>${formatCurrency(rpd.total || 0)}</td>
+            <td>${rpd.createdAt ? formatDate(rpd.createdAt) : '-'}</td>
+            <td>
+                <div class="action-buttons">
+                    <button class="btn btn-sm" onclick='viewRPD(${rpdEscaped})'>Lihat</button>
+                    ${currentUser.role !== 'Admin' ? 
+                        `<button class="btn btn-sm" onclick='editRPD(${rpdEscaped})'>Edit</button>` : ''}
+                </div>
+            </td>
+        </tr>
+        `;
+    }).join('');
+    
+    const kuaTotalColumn = currentUser.role === 'Admin' ? '<td></td>' : '';
+    
+    const totalRow = `
+        <tr style="background: #f8f9fa; font-weight: bold;">
+            <td></td>
+            ${kuaTotalColumn}
+            <td colspan="2" style="text-align: right;">TOTAL:</td>
+            <td>${formatCurrency(totalNominal)}</td>
+            <td colspan="2"></td>
+        </tr>
+    `;
+    
+    tbody.innerHTML = rows + totalRow;
+    console.log('[RPD] Displayed', filteredData.length, 'records, Total:', formatCurrency(totalNominal));
+}
+
+// ===== RPD: SORT TABLE =====
+function sortRPDTable(columnIndex) {
+    console.log('[RPD SORT] Column', columnIndex);
+    
+    const tbody = document.querySelector('#rpdTable tbody');
+    const rows = Array.from(tbody.querySelectorAll('tr:not(:last-child)'));
+    
+    if (rows.length === 0 || (rows.length === 1 && rows[0].textContent.includes('Klik tombol'))) {
+        return;
+    }
+    
+    // Toggle sort direction
+    if (sortState.rpd.column === columnIndex) {
+        sortState.rpd.ascending = !sortState.rpd.ascending;
+    } else {
+        sortState.rpd.column = columnIndex;
+        sortState.rpd.ascending = true;
+    }
+    
+    // Sort
+    rows.sort((a, b) => {
+        const aCells = a.querySelectorAll('td');
+        const bCells = b.querySelectorAll('td');
+        let aValue, bValue;
+        
+        if (currentUser.role === 'Admin') {
+            // Admin: 0=No, 1=KUA, 2=Bulan, 3=Tahun, 4=Total, 5=Dibuat
+            switch(columnIndex) {
+                case 0: aValue = parseInt(aCells[0].textContent); bValue = parseInt(bCells[0].textContent); break;
+                case 1: aValue = aCells[1].textContent.trim(); bValue = bCells[1].textContent.trim(); break;
+                case 2: aValue = MONTH_ORDER[aCells[2].textContent.trim()] || 0; bValue = MONTH_ORDER[bCells[2].textContent.trim()] || 0; break;
+                case 3: aValue = parseInt(aCells[3].textContent); bValue = parseInt(bCells[3].textContent); break;
+                case 4: aValue = parseFloat(aCells[4].textContent.replace(/[^0-9,-]/g, '').replace(',', '.')) || 0; bValue = parseFloat(bCells[4].textContent.replace(/[^0-9,-]/g, '').replace(',', '.')) || 0; break;
+                case 5: aValue = new Date(aCells[5].textContent.trim()).getTime() || 0; bValue = new Date(bCells[5].textContent.trim()).getTime() || 0; break;
+            }
+        } else {
+            // Operator: 0=No, 1=Bulan, 2=Tahun, 3=Total, 4=Dibuat
+            switch(columnIndex) {
+                case 0: aValue = parseInt(aCells[0].textContent); bValue = parseInt(bCells[0].textContent); break;
+                case 2: aValue = MONTH_ORDER[aCells[1].textContent.trim()] || 0; bValue = MONTH_ORDER[bCells[1].textContent.trim()] || 0; break;
+                case 3: aValue = parseInt(aCells[2].textContent); bValue = parseInt(bCells[2].textContent); break;
+                case 4: aValue = parseFloat(aCells[3].textContent.replace(/[^0-9,-]/g, '').replace(',', '.')) || 0; bValue = parseFloat(bCells[3].textContent.replace(/[^0-9,-]/g, '').replace(',', '.')) || 0; break;
+                case 5: aValue = new Date(aCells[4].textContent.trim()).getTime() || 0; bValue = new Date(bCells[4].textContent.trim()).getTime() || 0; break;
+            }
+        }
+        
+        if (aValue < bValue) return sortState.rpd.ascending ? -1 : 1;
+        if (aValue > bValue) return sortState.rpd.ascending ? 1 : -1;
+        return 0;
+    });
+    
+    // Re-render
+    const totalRow = tbody.querySelector('tr:last-child');
+    tbody.innerHTML = '';
+    rows.forEach((row, index) => {
+        row.querySelector('td:first-child').textContent = index + 1;
+        tbody.appendChild(row);
+    });
+    if (totalRow) tbody.appendChild(totalRow);
+    
+    console.log('[RPD SORT] Done, direction:', sortState.rpd.ascending ? 'ASC' : 'DESC');
+}
+
+// ===== VERIFIKASI: LOAD DATA WITH FILTERS =====
+async function loadVerifikasiWithFilters() {
+    console.log('[VERIFIKASI] Loading with filters...');
+    showLoading();
+    
+    try {
+        const yearFilter = document.getElementById('verifikasiYearFilter');
+        const year = yearFilter ? yearFilter.value : new Date().getFullYear();
+        
+        let realisasis = await apiCall('getRealisasis', { year: year });
+        
+        // Simpan ke raw data
+        rawData.verifikasi = realisasis;
+        
+        // Display dengan filter yang dipilih
+        displayVerifikasiFiltered();
+        
+        hideLoading();
+        showNotification('Data verifikasi berhasil dimuat', 'success');
+    } catch (error) {
+        hideLoading();
+        console.error('[VERIFIKASI ERROR]', error);
+        showNotification('Gagal memuat data verifikasi', 'error');
+    }
+}
+
+// ===== VERIFIKASI: DISPLAY FILTERED =====
+function displayVerifikasiFiltered() {
+    const tbody = document.querySelector('#verifikasiTable tbody');
+    
+    // Ambil filter values
+    const kuaFilter = document.getElementById('verifikasiKUAFilter');
+    const monthFilter = document.getElementById('verifikasiMonthFilter');
+    const statusFilter = document.getElementById('verifikasiStatusFilter');
+    const yearFilter = document.getElementById('verifikasiYearFilter');
+    
+    const filters = {};
+    if (kuaFilter && kuaFilter.value) filters.kua = kuaFilter.value;
+    if (monthFilter && monthFilter.value) filters.month = monthFilter.value;
+    if (statusFilter && statusFilter.value) filters.status = statusFilter.value;
+    if (yearFilter && yearFilter.value) filters.year = parseInt(yearFilter.value);
+    
+    console.log('[VERIFIKASI] Applying filters:', filters);
+    
+    // Apply filters
+    let filteredData = applyFilters(rawData.verifikasi, filters);
+    
+    console.log('[VERIFIKASI] Filtered:', filteredData.length, 'records');
+    
+    if (filteredData.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="8" style="text-align: center;">Tidak ada data realisasi</td></tr>';
+        return;
+    }
+    
+    // Calculate total
+    let totalNominal = 0;
+    
+    const rows = filteredData.map((real, index) => {
+        totalNominal += parseFloat(real.total || 0);
+        
+        let statusClass = 'warning';
+        let statusText = 'Pending';
+        
+        if (real.status === 'Diterima') {
+            statusClass = 'success';
+            statusText = 'Diterima';
+        } else if (real.status === 'Ditolak') {
+            statusClass = 'danger';
+            statusText = 'Ditolak';
+        }
+        
+        const realisasiId = real.id || `temp-${Date.now()}-${index}`;
+        realisasiDataStore.set(realisasiId, real);
+        
+        return `
+        <tr>
+            <td>${index + 1}</td>
+            <td>${real.kua || '-'}</td>
+            <td>${real.month || '-'}</td>
+            <td>${real.year || '-'}</td>
+            <td>${formatCurrency(real.total || 0)}</td>
+            <td>${real.createdAt ? formatDate(real.createdAt) : '-'}</td>
+            <td><span class="badge badge-${statusClass}">${statusText}</span></td>
+            <td>
+                <div class="action-buttons">
+                    <button class="btn btn-sm" onclick="verifyRealisasi('${realisasiId}')">Verifikasi</button>
+                </div>
+            </td>
+        </tr>
+        `;
+    }).join('');
+    
+    const totalRow = `
+        <tr style="background: #f8f9fa; font-weight: bold;">
+            <td colspan="4" style="text-align: right;">TOTAL:</td>
+            <td>${formatCurrency(totalNominal)}</td>
+            <td colspan="3"></td>
+        </tr>
+    `;
+    
+    tbody.innerHTML = rows + totalRow;
+    console.log('[VERIFIKASI] Displayed', filteredData.length, 'records, Total:', formatCurrency(totalNominal));
+}
+
+// ===== VERIFIKASI: SORT TABLE =====
+function sortVerifikasiTable(columnIndex) {
+    console.log('[VERIFIKASI SORT] Column', columnIndex);
+    
+    const tbody = document.querySelector('#verifikasiTable tbody');
+    const rows = Array.from(tbody.querySelectorAll('tr:not(:last-child)'));
+    
+    if (rows.length === 0 || (rows.length === 1 && rows[0].textContent.includes('Klik tombol'))) {
+        return;
+    }
+    
+    // Toggle sort direction
+    if (sortState.verifikasi.column === columnIndex) {
+        sortState.verifikasi.ascending = !sortState.verifikasi.ascending;
+    } else {
+        sortState.verifikasi.column = columnIndex;
+        sortState.verifikasi.ascending = true;
+    }
+    
+    // Sort
+    rows.sort((a, b) => {
+        const aCells = a.querySelectorAll('td');
+        const bCells = b.querySelectorAll('td');
+        let aValue, bValue;
+        
+        // 0=No, 1=KUA, 2=Bulan, 3=Tahun, 4=Total, 5=Dibuat, 6=Status
+        switch(columnIndex) {
+            case 0: aValue = parseInt(aCells[0].textContent); bValue = parseInt(bCells[0].textContent); break;
+            case 1: aValue = aCells[1].textContent.trim(); bValue = bCells[1].textContent.trim(); break;
+            case 2: aValue = MONTH_ORDER[aCells[2].textContent.trim()] || 0; bValue = MONTH_ORDER[bCells[2].textContent.trim()] || 0; break;
+            case 3: aValue = parseInt(aCells[3].textContent); bValue = parseInt(bCells[3].textContent); break;
+            case 4: aValue = parseFloat(aCells[4].textContent.replace(/[^0-9,-]/g, '').replace(',', '.')) || 0; bValue = parseFloat(bCells[4].textContent.replace(/[^0-9,-]/g, '').replace(',', '.')) || 0; break;
+            case 5: aValue = new Date(aCells[5].textContent.trim()).getTime() || 0; bValue = new Date(bCells[5].textContent.trim()).getTime() || 0; break;
+            case 6: aValue = aCells[6].textContent.trim(); bValue = bCells[6].textContent.trim(); break;
+        }
+        
+        if (aValue < bValue) return sortState.verifikasi.ascending ? -1 : 1;
+        if (aValue > bValue) return sortState.verifikasi.ascending ? 1 : -1;
+        return 0;
+    });
+    
+    // Re-render
+    const totalRow = tbody.querySelector('tr:last-child');
+    tbody.innerHTML = '';
+    rows.forEach((row, index) => {
+        row.querySelector('td:first-child').textContent = index + 1;
+        tbody.appendChild(row);
+    });
+    if (totalRow) tbody.appendChild(totalRow);
+    
+    console.log('[VERIFIKASI SORT] Done, direction:', sortState.verifikasi.ascending ? 'ASC' : 'DESC');
+}
+
+// ===== BUDGET: SORT TABLE =====
+function sortBudgetTable(columnIndex) {
+    console.log('[BUDGET SORT] Column', columnIndex);
+    
+    const tbody = document.querySelector('#budgetTable tbody');
+    const rows = Array.from(tbody.querySelectorAll('tr'));
+    
+    if (rows.length === 0) return;
+    
+    // Toggle sort direction
+    if (sortState.budget.column === columnIndex) {
+        sortState.budget.ascending = !sortState.budget.ascending;
+    } else {
+        sortState.budget.column = columnIndex;
+        sortState.budget.ascending = true;
+    }
+    
+    // Sort
+    rows.sort((a, b) => {
+        const aCells = a.querySelectorAll('td');
+        const bCells = b.querySelectorAll('td');
+        let aValue, bValue;
+        
+        // 0=No, 1=KUA, 2=Tahun, 3=Budget, 4=TotalRPD, 5=TotalRealisasi, 6=SisaBudget
+        switch(columnIndex) {
+            case 0: aValue = parseInt(aCells[0].textContent); bValue = parseInt(bCells[0].textContent); break;
+            case 1: aValue = aCells[1].textContent.trim(); bValue = bCells[1].textContent.trim(); break;
+            case 2: aValue = parseInt(aCells[2].textContent); bValue = parseInt(bCells[2].textContent); break;
+            case 3: aValue = parseFloat(aCells[3].textContent.replace(/[^0-9,-]/g, '').replace(',', '.')) || 0; bValue = parseFloat(bCells[3].textContent.replace(/[^0-9,-]/g, '').replace(',', '.')) || 0; break;
+            case 4: aValue = parseFloat(aCells[4].textContent.replace(/[^0-9,-]/g, '').replace(',', '.')) || 0; bValue = parseFloat(bCells[4].textContent.replace(/[^0-9,-]/g, '').replace(',', '.')) || 0; break;
+            case 5: aValue = parseFloat(aCells[5].textContent.replace(/[^0-9,-]/g, '').replace(',', '.')) || 0; bValue = parseFloat(bCells[5].textContent.replace(/[^0-9,-]/g, '').replace(',', '.')) || 0; break;
+            case 6: aValue = parseFloat(aCells[6].textContent.replace(/[^0-9,-]/g, '').replace(',', '.')) || 0; bValue = parseFloat(bCells[6].textContent.replace(/[^0-9,-]/g, '').replace(',', '.')) || 0; break;
+        }
+        
+        if (aValue < bValue) return sortState.budget.ascending ? -1 : 1;
+        if (aValue > bValue) return sortState.budget.ascending ? 1 : -1;
+        return 0;
+    });
+    
+    // Re-render
+    tbody.innerHTML = '';
+    rows.forEach((row, index) => {
+        row.querySelector('td:first-child').textContent = index + 1;
+        tbody.appendChild(row);
+    });
+    
+    console.log('[BUDGET SORT] Done, direction:', sortState.budget.ascending ? 'ASC' : 'DESC');
+}
+
+// ===== EXPOSE TO WINDOW =====
+window.loadRPDsWithFilters = loadRPDsWithFilters;
+window.displayRPDsFiltered = displayRPDsFiltered;
+window.sortRPDTable = sortRPDTable;
+
+window.loadVerifikasiWithFilters = loadVerifikasiWithFilters;
+window.displayVerifikasiFiltered = displayVerifikasiFiltered;
+window.sortVerifikasiTable = sortVerifikasiTable;
+
+window.sortBudgetTable = sortBudgetTable;
+
+console.log('[BOP FIXED] ✅ New filter system loaded');
