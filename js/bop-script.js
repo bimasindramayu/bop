@@ -516,6 +516,9 @@ function isCacheValid(cacheKey) {
     return (Date.now() - cache.timestamp) < cache.ttl;
 }
 
+
+
+
 // Auto-refresh status realisasi setiap 30 detik jika ada yang pending
 let realisasiStatusPoller = null;
 
@@ -6204,6 +6207,12 @@ async function downloadRealisasiPerYear(format) {
     const kua = document.getElementById('realisasiYearKUA').value;
     const year = document.getElementById('realisasiYearOnly').value;
     
+    // ✅ Get checkbox value untuk include/exclude autopay
+    const includeAutopayCheckbox = document.getElementById('includeAutopayCheckbox');
+    const includeAutopay = includeAutopayCheckbox ? includeAutopayCheckbox.checked : false;
+    
+    console.log('[REPORTS] Include Autopay:', includeAutopay);
+    
     if (!year) {
         showNotification('Pilih tahun terlebih dahulu', 'warning');
         return;
@@ -6213,7 +6222,8 @@ async function downloadRealisasiPerYear(format) {
         const result = await apiCall('exportRealisasiPerYear', {
             kua: kua || null,
             year: year,
-            format: format
+            format: format,
+            includeAutopay: includeAutopay  // ✅ Send to backend
         });
         
         downloadBase64File(result.fileData, result.fileName, result.mimeType);
@@ -6229,6 +6239,12 @@ async function downloadRealisasiDetailYear(format) {
     
     const year = document.getElementById('realisasiDetailYearOnly').value;
     
+    // ✅ Get checkbox value untuk include/exclude autopay
+    const includeAutopayCheckbox = document.getElementById('includeAutopayCheckbox');
+    const includeAutopay = includeAutopayCheckbox ? includeAutopayCheckbox.checked : false;
+    
+    console.log('[REPORTS] Include Autopay:', includeAutopay);
+    
     if (!year) {
         showNotification('Pilih tahun terlebih dahulu', 'warning');
         return;
@@ -6237,7 +6253,8 @@ async function downloadRealisasiDetailYear(format) {
     try {
         const result = await apiCall('exportRealisasiDetailYear', {
             year: year,
-            format: format
+            format: format,
+            includeAutopay: includeAutopay  // ✅ Send to backend
         });
         
         downloadBase64File(result.fileData, result.fileName, result.mimeType);
@@ -6348,12 +6365,19 @@ async function downloadRealisasiPerYear(format) {
     const kua = document.getElementById('exportRealisasiPerYearKua').value;
     const year = document.getElementById('exportRealisasiPerYearYear').value;
     
+    // ✅ Get checkbox value untuk include/exclude autopay
+    const includeAutopayCheckbox = document.getElementById('includeAutopayCheckbox');
+    const includeAutopay = includeAutopayCheckbox ? includeAutopayCheckbox.checked : false;
+    
+    console.log('[REPORTS] Realisasi per Year - Include Autopay:', includeAutopay);
+    
     try {
         showLoading();
         const result = await apiCall('exportRealisasiPerYear', {
             kua: kua,
             year: parseInt(year),
-            format: format
+            format: format,
+            includeAutopay: includeAutopay  // ✅ Send to backend
         });
         
         window.downloadFile(result.fileData, result.fileName, result.mimeType);
@@ -6369,11 +6393,18 @@ async function downloadRealisasiPerYear(format) {
 async function downloadRealisasiDetailYear(format) {
     const year = document.getElementById('exportRealisasiDetailYear').value;
     
+    // ✅ Get checkbox value untuk include/exclude autopay
+    const includeAutopayCheckbox = document.getElementById('includeAutopayCheckbox');
+    const includeAutopay = includeAutopayCheckbox ? includeAutopayCheckbox.checked : false;
+    
+    console.log('[REPORTS] Realisasi Detail Year - Include Autopay:', includeAutopay);
+    
     try {
         showLoading();
         const result = await apiCall('exportRealisasiDetailYear', {
             year: parseInt(year),
-            format: format
+            format: format,
+            includeAutopay: includeAutopay  // ✅ Send to backend
         });
         
         window.downloadFile(result.fileData, result.fileName, result.mimeType);
