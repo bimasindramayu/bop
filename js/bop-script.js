@@ -681,15 +681,19 @@ function displayDashboardStats(stats) {
     const totalRealisasi = parseFloat(stats.totalRealisasi) || parseFloat(stats.realisasi) || 0;
     const sisaBudget = budget - totalRealisasi;
     
-    // ✅ FIX: Handle pending count dengan benar
-    const pendingCount = parseInt(stats.pendingVerifikasi) || parseInt(stats.menungguVerifikasi) || 0;
+    // ✅ FIX: Handle pending/waiting count — terima semua field yang mungkin
+    const waitingCount = parseInt(stats.realisasiWaiting) || parseInt(stats.pendingVerifikasi) || parseInt(stats.menungguVerifikasi) || 0;
+    const approvedCount = parseInt(stats.realisasiApproved) || 0;
+    const paidCount = parseInt(stats.realisasiPaid) || 0;
     
     console.log('[DASHBOARD] Normalized values:', { 
         budget, 
         totalRPD, 
         totalRealisasi, 
         sisaBudget,
-        pendingCount 
+        waitingCount,
+        approvedCount,
+        paidCount
     });
     
     let statsHtml = '';
@@ -711,18 +715,25 @@ function displayDashboardStats(stats) {
                     <div class="stat-value">${formatCurrency(totalRPD)}</div>
                 </div>
             </div>
-            <div class="stat-card">
+            <div class="stat-card success">
                 <div class="stat-icon">✅</div>
                 <div class="stat-info">
-                    <div class="stat-label">Total Realisasi</div>
+                    <div class="stat-label">Total Realisasi (Approved)</div>
                     <div class="stat-value">${formatCurrency(totalRealisasi)}</div>
                 </div>
             </div>
-            <div class="stat-card">
+            <div class="stat-card warning">
                 <div class="stat-icon">⏳</div>
                 <div class="stat-info">
                     <div class="stat-label">Menunggu Verifikasi</div>
-                    <div class="stat-value">${pendingCount} Realisasi</div>
+                    <div class="stat-value">${waitingCount} Realisasi</div>
+                </div>
+            </div>
+            <div class="stat-card" style="background: linear-gradient(135deg, #17a2b8 0%, #138496 100%);">
+                <div class="stat-icon">💵</div>
+                <div class="stat-info">
+                    <div class="stat-label">Total Paid</div>
+                    <div class="stat-value">${paidCount} Realisasi</div>
                 </div>
             </div>
         `;
@@ -743,20 +754,32 @@ function displayDashboardStats(stats) {
                     <div class="stat-value">${formatCurrency(totalRPD)}</div>
                 </div>
             </div>
-            <div class="stat-card">
+            <div class="stat-card success">
                 <div class="stat-icon">✅</div>
                 <div class="stat-info">
-                    <div class="stat-label">Total Realisasi</div>
+                    <div class="stat-label">Total Realisasi (Approved)</div>
                     <div class="stat-value">${formatCurrency(totalRealisasi)}</div>
                 </div>
             </div>
-            <div class="stat-card">
+            <div class="stat-card warning">
+                <div class="stat-icon">⏳</div>
+                <div class="stat-info">
+                    <div class="stat-label">Menunggu Verifikasi</div>
+                    <div class="stat-value">${waitingCount} Realisasi</div>
+                </div>
+            </div>
+            <div class="stat-card" style="background: linear-gradient(135deg, #17a2b8 0%, #138496 100%);">
+                <div class="stat-icon">💵</div>
+                <div class="stat-info">
+                    <div class="stat-label">Total Paid</div>
+                    <div class="stat-value">${paidCount} Realisasi</div>
+                </div>
+            </div>
+            <div class="stat-card ${sisaBudget >= 0 ? '' : 'danger'}">
                 <div class="stat-icon">💵</div>
                 <div class="stat-info">
                     <div class="stat-label">Sisa Budget</div>
-                    <div class="stat-value" style="color: ${sisaBudget >= 0 ? '#28a745' : '#dc3545'}">
-                        ${formatCurrency(sisaBudget)}
-                    </div>
+                    <div class="stat-value">${formatCurrency(sisaBudget)}</div>
                 </div>
             </div>
         `;
@@ -803,10 +826,14 @@ function updateDashboardFromCache() {
             return yearMatch && kuaMatch;
         }) : [];
         
-        const totalRealisasi = filteredRealisasi.reduce((sum, r) => sum + (parseFloat(r.total) || 0), 0);
+        const totalRealisasi = filteredRealisasi
+            .filter(r => normalizeStatus(r.status) === STATUS.APPROVED || normalizeStatus(r.status) === STATUS.PAID)
+            .reduce((sum, r) => sum + (parseFloat(r.total) || 0), 0);
         
-        // Count pending verifikasi
-        const pendingCount = filteredRealisasi.filter(r => normalizeStatus(r.status) === STATUS.WAITING).length;
+        // Count status breakdown
+        const waitingCount = filteredRealisasi.filter(r => normalizeStatus(r.status) === STATUS.WAITING).length;
+        const approvedCount = filteredRealisasi.filter(r => normalizeStatus(r.status) === STATUS.APPROVED).length;
+        const paidCount = filteredRealisasi.filter(r => normalizeStatus(r.status) === STATUS.PAID).length;
         
         const calculatedStats = {
             budget: budgetTotal,
@@ -815,8 +842,11 @@ function updateDashboardFromCache() {
             pagu: totalRPD,
             totalRealisasi: totalRealisasi,
             realisasi: totalRealisasi,
-            pendingVerifikasi: pendingCount,
-            menungguVerifikasi: pendingCount
+            realisasiWaiting: waitingCount,
+            pendingVerifikasi: waitingCount,
+            menungguVerifikasi: waitingCount,
+            realisasiApproved: approvedCount,
+            realisasiPaid: paidCount
         };
         
         console.log('[DASHBOARD] Calculated stats from cache:', calculatedStats);
@@ -2290,10 +2320,9 @@ function displayRealisasis(realisasis) {
     
     const rows = realisasis.map((real, index) => {
         totalNominal += parseFloat(real.total || 0);
-        {
+        
         let statusClass = getStatusBadgeClass(real.status);
         let statusText = getStatusLabel(real.status);
-        }
         
         const realEscaped = JSON.stringify(real).replace(/"/g, '&quot;');
         
@@ -4611,7 +4640,7 @@ function sortVerifikasiTable(columnIndex) {
 
 
 // ===== VERIFIKASI REALISASI (UPDATED) =====
-function verifyRealisasi(realisasiId) {
+async function verifyRealisasi(realisasiId) {
     // ✅ FIX: Retrieve realisasi from Map by ID
     const realisasi = realisasiDataStore.get(realisasiId);
     
@@ -4624,12 +4653,17 @@ function verifyRealisasi(realisasiId) {
     console.log('[VERIFIKASI] Verifying realisasi:', realisasi);
     console.log('[VERIFIKASI] Files in realisasi:', realisasi.files);
     
-    // ✅ Ambil data RPD dari local cache (tidak perlu API call lagi)
+    // ✅ Ambil data RPD dari local cache — untuk Admin, fetch on-demand jika belum ada
     let rpdData = null;
     let rpdTotal = 0;
     
     const cachedRPDs = getLocalCache('rpds');
-    if (cachedRPDs && Array.isArray(cachedRPDs)) {
+    
+    // Cek apakah cache RPD sudah punya data KUA yang dimaksud
+    const hasRPDForKUA = cachedRPDs && Array.isArray(cachedRPDs) && 
+        cachedRPDs.some(r => r.kua === realisasi.kua);
+    
+    if (hasRPDForKUA) {
         console.log('[VERIFIKASI] Using cached RPDs:', cachedRPDs.length, 'records');
         
         // Cari RPD dengan KUA, bulan, dan tahun yang sama
@@ -4643,12 +4677,48 @@ function verifyRealisasi(realisasiId) {
             rpdTotal = parseFloat(rpdData.total || 0);
             console.log('[VERIFIKASI] Found matching RPD from cache:', rpdData);
         } else {
-            console.log('[VERIFIKASI] No matching RPD found in cache for', realisasi.kua, realisasi.month, realisasi.year);
+            console.log('[VERIFIKASI] No matching RPD for', realisasi.kua, realisasi.month, realisasi.year);
         }
+        
+        // Lanjut tampilkan modal
+        showVerifyModal(realisasi, rpdData, rpdTotal);
+        
     } else {
-        console.log('[VERIFIKASI] No cached RPDs available');
+        // ✅ Admin: RPD belum di-cache untuk KUA ini, fetch on-demand
+        console.log('[VERIFIKASI] RPDs not in cache for KUA:', realisasi.kua, '— fetching...');
+        showLoading();
+        
+        try {
+            const rpds = await apiCall('getRPDs', { 
+                kua: realisasi.kua, 
+                year: realisasi.year 
+            });
+            
+            // Gabungkan ke cache yang ada (tanpa replace seluruh cache)
+            const existingRPDs = cachedRPDs || [];
+            const mergedRPDs = [...existingRPDs.filter(r => r.kua !== realisasi.kua), ...rpds];
+            updateLocalCache('rpds', mergedRPDs);
+            
+            rpdData = rpds.find(rpd => 
+                rpd.month === realisasi.month && 
+                rpd.year == realisasi.year
+            );
+            
+            if (rpdData) {
+                rpdTotal = parseFloat(rpdData.total || 0);
+                console.log('[VERIFIKASI] RPD fetched on-demand:', rpdData);
+            }
+        } catch (e) {
+            console.warn('[VERIFIKASI] Failed to fetch RPDs on-demand:', e);
+        }
+        
+        hideLoading();
+        showVerifyModal(realisasi, rpdData, rpdTotal);
     }
-    
+}
+
+// ✅ Extracted: build & show verify modal (called after RPD lookup, sync or async)
+function showVerifyModal(realisasi, rpdData, rpdTotal) {
     let modal = document.getElementById('modal');
     if (!modal) {
         modal = document.createElement('div');

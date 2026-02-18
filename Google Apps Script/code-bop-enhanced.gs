@@ -441,7 +441,8 @@ function getDashboardStatsOptimized(data) {
       sisaBudget: 0,
       realisasiWaiting: 0,
       realisasiApproved: 0,
-      realisasiRejected: 0
+      realisasiRejected: 0,
+      realisasiPaid: 0
     };
     
     // ✅ Calculate budget (single loop)
@@ -459,14 +460,18 @@ function getDashboardStatsOptimized(data) {
     }
     
     // ✅ Calculate realisasi (single loop)
+    // A=ID(0), B=KUA(1), C=Bulan(2), D=RPD_ID(3), E=Tahun(4), F=Total(5), G=Data(6), H=Files(7), I=Status(8)
     for (let i = 1; i < realisasiRows.length; i++) {
       if ((!kua || realisasiRows[i][1] === kua) && realisasiRows[i][4] == year) {
-        const total = parseFloat(realisasiRows[i][7]) || 0;
-        const status = realisasiRows[i][8];
+        const total = parseFloat(realisasiRows[i][5]) || 0;  // ✅ F: Total (index 5, bukan 7)
+        const status = realisasiRows[i][8];                  // ✅ I: Status (index 8)
         
         if (normalizeStatusEnhanced(status) === 'Approved') {
           stats.totalRealisasi += total;
           stats.realisasiApproved++;
+        } else if (normalizeStatusEnhanced(status) === 'Paid') {
+          stats.totalRealisasi += total;  // Paid juga masuk total realisasi
+          stats.realisasiPaid++;
         } else if (normalizeStatusEnhanced(status) === 'Waiting') {
           stats.realisasiWaiting++;
         } else if (normalizeStatusEnhanced(status) === 'Rejected') {
@@ -476,6 +481,12 @@ function getDashboardStatsOptimized(data) {
     }
     
     stats.sisaBudget = stats.totalBudget - stats.totalRealisasi;
+    // ✅ Alias fields agar frontend kompatibel dengan semua field names
+    stats.budget = stats.totalBudget;
+    stats.pagu = stats.totalRPD;
+    stats.realisasi = stats.totalRealisasi;
+    stats.pendingVerifikasi = stats.realisasiWaiting;
+    stats.menungguVerifikasi = stats.realisasiWaiting;
     
     Logger.log('[GET_DASHBOARD_STATS_OPT] ✓ Stats calculated');
     return successResponse(stats);
