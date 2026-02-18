@@ -2,6 +2,27 @@
 // File: code-bop.gs
 // Version: 4.0 - Complete with all fixes
 
+// ===== STATUS BACKWARD COMPATIBILITY =====
+/**
+ * Normalize status lama ke nilai baru.
+ * Data lama: 'Pending', 'Menunggu', 'Menunggu Verifikasi', 'Diterima', 'Ditolak'
+ * Data baru: 'Waiting', 'Approved', 'Rejected', 'Paid'
+ */
+function normalizeStatus(status) {
+  var map = {
+    'Pending':             'Waiting',
+    'Menunggu':            'Waiting',
+    'Menunggu Verifikasi': 'Waiting',
+    'Waiting':             'Waiting',
+    'Diterima':            'Approved',
+    'Approved':            'Approved',
+    'Ditolak':             'Rejected',
+    'Rejected':            'Rejected',
+    'Paid':                'Paid'
+  };
+  return map[status] || 'Waiting';
+}
+
 // ===== CONSTANTS =====
 const DRIVE_FOLDER_ID = '11quguPvN4NvdhEZVhiE4gTCIFS9LWw_6';
 const NAMA_KASI_BIMAS = 'H. ROSIDI, S.Ag., M.M';
@@ -275,8 +296,8 @@ function calculateTotalRealisasi(kua, year) {
     let total = 0;
     
     for (let i = 1; i < rows.length; i++) {
-      // Hanya hitung realisasi yang sudah Diterima
-      if (rows[i][1] === kua && rows[i][4] == year && rows[i][8] === 'Diterima') {
+      // Hanya hitung realisasi yang sudah Approved
+      if (rows[i][1] === kua && rows[i][4] == year && normalizeStatus(rows[i][8]) === 'Approved') {
         total += parseFloat(rows[i][5]) || 0;
       }
     }
@@ -573,7 +594,7 @@ function getRealisasis(data) {
           total: parseFloat(row[5]) || 0,  // F: Total ✅
           data: parsedData,        // G: Data (parsed)
           files: parsedFiles,      // H: Files (parsed) ✅
-          status: row[8] || 'Pending',  // I: Status
+          status: normalizeStatus(row[8] || 'Waiting'),  // I: Status
           notes: row[9] || '',     // J: Notes
           createdAt: safeFormatDate(row[10]),  // K: Created At
           updatedAt: safeFormatDate(row[11]),  // L: Updated At
@@ -666,7 +687,7 @@ function saveRealisasi(data) {
         data.total || 0,        // F: Total ✅
         realisasiData,          // G: Data (JSON)
         filesJSON,              // H: Files (JSON) ✅
-        'Pending',              // I: Status
+        'Waiting',              // I: Status
         '',                     // J: Notes
         now.toISOString(),      // K: Created At
         now.toISOString(),      // L: Updated At
@@ -734,7 +755,7 @@ function updateRealisasiStatus(data) {
         Logger.log('[UPDATE_REALISASI_STATUS] Status updated to: ' + data.status);
         
         // Update budget total realisasi jika diterima
-        if (data.status === 'Diterima') {
+        if (normalizeStatus(data.status) === 'Approved') {
           const kua = rows[i][1];   // B: KUA
           const year = rows[i][4];  // E: Tahun
           
@@ -772,7 +793,7 @@ function deleteRealisasi(data) {
         
         sheet.deleteRow(i + 1);
         
-        if (status === 'Diterima') {
+        if (normalizeStatus(status) === 'Approved') {
           updateBudgetTotalRealisasi(kua, year);
         }
         
@@ -802,7 +823,7 @@ function verifyRealisasi(data) {
         sheet.getRange(i + 1, 10).setValue(data.catatan || '');
         sheet.getRange(i + 1, 13).setValue(new Date());
         
-        if (data.status === 'Diterima') {
+        if (normalizeStatus(data.status) === 'Approved') {
           const kua = rows[i][1];
           const year = rows[i][4];
           updateBudgetTotalRealisasi(kua, year);
@@ -832,7 +853,7 @@ function updateBudgetTotalRealisasi(kua, year) {
     for (let i = 1; i < realisasiRows.length; i++) {
       if (realisasiRows[i][1] === kua && 
           realisasiRows[i][4] == year && 
-          realisasiRows[i][8] === 'Diterima') {
+          normalizeStatus(realisasiRows[i][8]) === 'Approved') {
         total += parseFloat(realisasiRows[i][7]) || 0;
       }
     }
@@ -901,13 +922,13 @@ function getDashboardStats(data) {
           const status = realisasiRows[i][8];
           
           // Total realisasi yang sudah diterima
-          if (status === 'Diterima') {
+          if (normalizeStatus(status) === 'Approved') {
             const realisasiAmount = parseFloat(realisasiRows[i][5]) || 0;
             totalRealisasi += realisasiAmount;
           }
           
           // Count pending verifikasi
-          if (status === 'Menunggu' || status === 'Pending') {
+          if (normalizeStatus(status) === 'Waiting') {
             pendingCount++;
           }
         }
@@ -1741,7 +1762,7 @@ function exportRealisasiPerYear(data) {
         const status = realisasis[i][8];     // I: Status
         
         // ✅ Hanya hitung realisasi yang sudah Diterima
-        if (kua === b.kua && year == data.year && status === 'Diterima') {
+        if (kua === b.kua && year == data.year && normalizeStatus(status) === 'Approved') {
           Logger.log('[EXPORT_REALISASI_PER_YEAR] Realisasi found: ' + kua + ' - ' + month + ' = ' + total);
           row.months[month] += total;
         }
@@ -1852,7 +1873,7 @@ function exportRealisasiDetailYear(data) {
       const status = realisasis[i][8];     // I: Status
       
       // ✅ Hanya ambil yang sudah Diterima
-      if (year == data.year && status === 'Diterima') {
+      if (year == data.year && normalizeStatus(status) === 'Approved') {
         const kua = realisasis[i][1];      // B: KUA
         kuaList.add(kua);
         

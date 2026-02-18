@@ -3,6 +3,27 @@
 // Version: 5.0 - Multi-user optimized with Lock Service
 // Features: Lock Service, Optimistic Locking, Batch Operations, Retry Mechanism
 
+// ===== STATUS BACKWARD COMPATIBILITY =====
+/**
+ * Normalize status lama ke nilai baru.
+ * Data lama: 'Pending', 'Menunggu', 'Menunggu Verifikasi', 'Diterima', 'Ditolak'
+ * Data baru: 'Waiting', 'Approved', 'Rejected', 'Paid'
+ */
+function normalizeStatusEnhanced(status) {
+  var map = {
+    'Pending':             'Waiting',
+    'Menunggu':            'Waiting',
+    'Menunggu Verifikasi': 'Waiting',
+    'Waiting':             'Waiting',
+    'Diterima':            'Approved',
+    'Approved':            'Approved',
+    'Ditolak':             'Rejected',
+    'Rejected':            'Rejected',
+    'Paid':                'Paid'
+  };
+  return map[status] || 'Waiting';
+}
+
 // ===== LOCK SERVICE IMPLEMENTATION =====
 
 /**
@@ -195,16 +216,21 @@ function saveRealisasiEnhanced(data) {
             
             // ✅ Validate status - only editable if Pending or Ditolak
             const currentStatus = rows[i][8];
-            if (currentStatus === 'Diterima') {
+            if (normalizeStatusEnhanced(currentStatus) === 'Approved') {
               return errorResponse('Realisasi yang sudah diterima tidak dapat diubah');
             }
             
             // Update realisasi
-            sheet.getRange(i + 1, 7).setValue(JSON.stringify(data.data));
-            sheet.getRange(i + 1, 8).setValue(parseFloat(data.total) || 0);
-            sheet.getRange(i + 1, 9).setValue('Pending'); // Reset to Pending
-            sheet.getRange(i + 1, 11).setValue(JSON.stringify(data.files || []));
-            sheet.getRange(i + 1, 13).setValue(now);
+            // ✅ CORRECT COLUMN INDICES (1-based):
+            // C(3)=Bulan, D(4)=RPD_ID, E(5)=Tahun, F(6)=Total, G(7)=Data, H(8)=Files, L(12)=UpdatedAt
+            sheet.getRange(i + 1, 3).setValue(data.month);                      // C: Bulan
+            sheet.getRange(i + 1, 4).setValue(data.rpdId || '');                // D: RPD ID
+            sheet.getRange(i + 1, 5).setValue(data.year);                       // E: Tahun
+            sheet.getRange(i + 1, 6).setValue(parseFloat(data.total) || 0);     // F: Total ✅
+            sheet.getRange(i + 1, 7).setValue(JSON.stringify(data.data || {})); // G: Data
+            sheet.getRange(i + 1, 8).setValue(JSON.stringify(data.files || []));// H: Files ✅
+            sheet.getRange(i + 1, 9).setValue('Waiting');                       // I: Status reset
+            sheet.getRange(i + 1, 12).setValue(now.toISOString());              // L: Updated At ✅
             
             Logger.log('[SAVE_REALISASI_ENHANCED] ✓ Updated realisasi: ' + data.id);
             
@@ -222,29 +248,39 @@ function saveRealisasiEnhanced(data) {
         // Create new realisasi
         
         // ✅ Validate: Check for duplicates
+        // C (index 2) = Bulan, E (index 4) = Tahun
         for (let i = 1; i < rows.length; i++) {
           if (rows[i][1] === data.kua && 
-              rows[i][3] === data.month && 
+              rows[i][2] === data.month && 
               rows[i][4] == data.year) {
             return errorResponse('Realisasi untuk bulan ini sudah ada. Silakan edit yang sudah ada.');
           }
         }
         
-        const id = 'REALISASI-' + Utilities.getUuid();
+        const id = 'REA-' + Date.now();
+        
+        // ✅ CORRECT COLUMN ORDER:
+        // A(1)=ID | B(2)=KUA | C(3)=Bulan | D(4)=RPD_ID | E(5)=Tahun | F(6)=Total
+        // G(7)=Data | H(8)=Files | I(9)=Status | J(10)=Notes
+        // K(11)=CreatedAt | L(12)=UpdatedAt | M(13)=VerifiedAt
+        // N(14)=UserID | O(15)=Username | P(16)=VerifiedBy
         const newRow = [
-          id,
-          data.kua,
-          data.userId,
-          data.month,
-          data.year,
-          data.rpdId || '',
-          JSON.stringify(data.data),
-          parseFloat(data.total) || 0,
-          'Pending',
-          '',
-          JSON.stringify(data.files || []),
-          now,
-          now
+          id,                              // A: ID
+          data.kua,                        // B: KUA
+          data.month,                      // C: Bulan ✅
+          data.rpdId || '',                // D: RPD ID ✅
+          data.year,                       // E: Tahun ✅
+          parseFloat(data.total) || 0,     // F: Total ✅
+          JSON.stringify(data.data || {}), // G: Data (JSON)
+          JSON.stringify(data.files || []),// H: Files (JSON) ✅
+          'Waiting',                       // I: Status
+          '',                              // J: Notes
+          now.toISOString(),               // K: Created At
+          now.toISOString(),               // L: Updated At
+          '',                              // M: Verified At
+          data.userId || '',               // N: User ID ✅
+          data.username || '',             // O: Username ✅
+          ''                               // P: Verified By
         ];
         
         sheet.appendRow(newRow);
@@ -285,7 +321,7 @@ function verifyRealisasiEnhanced(data) {
           
           // ✅ Validate current status
           const currentStatus = rows[i][8];
-          if (currentStatus !== 'Pending') {
+          if (normalizeStatusEnhanced(currentStatus) !== 'Waiting') {
             return errorResponse('Realisasi ini sudah diverifikasi sebelumnya dengan status: ' + currentStatus);
           }
           
@@ -403,9 +439,9 @@ function getDashboardStatsOptimized(data) {
       totalRPD: 0,
       totalRealisasi: 0,
       sisaBudget: 0,
-      realisasiPending: 0,
-      realisasiDiterima: 0,
-      realisasiDitolak: 0
+      realisasiWaiting: 0,
+      realisasiApproved: 0,
+      realisasiRejected: 0
     };
     
     // ✅ Calculate budget (single loop)
@@ -428,13 +464,13 @@ function getDashboardStatsOptimized(data) {
         const total = parseFloat(realisasiRows[i][7]) || 0;
         const status = realisasiRows[i][8];
         
-        if (status === 'Diterima') {
+        if (normalizeStatusEnhanced(status) === 'Approved') {
           stats.totalRealisasi += total;
-          stats.realisasiDiterima++;
-        } else if (status === 'Pending') {
-          stats.realisasiPending++;
-        } else if (status === 'Ditolak') {
-          stats.realisasiDitolak++;
+          stats.realisasiApproved++;
+        } else if (normalizeStatusEnhanced(status) === 'Waiting') {
+          stats.realisasiWaiting++;
+        } else if (normalizeStatusEnhanced(status) === 'Rejected') {
+          stats.realisasiRejected++;
         }
       }
     }

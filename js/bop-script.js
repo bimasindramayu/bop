@@ -3,6 +3,59 @@
 // Untuk: bop-dashboard.html
 // Config & utilities dari config.js
 
+// ===== STATUS CONSTANTS & BACKWARD COMPATIBILITY =====
+// Mapping status lama → baru untuk backward compatibility
+const STATUS = {
+  WAITING:  'Waiting',
+  APPROVED: 'Approved',
+  REJECTED: 'Rejected',
+  PAID:     'Paid'
+};
+
+/**
+ * Normalize status lama ke nilai baru.
+ * Data lama: 'Pending', 'Menunggu', 'Menunggu Verifikasi', 'Diterima', 'Ditolak'
+ * Data baru: 'Waiting', 'Approved', 'Rejected', 'Paid'
+ * @param {string} status
+ * @returns {string}
+ */
+function normalizeStatus(status) {
+  const map = {
+    'Pending':             STATUS.WAITING,
+    'Menunggu':            STATUS.WAITING,
+    'Menunggu Verifikasi': STATUS.WAITING,
+    'Waiting':             STATUS.WAITING,
+    'Diterima':            STATUS.APPROVED,
+    'Approved':            STATUS.APPROVED,
+    'Ditolak':             STATUS.REJECTED,
+    'Rejected':            STATUS.REJECTED,
+    'Paid':                STATUS.PAID
+  };
+  return map[status] || STATUS.WAITING;
+}
+
+/**
+ * Get badge class berdasarkan status
+ * @param {string} status
+ * @returns {string}
+ */
+function getStatusBadgeClass(status) {
+  const s = normalizeStatus(status);
+  if (s === STATUS.APPROVED) return 'success';
+  if (s === STATUS.REJECTED) return 'danger';
+  if (s === STATUS.PAID)     return 'info';
+  return 'warning'; // Waiting
+}
+
+/**
+ * Get label tampilan berdasarkan status
+ * @param {string} status
+ * @returns {string}
+ */
+function getStatusLabel(status) {
+  return normalizeStatus(status);
+}
+
 // ===== STATE MANAGEMENT =====
 let currentUser = null;
 let currentPage = 'dashboardPage';
@@ -753,7 +806,7 @@ function updateDashboardFromCache() {
         const totalRealisasi = filteredRealisasi.reduce((sum, r) => sum + (parseFloat(r.total) || 0), 0);
         
         // Count pending verifikasi
-        const pendingCount = filteredRealisasi.filter(r => r.status === 'Menunggu Verifikasi').length;
+        const pendingCount = filteredRealisasi.filter(r => normalizeStatus(r.status) === STATUS.WAITING).length;
         
         const calculatedStats = {
             budget: budgetTotal,
@@ -2237,16 +2290,9 @@ function displayRealisasis(realisasis) {
     
     const rows = realisasis.map((real, index) => {
         totalNominal += parseFloat(real.total || 0);
-        
-        let statusClass = 'warning';
-        let statusText = 'Menunggu';
-        
-        if (real.status === 'Diterima') {
-            statusClass = 'success';
-            statusText = 'Diterima';
-        } else if (real.status === 'Ditolak') {
-            statusClass = 'danger';
-            statusText = 'Ditolak';
+        {
+        let statusClass = getStatusBadgeClass(real.status);
+        let statusText = getStatusLabel(real.status);
         }
         
         const realEscaped = JSON.stringify(real).replace(/"/g, '&quot;');
@@ -2270,7 +2316,7 @@ function displayRealisasis(realisasis) {
             <td>
                 <div class="action-buttons">
                     <button class="btn btn-sm" onclick='viewRealisasi(${realEscaped})'>Lihat</button>
-                    ${real.status !== 'Diterima' && currentUser.role !== 'Admin' ? 
+                    ${normalizeStatus(real.status) !== STATUS.APPROVED && currentUser.role !== 'Admin' ? 
                         `<button class="btn btn-sm" onclick='editRealisasi(${realEscaped})'>Edit</button>` : ''}
                 </div>
             </td>
@@ -2338,7 +2384,7 @@ async function showRealisasiModal(realisasi = null) {
             // Hitung total realisasi dari cache
             const totalRealisasi = cachedRealisasis
                 ? cachedRealisasis
-                    .filter(r => r.status === 'Diterima' && r.id !== realisasi?.id)
+                    .filter(r => normalizeStatus(r.status) === STATUS.APPROVED && r.id !== realisasi?.id)
                     .reduce((sum, r) => sum + (parseFloat(r.total) || 0), 0)
                 : 0;
             
@@ -2384,7 +2430,7 @@ async function showRealisasiModal(realisasi = null) {
                 // Hitung total realisasi
                 const totalRealisasi = freshRealisasis
                     ? freshRealisasis
-                        .filter(r => r.status === 'Diterima' && r.id !== realisasi?.id)
+                        .filter(r => normalizeStatus(r.status) === STATUS.APPROVED && r.id !== realisasi?.id)
                         .reduce((sum, r) => sum + (parseFloat(r.total) || 0), 0)
                     : 0;
                 
@@ -3569,10 +3615,10 @@ async function showRealisasiInputs(rpd, realisasi = null) {
             });
             
             try {
-                let newStatus = realisasi ? realisasi.status : 'Menunggu';
-                if (realisasi && realisasi.status === 'Ditolak') {
-                    newStatus = 'Menunggu';
-                    console.log('[REALISASI] Status changed from Ditolak to Menunggu');
+                let newStatus = realisasi ? normalizeStatus(realisasi.status) : STATUS.WAITING;
+                if (realisasi && normalizeStatus(realisasi.status) === STATUS.REJECTED) {
+                    newStatus = STATUS.WAITING;
+                    console.log('[REALISASI] Status changed from Rejected to Waiting');
                 }
                 
                 // Upload files to Google Drive first
@@ -4104,9 +4150,10 @@ function viewRealisasi(realisasi) {
         detailHTML += `</div>`;
     });
     
-    let statusClass = 'warning';
-    if (realisasi.status === 'Diterima') statusClass = 'success';
-    else if (realisasi.status === 'Ditolak') statusClass = 'danger';
+    let statusClass = getStatusBadgeClass(realisasi.status);
+    if (normalizeStatus(realisasi.status) === STATUS.APPROVED) statusClass = 'success';
+    else if (normalizeStatus(realisasi.status) === STATUS.REJECTED) statusClass = 'danger';
+    else if (normalizeStatus(realisasi.status) === STATUS.PAID) statusClass = 'info';
     
     // ✅ FIX BUG #2: Parse files dan buat preview seperti di Detail Verifikasi
     let files = [];
@@ -4237,7 +4284,7 @@ function viewRealisasi(realisasi) {
             <div class="summary-box">
                 <div class="summary-item">
                     <span>Status:</span>
-                    <span class="badge badge-${statusClass}">${realisasi.status || 'Menunggu'}</span>
+                    <span class="badge badge-${statusClass}">${getStatusLabel(realisasi.status)}</span>
                 </div>
                 ${realisasi.verifiedBy ? `
                 <div class="summary-item">
@@ -4339,7 +4386,7 @@ function displayVerifikasi(realisasis) {
     let filteredData = realisasis.filter(real => {
         let passKUA = !selectedKUA || real.kua === selectedKUA;
         let passMonth = !selectedMonth || real.month === selectedMonth;
-        let passStatus = !selectedStatus || real.status === selectedStatus;
+        let passStatus = !selectedStatus || normalizeStatus(real.status) === selectedStatus;
         let passYear = !selectedYear || real.year == selectedYear;
         
         return passKUA && passMonth && passStatus && passYear;
@@ -4358,16 +4405,8 @@ function displayVerifikasi(realisasis) {
     const rows = filteredData.map((real, index) => {
         totalNominal += parseFloat(real.total || 0);
         
-        let statusClass = 'warning';
-        let statusText = 'Pending';
-        
-        if (real.status === 'Diterima') {
-            statusClass = 'success';
-            statusText = 'Diterima';
-        } else if (real.status === 'Ditolak') {
-            statusClass = 'danger';
-            statusText = 'Ditolak';
-        }
+        let statusClass = getStatusBadgeClass(real.status);
+        let statusText = getStatusLabel(real.status);
         
         // ✅ FIX: Store realisasi in Map and pass only ID to avoid token errors
         const realisasiId = real.id || `temp-${Date.now()}-${index}`;
@@ -4892,9 +4931,10 @@ function verifyRealisasi(realisasiId) {
                 <div class="form-group">
                     <label>Status Verifikasi</label>
                     <select id="verifyStatus" required>
-                        <option value="Menunggu" ${realisasi.status === 'Menunggu' ? 'selected' : ''}>Menunggu</option>
-                        <option value="Diterima" ${realisasi.status === 'Diterima' ? 'selected' : ''}>Diterima</option>
-                        <option value="Ditolak" ${realisasi.status === 'Ditolak' ? 'selected' : ''}>Ditolak</option>
+                        <option value="Waiting" ${normalizeStatus(realisasi.status) === 'Waiting' ? 'selected' : ''}>Waiting</option>
+                        <option value="Approved" ${normalizeStatus(realisasi.status) === 'Approved' ? 'selected' : ''}>Approved</option>
+                        <option value="Rejected" ${normalizeStatus(realisasi.status) === 'Rejected' ? 'selected' : ''}>Rejected</option>
+                        <option value="Paid" ${normalizeStatus(realisasi.status) === 'Paid' ? 'selected' : ''}>Paid</option>
                     </select>
                 </div>
                 <div class="form-group">
@@ -5688,7 +5728,7 @@ function startVerifikasiAutoRefresh() {
     verifikasiAutoRefresh = setInterval(async () => {
         console.log('[AUTO-REFRESH] Refreshing verifikasi data...');
         
-        // Cek apakah ada realisasi "Menunggu" yang baru
+        // Cek apakah ada realisasi "Waiting" yang baru
         const cachedData = getCache('verifikasi');
         
         if (cachedData) {
@@ -5700,8 +5740,8 @@ function startVerifikasiAutoRefresh() {
                 const freshData = await apiCall('getRealisasis', { year: year });
                 
                 // Count pending verifications
-                const oldPending = cachedData.realisasis.filter(r => r.status === 'Menunggu').length;
-                const newPending = freshData.filter(r => r.status === 'Menunggu').length;
+                const oldPending = cachedData.realisasis.filter(r => normalizeStatus(r.status) === STATUS.WAITING).length;
+                const newPending = freshData.filter(r => normalizeStatus(r.status) === STATUS.WAITING).length;
                 
                 // Jika ada yang baru, tampilkan notifikasi
                 if (newPending > oldPending) {
@@ -6799,7 +6839,11 @@ function applyFilters(data, filters) {
     return data.filter(item => {
         for (let key in filters) {
             const filterValue = filters[key];
-            if (filterValue && item[key] !== filterValue) {
+            if (!filterValue) continue;
+            // Untuk filter status, gunakan normalizeStatus agar backward compatible
+            if (key === 'status') {
+                if (normalizeStatus(item[key]) !== filterValue) return false;
+            } else if (item[key] !== filterValue) {
                 return false;
             }
         }
@@ -7033,16 +7077,8 @@ function displayVerifikasiFiltered() {
     const rows = filteredData.map((real, index) => {
         totalNominal += parseFloat(real.total || 0);
         
-        let statusClass = 'warning';
-        let statusText = 'Pending';
-        
-        if (real.status === 'Diterima') {
-            statusClass = 'success';
-            statusText = 'Diterima';
-        } else if (real.status === 'Ditolak') {
-            statusClass = 'danger';
-            statusText = 'Ditolak';
-        }
+        let statusClass = getStatusBadgeClass(real.status);
+        let statusText = getStatusLabel(real.status);
         
         const realisasiId = real.id || `temp-${Date.now()}-${index}`;
         realisasiDataStore.set(realisasiId, real);
