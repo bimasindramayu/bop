@@ -4,7 +4,7 @@
 
 const APP_CONFIG = {
     // API Configuration
-    SCRIPT_URL: 'https://script.google.com/macros/s/AKfycbyhSXZe7iMAHOCoLxyseXScntzwYaec5M7YLOHOmg409DXJkVchHDNQkXYI15rHXrkh/exec',
+    SCRIPT_URL: 'https://script.google.com/macros/s/AKfycbzHkGOvJSMPcGly5vNrxqksSSrYjYiKDOspFq5m3Pvzg_GNjBzng0L9dbJEsSRt6tWd/exec',
 
     // KUA List
     KUA_LIST: [

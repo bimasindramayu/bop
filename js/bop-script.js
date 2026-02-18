@@ -2345,7 +2345,7 @@ function displayRealisasis(realisasis) {
             <td>
                 <div class="action-buttons">
                     <button class="btn btn-sm" onclick='viewRealisasi(${realEscaped})'>Lihat</button>
-                    ${normalizeStatus(real.status) !== STATUS.APPROVED && currentUser.role !== 'Admin' ? 
+                    ${(normalizeStatus(real.status) === STATUS.WAITING || normalizeStatus(real.status) === STATUS.REJECTED) && currentUser.role !== 'Admin' ? 
                         `<button class="btn btn-sm" onclick='editRealisasi(${realEscaped})'>Edit</button>` : ''}
                 </div>
             </td>

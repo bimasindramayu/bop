@@ -214,10 +214,11 @@ function saveRealisasiEnhanced(data) {
               return errorResponse('Data sudah diubah oleh user lain. Silakan refresh dan coba lagi.');
             }
             
-            // ✅ Validate status - only editable if Pending or Ditolak
+            // ✅ Validate status - hanya Waiting/Rejected yang bisa diedit
             const currentStatus = rows[i][8];
-            if (normalizeStatusEnhanced(currentStatus) === 'Approved') {
-              return errorResponse('Realisasi yang sudah diterima tidak dapat diubah');
+            const normalizedStatus = normalizeStatusEnhanced(currentStatus);
+            if (normalizedStatus === 'Approved' || normalizedStatus === 'Paid') {
+              return errorResponse('Realisasi dengan status ' + normalizedStatus + ' tidak dapat diubah.');
             }
             
             // Update realisasi
