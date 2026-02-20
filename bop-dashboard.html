@@ -260,8 +260,81 @@
                     </div>
                 </div>
 
-                <!-- Laporan Page -->
-                <div class="page" id="laporanPage">
+                <!-- Auto Payment Page (Admin only) -->
+                <div class="page" id="autoPaymentPage">
+                    <h2 style="margin-bottom: 20px;">⚡ Auto Payment</h2>
+                    <!-- Tab Buttons -->
+                    <div style="display:flex; gap:10px; margin-bottom:20px;">
+                        <button class="btn btn-sm" id="tabConfigBtn" onclick="switchAPTab('config')">📋 Config</button>
+                        <button class="btn btn-sm btn-secondary" id="tabNominalBtn" onclick="switchAPTab('nominal')">💰 Input Nominal</button>
+                    </div>
+                    <!-- Tab Config -->
+                    <div id="apTabConfig">
+                        <div class="summary-box" style="margin-bottom:15px;">
+                            <p style="color:#666; font-size:13px; margin:0;">Centang kolom untuk mengaktifkan Auto Payment pada POS tersebut. Input manual Operator akan dinonaktifkan untuk POS yang aktif.</p>
+                        </div>
+                        <div class="toolbar">
+                            <button class="btn btn-sm" onclick="loadAPConfig()">🔄 Load Data</button>
+                            <button class="btn btn-sm btn-success" onclick="saveAPConfig()">💾 Save Config</button>
+                        </div>
+                        <div class="table-container">
+                            <table id="apConfigTable">
+                                <thead>
+                                    <tr>
+                                        <th>Nama KUA</th>
+                                        <th style="text-align:center;">522111<br><small>Listrik</small></th>
+                                        <th style="text-align:center;">522112<br><small>Telepon/Internet</small></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr><td colspan="3" style="text-align:center; color:#999;">Klik "Load Data" untuk menampilkan konfigurasi</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <!-- Tab Input Nominal -->
+                    <div id="apTabNominal" style="display:none;">
+                        <div class="summary-box" style="margin-bottom:15px;">
+                            <p style="color:#666; font-size:13px; margin:0;">Input nominal Auto Payment per bulan dan tahun. Hanya KUA dengan config aktif yang ditampilkan.</p>
+                        </div>
+                        <div class="toolbar">
+                            <select id="apNominalMonth">
+                                <option value="">-- Pilih Bulan --</option>
+                            </select>
+                            <select id="apNominalYear">
+                                <option value="2024">2024</option>
+                                <option value="2025">2025</option>
+                                <option value="2026" selected>2026</option>
+                                <option value="2027">2027</option>
+                            </select>
+                            <button class="btn btn-sm" onclick="loadAPNominal()">🔄 Load Data</button>
+                            <button class="btn btn-sm btn-success" onclick="saveAPNominal()">💾 Save Data</button>
+                        </div>
+                        <div class="table-container">
+                            <table id="apNominalTable">
+                                <thead>
+                                    <tr>
+                                        <th>Nama KUA</th>
+                                        <th style="text-align:right;">522111 - Listrik (Rp)</th>
+                                        <th style="text-align:right;">522112 - Telepon/Internet (Rp)</th>
+                                        <th style="text-align:right;">Total (Rp)</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr><td colspan="4" style="text-align:center; color:#999;">Pilih bulan dan tahun, lalu klik "Load Data"</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div id="apNominalFooter" style="margin-top:15px; display:none;">
+                            <div class="summary-item" style="font-weight:bold; font-size:16px; justify-content:flex-end; gap:20px;">
+                                <span>Grand Total:</span>
+                                <strong id="apNominalGrandTotal">Rp 0</strong>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Laporan Page -->                <div class="page" id="laporanPage">
                     <h2 style="margin-bottom: 20px;">Laporan BOP</h2>
                     
                     <!-- 1. Download RPD per Tahun -->
@@ -316,6 +389,13 @@
                                 <option value="2027">2027</option>
                             </select>
                         </div>
+                        <div style="display: flex; gap: 10px; margin-bottom: 10px; align-items: center;">
+                            <label style="font-size:13px; color:#555; white-space:nowrap;">⚡ Auto Payment:</label>
+                            <select id="exportRealisasiAPMode" style="flex: 1;">
+                                <option value="exclude">Exclude Auto Payment</option>
+                                <option value="include">Include Auto Payment</option>
+                            </select>
+                        </div>
                         <div style="display: flex; gap: 10px;">
                             <button class="btn btn-sm" onclick="downloadRealisasiPerYear('excel')">📥 Excel</button>
                             <button class="btn btn-sm" onclick="downloadRealisasiPerYear('pdf')">📄 PDF</button>
@@ -332,6 +412,13 @@
                             <option value="2026" selected>2026</option>
                             <option value="2027">2027</option>
                         </select>
+                        <div style="display: flex; gap: 10px; margin-bottom: 10px; align-items: center;">
+                            <label style="font-size:13px; color:#555; white-space:nowrap;">⚡ Auto Payment:</label>
+                            <select id="exportRealisasiDetailAPMode" style="flex: 1;">
+                                <option value="exclude">Exclude Auto Payment</option>
+                                <option value="include">Include Auto Payment</option>
+                            </select>
+                        </div>
                         <div style="display: flex; gap: 10px;">
                             <button class="btn btn-sm" onclick="downloadRealisasiDetailYear('excel')">📥 Excel</button>
                             <button class="btn btn-sm" onclick="downloadRealisasiDetailYear('pdf')">📄 PDF</button>

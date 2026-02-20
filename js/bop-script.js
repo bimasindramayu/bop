@@ -396,6 +396,7 @@ function buildNavMenu() {
             { id: 'rpdPage', label: 'Lihat RPD' },
             { id: 'verifikasiPage', label: 'Verifikasi' },
             { id: 'laporanPage', label: 'Laporan' },
+            { id: 'autoPaymentPage', label: '⚡ Auto Payment' },
             { id: 'rpdConfigPage', label: 'Konfigurasi' }
         ];
     } else {
@@ -587,8 +588,18 @@ function showPage(pageId) {
             if (btnCreateRPD) btnCreateRPD.style.display = 'inline-block';
             thKUA.forEach(th => th.style.display = 'none');
             
-            // ✅ Auto-load untuk Operator
-            loadRPDsWithFilters();
+            // ✅ Tampilkan data langsung dari local cache yang sudah di-preload
+            // saat Dashboard dibuka — TANPA API call
+            const _cachedRPDs = getLocalCache('rpds');
+            if (_cachedRPDs && _cachedRPDs.length > 0) {
+                rawData.rpds = _cachedRPDs;
+                console.log('[RPD] Operator - populated from preloaded cache:', _cachedRPDs.length, 'records');
+                displayRPDsFiltered();
+            } else {
+                // Fallback: cache belum ada (hanya saat pertama kali sebelum preload selesai)
+                console.log('[RPD] Operator - cache empty, loading from server...');
+                loadRPDsWithFilters();
+            }
         }
     }
 
@@ -632,6 +643,11 @@ function showPage(pageId) {
     if (pageId === 'rpdConfigPage') {
         loadRPDConfig(false);
     }
+    
+    // ===== AUTO PAYMENT PAGE SETUP =====
+    if (pageId === 'autoPaymentPage') {
+        initAutoPaymentPage();
+    }
 }
 
 async function loadDashboardStats(forceRefresh = false) {
@@ -652,7 +668,7 @@ async function loadDashboardStats(forceRefresh = false) {
         
         try {
             const yearFilter = document.getElementById('dashboardYearFilter');
-            const year = yearFilter ? yearFilter.value : new Date().getFullYear();
+            const year = yearFilter ? parseInt(yearFilter.value) : new Date().getFullYear();
             
             const stats = await apiCall('getDashboardStats', { 
                 year: year,
@@ -878,7 +894,7 @@ async function loadBudgets(forceRefresh = false) {
         
         try {
             const yearFilter = document.getElementById('budgetYearFilter');
-            const year = yearFilter ? yearFilter.value : new Date().getFullYear();
+            const year = yearFilter ? parseInt(yearFilter.value) : new Date().getFullYear();
             
             const budgets = await apiCall('getBudgets', { year: year });
             
@@ -1392,7 +1408,7 @@ async function loadRPDs(forceRefresh = false) {
         
         try {
             const yearFilter = document.getElementById('rpdYearFilter');
-            const year = yearFilter ? yearFilter.value : new Date().getFullYear();
+            const year = yearFilter ? parseInt(yearFilter.value) : new Date().getFullYear();
             
             let rpds;
             
@@ -1434,7 +1450,7 @@ function displayRPDs(rpds) {
     
     const selectedKUA = kuaFilter ? kuaFilter.value : '';
     const selectedMonth = monthFilter ? monthFilter.value : '';
-    const selectedYear = yearFilter ? yearFilter.value : new Date().getFullYear();
+    const selectedYear = yearFilter ? parseInt(yearFilter.value) : new Date().getFullYear();
     
     console.log('[RPD] Displaying with filters:', {
         kua: selectedKUA,
@@ -1530,7 +1546,7 @@ async function loadRPDsWithFilters() {
     
     try {
         const yearFilter = document.getElementById('rpdYearFilter');
-        const year = yearFilter ? yearFilter.value : new Date().getFullYear();
+        const year = yearFilter ? parseInt(yearFilter.value) : new Date().getFullYear();
         
         let rpds;
         
@@ -2269,7 +2285,7 @@ async function loadRealisasis(forceRefresh = false) {
         
         try {
             const yearFilter = document.getElementById('realisasiYearFilter');
-            const year = yearFilter ? yearFilter.value : new Date().getFullYear();
+            const year = yearFilter ? parseInt(yearFilter.value) : new Date().getFullYear();
             
             let realisasis = await apiCall('getRealisasis', { kua: currentUser.kua, year: year });
             realisasis = sortByMonth(realisasis);
@@ -2405,15 +2421,15 @@ async function showRealisasiModal(realisasi = null) {
         
         if (cachedBudgets && cachedBudgets.length > 0) {
             const yearFilter = document.getElementById('realisasiYearFilter');
-            const year = yearFilter ? yearFilter.value : new Date().getFullYear();
+            const year = yearFilter ? parseInt(yearFilter.value) : new Date().getFullYear();
             
             const currentBudget = cachedBudgets.find(b => b.year == year);
             const budgetTotal = currentBudget ? currentBudget.budget : 0;
             
-            // Hitung total realisasi dari cache
+            // Hitung total realisasi dari cache — include Approved & Paid
             const totalRealisasi = cachedRealisasis
                 ? cachedRealisasis
-                    .filter(r => normalizeStatus(r.status) === STATUS.APPROVED && r.id !== realisasi?.id)
+                    .filter(r => (normalizeStatus(r.status) === STATUS.APPROVED || normalizeStatus(r.status) === STATUS.PAID) && r.id !== realisasi?.id)
                     .reduce((sum, r) => sum + (parseFloat(r.total) || 0), 0)
                 : 0;
             
@@ -2439,7 +2455,7 @@ async function showRealisasiModal(realisasi = null) {
                 updateLocalCache('budgets', freshBudgets);
                 
                 const yearFilter = document.getElementById('realisasiYearFilter');
-                const year = yearFilter ? yearFilter.value : new Date().getFullYear();
+                const year = yearFilter ? parseInt(yearFilter.value) : new Date().getFullYear();
                 
                 const currentBudget = freshBudgets.find(b => b.year == year);
                 const budgetTotal = currentBudget ? (parseFloat(currentBudget.budget) || parseFloat(currentBudget.total) || 0) : 0;
@@ -2459,7 +2475,7 @@ async function showRealisasiModal(realisasi = null) {
                 // Hitung total realisasi
                 const totalRealisasi = freshRealisasis
                     ? freshRealisasis
-                        .filter(r => normalizeStatus(r.status) === STATUS.APPROVED && r.id !== realisasi?.id)
+                        .filter(r => (normalizeStatus(r.status) === STATUS.APPROVED || normalizeStatus(r.status) === STATUS.PAID) && r.id !== realisasi?.id)
                         .reduce((sum, r) => sum + (parseFloat(r.total) || 0), 0)
                     : 0;
                 
@@ -2507,7 +2523,7 @@ async function showRealisasiModal(realisasi = null) {
             // ✅ FILTER OUT bulan yang sudah ada realisasinya (untuk tambah baru)
             if (!realisasi && cachedRealisasis) {
                 const yearFilter = document.getElementById('realisasiYearFilter');
-                const year = yearFilter ? yearFilter.value : new Date().getFullYear();
+                const year = yearFilter ? parseInt(yearFilter.value) : new Date().getFullYear();
                 
                 console.log('[REALISASI MODAL] Existing realisasis from cache:', cachedRealisasis.length);
                 
@@ -2658,7 +2674,7 @@ async function showRealisasiModal(realisasi = null) {
                             <strong id="budgetInfo">${formatCurrency(realisasiBudgetInfo.budget)}</strong>
                         </div>
                         <div class="info-item">
-                            <span>Total Realisasi:</span>
+                            <span>Total Realisasi (Approved+Paid):</span>
                             <strong id="totalRealisasiInfo">${formatCurrency(realisasiBudgetInfo.totalRealisasi)}</strong>
                         </div>
                         <div class="info-item">
@@ -2666,6 +2682,8 @@ async function showRealisasiModal(realisasi = null) {
                             <strong id="sisaBudgetInfo">${formatCurrency(realisasiBudgetInfo.sisaBudget)}</strong>
                         </div>
                     </div>
+                    <!-- AP Include/Exclude placeholder — diisi setelah RPD dipilih -->
+                    <div id="apModalSummary" style="display:none; margin-top:10px;"></div>
                     
                     <!-- Pilih RPD (WAJIB) -->
                     <div class="form-group">
@@ -3171,9 +3189,22 @@ function loadRPDDataFromSelect() {
                 const inputs = document.querySelectorAll('.realisasi-input');
                 inputs.forEach(input => {
                     input.addEventListener('input', calculateRealisasiTotal);
+                    // Auto-update AP summary on every keystroke
+                    input.addEventListener('input', () => {
+                        if (month && year && currentUser && currentUser.kua) {
+                            apRenderFormModalSummary(currentUser.kua, month, parseInt(year));
+                        }
+                    });
                 });
                 
                 calculateRealisasiTotal();
+                
+                // ✅ Auto Payment: disable POS aktif jika ada config
+                if (month && year && currentUser && currentUser.kua) {
+                    apApplyToForm(currentUser.kua, month, parseInt(year)).then(() => {
+                        apRenderFormModalSummary(currentUser.kua, month, parseInt(year));
+                    }).catch(() => {});
+                }
             }, 100);
         }
         
@@ -3244,11 +3275,24 @@ function loadRPDDataForRealisasi() {
                 
                 // Attach listeners to new inputs
                 const inputs = document.querySelectorAll('.realisasi-input');
+                const apKua2   = currentUser && currentUser.kua;
+                const rMonth2  = selectedOption.dataset.month || selectedOption.value || '';
+                const rYear2   = parseInt(selectedOption.dataset.year || new Date().getFullYear());
                 inputs.forEach(input => {
                     input.addEventListener('input', calculateRealisasiTotal);
+                    input.addEventListener('input', () => {
+                        if (apKua2 && rMonth2) apRenderFormModalSummary(apKua2, rMonth2, rYear2);
+                    });
                 });
                 
                 calculateRealisasiTotal();
+                
+                // ✅ Auto Payment: disable POS aktif jika ada config
+                if (apKua2 && rMonth2) {
+                    apApplyToForm(apKua2, rMonth2, rYear2).then(() => {
+                        apRenderFormModalSummary(apKua2, rMonth2, rYear2);
+                    }).catch(() => {});
+                }
             }, 100);
         }
         
@@ -3466,7 +3510,7 @@ async function showRealisasiInputs(rpd, realisasi = null) {
     
     try {
         const yearFilter = document.getElementById('realisasiYearFilter');
-        const year = yearFilter ? yearFilter.value : new Date().getFullYear();
+        const year = yearFilter ? parseInt(yearFilter.value) : new Date().getFullYear();
         
         const budgets = await apiCall('getBudgets', { 
             kua: currentUser.kua, 
@@ -3545,8 +3589,23 @@ async function showRealisasiInputs(rpd, realisasi = null) {
     const inputs = document.querySelectorAll('.realisasi-input');
     inputs.forEach(input => {
         input.addEventListener('input', calculateRealisasiTotal);
+        // Auto-update AP summary on every keystroke
+        input.addEventListener('input', () => {
+            if (realisasi && realisasi.kua && realisasi.month && realisasi.year) {
+                apRenderFormModalSummary(realisasi.kua, realisasi.month, realisasi.year);
+            }
+        });
     });
     calculateRealisasiTotal();
+    
+    // ✅ Auto Payment: disable POS aktif saat edit
+    setTimeout(() => {
+        if (realisasi && realisasi.kua && realisasi.month && realisasi.year) {
+            apApplyToForm(realisasi.kua, realisasi.month, realisasi.year).then(() => {
+                apRenderFormModalSummary(realisasi.kua, realisasi.month, realisasi.year);
+            }).catch(() => {});
+        }
+    }, 150);
     
     // Display existing files dengan preview
     console.log('[FILE] Displaying files, count:', uploadedFiles.length);
@@ -4123,54 +4182,47 @@ function viewRealisasi(realisasi) {
         document.body.appendChild(modal);
     }
     
-    // ✅ FIX BUG #3: Format detail dengan logic yang benar
+    // Safe element ID from arbitrary string (removes all non-alphanumeric except dash)
+    const safeId = (s) => s.replace(/[^a-zA-Z0-9]/g, '-');
+    
+    // ✅ FIX BUG #3: Format detail dengan RPD comparison inline
     let detailHTML = '';
     Object.entries(realisasi.data).forEach(([code, items]) => {
         const param = APP_CONFIG.BOP.RPD_PARAMETERS[code];
         
-        // Konversi items ke array untuk pengecekan
         const itemsArray = Object.entries(items);
-        const hasMultipleItems = itemsArray.length > 1;
         const onlyNominal = itemsArray.length === 1 && itemsArray[0][0] === 'Nominal';
         
-        console.log(`[VIEW_REALISASI] ${code} - ${param.name}:`, {
-            itemsCount: itemsArray.length,
-            hasMultipleItems,
-            onlyNominal,
-            items: items
-        });
-        
-        detailHTML += `<div class="rpd-item">`;
+        detailHTML += `<div class="rpd-item" data-code="${code}">`;
         
         if (onlyNominal) {
-            // ✅ Jika hanya "Nominal", tampilkan value langsung di samping nama akun
             const nominalValue = items['Nominal'];
             detailHTML += `
-                <div class="rpd-subitem">
-                    <span style="font-weight: 600; color: #333;">${code} - ${param.name}</span>
-                    <strong style="font-size: 16px; color: #667eea;">${formatCurrency(nominalValue)}</strong>
+                <div class="rpd-subitem" style="align-items:center; flex-wrap:wrap; gap:6px;">
+                    <span style="font-weight:600; color:#333; flex:1;">${code} — ${param.name}</span>
+                    <div style="text-align:right; min-width:160px;">
+                        <div style="font-size:11px; color:#999; margin-bottom:2px;">Realisasi</div>
+                        <strong style="font-size:15px; color:#667eea;">${formatCurrency(nominalValue)}</strong>
+                        <div id="rpd-cmp-${code}-${safeId('Nominal')}" style="font-size:11px; color:#aaa; margin-top:3px;">
+                            <span style="color:#c0c4cc;">Memuat data RPD…</span>
+                        </div>
+                    </div>
                 </div>
             `;
-        } else if (hasMultipleItems) {
-            // ✅ Jika ada breakdown (multiple items), jangan tampilkan total parent
-            detailHTML += `<h4>${code} - ${param.name}</h4>`;
-            
-            itemsArray.forEach(([item, value]) => {
-                detailHTML += `
-                    <div class="rpd-subitem">
-                        <span>${item}</span>
-                        <strong>${formatCurrency(value)}</strong>
-                    </div>
-                `;
-            });
         } else {
-            // ✅ Untuk kasus lainnya (seharusnya tidak ada)
-            detailHTML += `<h4>${code} - ${param.name}</h4>`;
+            detailHTML += `<h4>${code} — ${param.name}</h4>`;
             itemsArray.forEach(([item, value]) => {
+                const sid = safeId(item);
                 detailHTML += `
-                    <div class="rpd-subitem">
-                        <span>${item}</span>
-                        <strong>${formatCurrency(value)}</strong>
+                    <div class="rpd-subitem" style="align-items:flex-end; flex-wrap:wrap; gap:4px;">
+                        <span style="flex:1;">${item}</span>
+                        <div style="text-align:right; min-width:160px;">
+                            <div style="font-size:11px; color:#999; margin-bottom:2px;">Realisasi</div>
+                            <strong>${formatCurrency(value)}</strong>
+                            <div id="rpd-cmp-${code}-${sid}" style="font-size:11px; color:#aaa; margin-top:3px;">
+                                <span style="color:#c0c4cc;">Memuat data RPD…</span>
+                            </div>
+                        </div>
                     </div>
                 `;
             });
@@ -4304,7 +4356,7 @@ function viewRealisasi(realisasi) {
     }
     
     modal.innerHTML = `
-        <div class="modal-content" style="max-width: 900px;">
+        <div class="modal-content" style="max-width: 900px; max-height: 90vh; overflow-y: auto;">
             <div class="modal-header">
                 <h3>Detail Realisasi - ${realisasi.month || 'Unknown'} ${realisasi.year || ''}</h3>
                 <button class="close-btn" onclick="closeModal()">&times;</button>
@@ -4314,6 +4366,10 @@ function viewRealisasi(realisasi) {
                 <div class="summary-item">
                     <span>Status:</span>
                     <span class="badge badge-${statusClass}">${getStatusLabel(realisasi.status)}</span>
+                </div>
+                <div class="summary-item">
+                    <span>KUA:</span>
+                    <strong>${realisasi.kua || '-'}</strong>
                 </div>
                 ${realisasi.verifiedBy ? `
                 <div class="summary-item">
@@ -4338,18 +4394,149 @@ function viewRealisasi(realisasi) {
             ${detailHTML}
             ${filesHTML}
             
-            <div class="summary-box">
+            <div class="summary-box" style="margin-top: 15px;">
                 <div class="summary-item">
                     <span>Total Realisasi:</span>
                     <strong>${formatCurrency(realisasi.total)}</strong>
                 </div>
             </div>
+            <!-- RPD & AP detail diisi async setelah modal terbuka -->
+            <div id="viewRpdApDetail"></div>
         </div>
     `;
     
     modal.classList.add('active');
+    
+    // Async: inject RPD detail + AP summary
+    setTimeout(() => {
+        _injectViewRealisasiExtras(realisasi).catch(() => {});
+    }, 80);
 }
 
+async function _injectViewRealisasiExtras(realisasi) {
+    // --- Fetch RPD data ---
+    let rpdData = null;
+    try {
+        const cachedRPDs = getLocalCache('rpds') || [];
+        rpdData = cachedRPDs.find(r =>
+            r.kua === realisasi.kua &&
+            r.month === realisasi.month &&
+            r.year == realisasi.year
+        );
+        if (!rpdData) {
+            const rpds = await apiCall('getRPDs', { kua: realisasi.kua, year: realisasi.year });
+            rpdData = (rpds || []).find(r => r.month === realisasi.month && r.year == realisasi.year);
+        }
+    } catch (e) { /* RPD tidak tersedia */ }
+
+    // --- Inject RPD nominal directly into each rpd-item via data-code attribute ---
+    // We use the data-code attribute set on each .rpd-item div to find the right element,
+    // then append RPD comparison rows under each existing rpd-subitem.
+    if (rpdData && rpdData.data) {
+        document.querySelectorAll('.rpd-item[data-code]').forEach(itemEl => {
+            const code = itemEl.dataset.code;
+            const rpdItems = rpdData.data[code];
+            const realItems = (realisasi.data && realisasi.data[code]) ? realisasi.data[code] : {};
+            if (!rpdItems) return;
+
+            // Find all rpd-subitem divs in this rpd-item
+            const subitems = itemEl.querySelectorAll('.rpd-subitem');
+            
+            // Build a map of item -> RPD value from rpdData
+            // Iterate APP_CONFIG items in order so positions align
+            const codeParam = (APP_CONFIG.BOP.RPD_PARAMETERS || {})[code];
+            const itemNames = codeParam ? codeParam.items : Object.keys(rpdItems);
+
+            itemNames.forEach((item, idx) => {
+                const rpd     = parseFloat(rpdItems[item] || 0);
+                const realVal = parseFloat(realItems[item] || 0);
+                const sisa    = rpd - realVal;
+                const siColor = sisa >= 0 ? '#28a745' : '#dc3545';
+                const siLabel = sisa >= 0 ? 'Sisa' : 'Melebihi';
+
+                // Find the matching subitem by position or by id
+                let subEl = null;
+                const safeId = (s) => s.replace(/[^a-zA-Z0-9]/g, '-');
+                subEl = document.getElementById(`rpd-cmp-${code}-${safeId(item)}`);
+                
+                if (subEl) {
+                    subEl.innerHTML = `<span style="color:#667eea;font-weight:600;">RPD: ${formatCurrency(rpd)}</span>
+                        &nbsp;·&nbsp;<span style="color:${siColor};font-weight:600;">${siLabel}: ${formatCurrency(Math.abs(sisa))}</span>`;
+                } else if (subitems[idx]) {
+                    // Fallback: inject into subitem by position
+                    let cmpDiv = subitems[idx].querySelector('.rpd-cmp-injected');
+                    if (!cmpDiv) {
+                        cmpDiv = document.createElement('div');
+                        cmpDiv.className = 'rpd-cmp-injected';
+                        cmpDiv.style.cssText = 'font-size:11px;margin-top:3px;text-align:right;';
+                        const valueEl = subitems[idx].querySelector('strong, div[style*="text-align:right"]');
+                        if (valueEl) valueEl.appendChild(cmpDiv);
+                        else subitems[idx].appendChild(cmpDiv);
+                    }
+                    cmpDiv.innerHTML = `<span style="color:#667eea;font-weight:600;">RPD: ${formatCurrency(rpd)}</span>
+                        &nbsp;·&nbsp;<span style="color:${siColor};font-weight:600;">${siLabel}: ${formatCurrency(Math.abs(sisa))}</span>`;
+                }
+            });
+        });
+
+        // Also clear any remaining "Memuat..." placeholders
+        document.querySelectorAll('[id^="rpd-cmp-"]').forEach(el => {
+            if (el.querySelector('span[style*="c0c4cc"]') || el.innerHTML.includes('Memuat')) {
+                el.innerHTML = '<span style="color:#ccc;font-size:10px;">RPD: tidak tersedia</span>';
+            }
+        });
+    } else {
+        // No RPD data - clear all loading placeholders
+        document.querySelectorAll('[id^="rpd-cmp-"]').forEach(el => {
+            el.innerHTML = '<span style="color:#ccc;font-size:10px;">RPD: tidak tersedia</span>';
+        });
+    }
+
+    // --- AP Summary ---
+    const container = document.getElementById('viewRpdApDetail');
+    if (!container) return;
+
+    await apGetConfig();
+    const kua = realisasi.kua;
+    const cfg  = _apConfig && _apConfig[kua] ? _apConfig[kua] : null;
+    if (!cfg || !AP_POS.some(code => cfg[code])) {
+        container.innerHTML = '';
+        return;
+    }
+
+    const nomData = await apGetNominals(realisasi.month, realisasi.year);
+    const nom     = (nomData && nomData[kua]) ? nomData[kua] : {};
+    const totals  = apCalcTotals([realisasi], _apConfig, { [kua]: nom });
+
+    const apItems = AP_POS.filter(code => cfg[code]).map(code =>
+        `<div style="display:flex;justify-content:space-between;font-size:12px;padding:4px 0;border-bottom:1px dashed #e0e7ff;">
+            <span style="color:#555;">⚡ ${AP_POS_NAMES[code]}</span>
+            <strong style="color:#667eea;">${formatCurrency(parseFloat(nom[code]||0))}</strong>
+        </div>`
+    ).join('');
+
+    container.innerHTML = `
+    <div style="background:linear-gradient(135deg,#f0f4ff,#e8f4fd);border:2px solid #667eea;
+                border-radius:12px;padding:16px;margin-top:16px;">
+        <div style="font-weight:700;color:#667eea;margin-bottom:6px;font-size:14px;">⚡ Tagihan Otomatis (Auto Payment)</div>
+        <p style="font-size:12px;color:#666;margin:0 0 10px;">
+            Beberapa pos dibayar otomatis oleh Admin, bukan diinput manual oleh KUA.
+        </p>
+        ${apItems}
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px;">
+            <div style="background:white;border-radius:8px;padding:14px;text-align:center;box-shadow:0 2px 6px rgba(0,0,0,.06);">
+                <div style="font-size:11px;color:#28a745;font-weight:700;margin-bottom:4px;">✅ Total Termasuk Tagihan Otomatis</div>
+                <div style="font-size:20px;font-weight:800;color:#28a745;">${formatCurrency(totals.include)}</div>
+                <div style="font-size:10px;color:#999;margin-top:4px;">Angka pengeluaran sesungguhnya</div>
+            </div>
+            <div style="background:white;border-radius:8px;padding:14px;text-align:center;box-shadow:0 2px 6px rgba(0,0,0,.06);">
+                <div style="font-size:11px;color:#dc3545;font-weight:700;margin-bottom:4px;">⬜ Total Tanpa Tagihan Otomatis</div>
+                <div style="font-size:20px;font-weight:800;color:#dc3545;">${formatCurrency(totals.exclude)}</div>
+                <div style="font-size:10px;color:#999;margin-top:4px;">Hanya pos yang diinput manual</div>
+            </div>
+        </div>
+    </div>`;
+}
 function editRealisasi(realisasi) {
     showRealisasiModal(realisasi);
 }
@@ -4373,7 +4560,7 @@ async function loadVerifikasi(forceRefresh = false) {
         
         try {
             const yearFilter = document.getElementById('verifikasiYearFilter');
-            const year = yearFilter ? yearFilter.value : new Date().getFullYear();
+            const year = yearFilter ? parseInt(yearFilter.value) : new Date().getFullYear();
             
             // Get all realisasis for the year
             let realisasis = await apiCall('getRealisasis', { year: year });
@@ -4402,7 +4589,7 @@ function displayVerifikasi(realisasis) {
     const selectedKUA = kuaFilter ? kuaFilter.value : '';
     const selectedMonth = monthFilter ? monthFilter.value : '';
     const selectedStatus = statusFilter ? statusFilter.value : '';
-    const selectedYear = yearFilter ? yearFilter.value : new Date().getFullYear();
+    const selectedYear = yearFilter ? parseInt(yearFilter.value) : new Date().getFullYear();
     
     console.log('[VERIFIKASI] Displaying data with filters:', {
         kua: selectedKUA,
@@ -4496,7 +4683,7 @@ function onVerifikasiFilterChange() {
         const newFilters = {
             kua: kuaFilter ? kuaFilter.value : '',
             status: statusFilter ? statusFilter.value : '',
-            year: yearFilter ? yearFilter.value : new Date().getFullYear()
+            year: yearFilter ? parseInt(yearFilter.value) : new Date().getFullYear()
         };
         
         // Jika year berubah, perlu reload dari server
@@ -4525,7 +4712,7 @@ async function loadVerifikasiWithFilters() {
     
     try {
         const yearFilter = document.getElementById('verifikasiYearFilter');
-        const year = yearFilter ? yearFilter.value : new Date().getFullYear();
+        const year = yearFilter ? parseInt(yearFilter.value) : new Date().getFullYear();
         
         // Get all realisasis for the year
         let realisasis = await apiCall('getRealisasis', { year: year });
@@ -4944,75 +5131,74 @@ function showVerifyModal(realisasi, rpdData, rpdTotal) {
     }
     
     modal.innerHTML = `
-       <div class="modal-content" style="max-width: 1400px;">
-            <div class="modal-header">
-                <h3>Verifikasi Realisasi - ${realisasi.month || 'Unknown'} ${realisasi.year || ''}</h3>
+        <div class="modal-content" style="max-width:1100px; width:96vw; max-height:92vh; overflow-y:auto; border-radius:16px;">
+            <div class="modal-header" style="position:sticky; top:0; z-index:10; background:#fff; border-radius:16px 16px 0 0;">
+                <h3 style="font-size:clamp(14px,2vw,18px);">Verifikasi Realisasi — ${realisasi.month || ''} ${realisasi.year || ''}</h3>
                 <button class="close-btn" onclick="closeModal()">&times;</button>
             </div>
             
-            <div class="summary-box">
-                <div class="summary-item">
-                    <span>Bulan:</span>
-                    <strong>${realisasi.month} ${realisasi.year}</strong>
-                </div>
-                <div class="summary-item">
-                    <span>KUA:</span>
-                    <strong>${realisasi.kua}</strong>
-                </div>
-                <div class="summary-item">
-                    <span>Status Saat Ini:</span>
-                    <strong>${realisasi.status}</strong>
-                </div>
+            <!-- Meta info -->
+            <div class="summary-box" style="margin:16px 0 0;">
+                <div class="summary-item"><span>KUA:</span><strong>${realisasi.kua}</strong></div>
+                <div class="summary-item"><span>Periode:</span><strong>${realisasi.month} ${realisasi.year}</strong></div>
+                <div class="summary-item"><span>Status:</span><strong>${realisasi.status}</strong></div>
             </div>
             
-            <!-- Layout Side-by-Side: Pos/Nominal (kiri) dan Preview Dokumen (kanan) -->
-            <div class="verify-grid">
-                <div class="verify-left">
-                    <h3 style="color: #667eea; margin-bottom: 15px; font-size: 18px;">📊 Data Pos & Nominal</h3>
+            <!-- Grid: Data kiri | Dokumen kanan -->
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-top:16px; padding:0 2px;">
+                <!-- KIRI: pos & nominal -->
+                <div style="min-width:0;">
+                    <h4 style="color:#667eea; margin-bottom:12px; font-size:15px;">📊 Data Pos &amp; Nominal</h4>
                     ${detailHTML}
                     
-                    <div class="summary-box" style="margin-top: 20px;">
+                    <div class="summary-box" style="margin-top:16px;">
                         <div class="summary-item">
                             <span>Total RPD:</span>
-                            <strong>${rpdData ? formatCurrency(rpdTotal) : '<span style="color: #999;">Data RPD tidak tersedia</span>'}</strong>
+                            <strong>${rpdData ? formatCurrency(rpdTotal) : '<span style="color:#999">Tidak tersedia</span>'}</strong>
                         </div>
                         <div class="summary-item">
                             <span>Total Realisasi:</span>
                             <strong>${formatCurrency(realisasi.total)}</strong>
                         </div>
                         ${rpdData ? `
-                        <div class="summary-item" style="border-top: 2px solid #dee2e6; padding-top: 10px; margin-top: 10px;">
-                            <span>Selisih (RPD - Realisasi):</span>
-                            <strong style="color: ${rpdTotal >= realisasi.total ? '#28a745' : '#dc3545'}">
+                        <div class="summary-item" style="border-top:2px solid #dee2e6; padding-top:10px; margin-top:10px;">
+                            <span>Selisih (RPD − Realisasi):</span>
+                            <strong style="color:${rpdTotal >= realisasi.total ? '#28a745' : '#dc3545'}">
                                 ${formatCurrency(rpdTotal - realisasi.total)}
                             </strong>
-                        </div>
-                        ` : ''}
+                        </div>` : ''}
                     </div>
+                    <div id="apSummaryPlaceholder"></div>
                 </div>
                 
-                <div class="verify-right">
-                    <h3 style="color: #667eea; margin-bottom: 15px; font-size: 18px;">📁 Preview Dokumen</h3>
+                <!-- KANAN: dokumen -->
+                <div style="min-width:0;">
+                    <h4 style="color:#667eea; margin-bottom:12px; font-size:15px;">📁 Preview Dokumen</h4>
                     ${filesHTML}
                 </div>
             </div>
             
-            <form id="verifyForm" style="margin-top: 30px;">
-                <div class="form-group">
-                    <label>Status Verifikasi</label>
-                    <select id="verifyStatus" required>
-                        <option value="Waiting" ${normalizeStatus(realisasi.status) === 'Waiting' ? 'selected' : ''}>Waiting</option>
-                        <option value="Approved" ${normalizeStatus(realisasi.status) === 'Approved' ? 'selected' : ''}>Approved</option>
-                        <option value="Rejected" ${normalizeStatus(realisasi.status) === 'Rejected' ? 'selected' : ''}>Rejected</option>
-                        <option value="Paid" ${normalizeStatus(realisasi.status) === 'Paid' ? 'selected' : ''}>Paid</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label>Catatan</label>
-                    <textarea id="verifyNotes" class="verify-notes" rows="4" placeholder="Tambahkan catatan jika diperlukan">${realisasi.notes || ''}</textarea>
-                </div>
-                <button type="submit" class="btn">💾 Simpan Verifikasi</button>
-            </form>
+            <!-- Form Verifikasi — DALAM kotak, di bawah grid -->
+            <div style="background:#f8f9fa; border-radius:12px; padding:20px; margin-top:20px; border:1px solid #e9ecef;">
+                <h4 style="color:#495057; margin-bottom:16px; font-size:15px;">✏️ Tindakan Verifikasi</h4>
+                <form id="verifyForm">
+                    <div class="form-group" style="margin-bottom:14px;">
+                        <label style="font-weight:600; margin-bottom:6px; display:block;">Status Verifikasi</label>
+                        <select id="verifyStatus" required style="width:100%; padding:10px; border:1px solid #ddd; border-radius:8px; font-size:14px;">
+                            <option value="Waiting"  ${normalizeStatus(realisasi.status) === 'Waiting'  ? 'selected' : ''}>⏳ Waiting</option>
+                            <option value="Approved" ${normalizeStatus(realisasi.status) === 'Approved' ? 'selected' : ''}>✅ Approved</option>
+                            <option value="Rejected" ${normalizeStatus(realisasi.status) === 'Rejected' ? 'selected' : ''}>❌ Rejected</option>
+                            <option value="Paid"     ${normalizeStatus(realisasi.status) === 'Paid'     ? 'selected' : ''}>💰 Paid</option>
+                        </select>
+                    </div>
+                    <div class="form-group" style="margin-bottom:14px;">
+                        <label style="font-weight:600; margin-bottom:6px; display:block;">Catatan</label>
+                        <textarea id="verifyNotes" rows="3" placeholder="Tambahkan catatan jika diperlukan"
+                            style="width:100%; padding:10px; border:1px solid #ddd; border-radius:8px; font-size:14px; resize:vertical; box-sizing:border-box;">${realisasi.notes || ''}</textarea>
+                    </div>
+                    <button type="submit" class="btn" style="width:100%; padding:12px; font-size:15px;">💾 Simpan Verifikasi</button>
+                </form>
+            </div>
         </div>
     `;
     
@@ -5022,6 +5208,8 @@ function showVerifyModal(realisasi, rpdData, rpdTotal) {
     setTimeout(() => {
         initAllImageViewers();
         initAllPDFViewers();
+        // ✅ Auto Payment: render summary di verify modal
+        apRenderVerifyModalSummary(realisasi).catch(() => {});
     }, 100);
     
     document.getElementById('verifyForm').addEventListener('submit', async (e) => {
@@ -5067,17 +5255,17 @@ async function exportData(type) {
     switch(type) {
         case 'budget':
             yearFilter = document.getElementById('budgetYearFilter');
-            year = yearFilter ? yearFilter.value : new Date().getFullYear();
+            year = yearFilter ? parseInt(yearFilter.value) : new Date().getFullYear();
             kua = currentUser.role === 'Admin' ? null : currentUser.kua;
             break;
         case 'rpd':
             yearFilter = document.getElementById('rpdYearFilter');
-            year = yearFilter ? yearFilter.value : new Date().getFullYear();
+            year = yearFilter ? parseInt(yearFilter.value) : new Date().getFullYear();
             kua = currentUser.role === 'Admin' ? null : currentUser.kua;
             break;
         case 'realisasi':
             yearFilter = document.getElementById('realisasiYearFilter');
-            year = yearFilter ? yearFilter.value : new Date().getFullYear();
+            year = yearFilter ? parseInt(yearFilter.value) : new Date().getFullYear();
             kua = currentUser.role === 'Admin' ? null : currentUser.kua;
             break;
     }
@@ -5133,19 +5321,19 @@ async function exportDataEnhanced(type, format) {
         case 'budget':
             yearFilter = document.getElementById('budgetYearFilter');
             kuaFilter = document.getElementById('budgetKUAFilterExport');
-            year = yearFilter ? yearFilter.value : new Date().getFullYear();
+            year = yearFilter ? parseInt(yearFilter.value) : new Date().getFullYear();
             kua = kuaFilter ? kuaFilter.value : null;
             break;
         case 'rpd':
             yearFilter = document.getElementById('rpdYearFilter');
             kuaFilter = document.getElementById('rpdKUAFilterExport');
-            year = yearFilter ? yearFilter.value : new Date().getFullYear();
+            year = yearFilter ? parseInt(yearFilter.value) : new Date().getFullYear();
             kua = kuaFilter ? kuaFilter.value : null;
             break;
         case 'realisasi':
             yearFilter = document.getElementById('realisasiYearFilter');
             kuaFilter = document.getElementById('realisasiKUAFilterExport');
-            year = yearFilter ? yearFilter.value : new Date().getFullYear();
+            year = yearFilter ? parseInt(yearFilter.value) : new Date().getFullYear();
             kua = kuaFilter ? kuaFilter.value : null;
             break;
     }
@@ -5804,7 +5992,7 @@ function startVerifikasiAutoRefresh() {
         if (cachedData) {
             // Get fresh data
             const yearFilter = document.getElementById('verifikasiYearFilter');
-            const year = yearFilter ? yearFilter.value : new Date().getFullYear();
+            const year = yearFilter ? parseInt(yearFilter.value) : new Date().getFullYear();
             
             try {
                 const freshData = await apiCall('getRealisasis', { year: year });
@@ -5888,19 +6076,21 @@ async function downloadRPDDetailYear(format) {
 
 // 3. Download Realisasi per Tahun
 async function downloadRealisasiPerYear(format) {
-    const kua = document.getElementById('exportRealisasiPerYearKua').value;
+    const kua  = document.getElementById('exportRealisasiPerYearKua').value;
     const year = document.getElementById('exportRealisasiPerYearYear').value;
+    const apMode = (document.getElementById('exportRealisasiAPMode') || {}).value || 'exclude';
     
     try {
         showLoading();
         const result = await apiCall('exportRealisasiPerYear', {
             kua: kua,
             year: parseInt(year),
-            format: format
+            format: format,
+            apMode: apMode   // 'include' | 'exclude'
         });
         
         window.downloadFile(result.fileData, result.fileName, result.mimeType);
-        showNotification('File berhasil diunduh', 'success');
+        showNotification(`File berhasil diunduh (${apMode === 'include' ? 'Include' : 'Exclude'} Auto Payment)`, 'success');
     } catch (error) {
         showNotification('Gagal mengunduh file: ' + error.message, 'error');
     } finally {
@@ -5910,17 +6100,19 @@ async function downloadRealisasiPerYear(format) {
 
 // 4. Download Realisasi Detail Year
 async function downloadRealisasiDetailYear(format) {
-    const year = document.getElementById('exportRealisasiDetailYear').value;
+    const year   = document.getElementById('exportRealisasiDetailYear').value;
+    const apMode = (document.getElementById('exportRealisasiDetailAPMode') || {}).value || 'exclude';
     
     try {
         showLoading();
         const result = await apiCall('exportRealisasiDetailYear', {
             year: parseInt(year),
-            format: format
+            format: format,
+            apMode: apMode
         });
         
         window.downloadFile(result.fileData, result.fileName, result.mimeType);
-        showNotification('File berhasil diunduh', 'success');
+        showNotification(`File berhasil diunduh (${apMode === 'include' ? 'Include' : 'Exclude'} Auto Payment)`, 'success');
     } catch (error) {
         showNotification('Gagal mengunduh file: ' + error.message, 'error');
     } finally {
@@ -6924,26 +7116,35 @@ function applyFilters(data, filters) {
 // ===== RPD: LOAD DATA WITH FILTERS =====
 async function loadRPDsWithFilters() {
     console.log('[RPD] Loading with filters...');
-    showLoading();
     
+    const yearFilter = document.getElementById('rpdYearFilter');
+    const year = yearFilter ? parseInt(yearFilter.value) : new Date().getFullYear();
+    
+    // ✅ Cek local cache dulu — jika sudah ada dan tahunnya sama, gunakan cache
+    const _localRPDs = getLocalCache('rpds');
+    if (_localRPDs && _localRPDs.length > 0) {
+        // Verify cache is for the same year (check first record)
+        const _cacheYear = _localRPDs[0] && _localRPDs[0].year ? parseInt(_localRPDs[0].year) : null;
+        if (!_cacheYear || _cacheYear === year) {
+            rawData.rpds = _localRPDs;
+            console.log('[RPD] Using preloaded cache (no API call) -', _localRPDs.length, 'records');
+            displayRPDsFiltered();
+            return; // ← STOP: tidak perlu ke server
+        }
+    }
+    
+    // Cache miss atau tahun berbeda → fetch dari server
+    showLoading();
     try {
-        const yearFilter = document.getElementById('rpdYearFilter');
-        const year = yearFilter ? yearFilter.value : new Date().getFullYear();
-        
         let rpds;
-        
         if (currentUser.role === 'Admin') {
             rpds = await apiCall('getRPDs', { year: year });
         } else {
             rpds = await apiCall('getRPDs', { kua: currentUser.kua, year: year });
         }
-        
-        // Simpan ke raw data
         rawData.rpds = sortByMonth(rpds);
-        
-        // Display dengan filter yang dipilih
+        updateLocalCache('rpds', rawData.rpds);
         displayRPDsFiltered();
-        
         hideLoading();
         showNotification('Data RPD berhasil dimuat', 'success');
     } catch (error) {
@@ -7094,7 +7295,7 @@ async function loadVerifikasiWithFilters() {
     
     try {
         const yearFilter = document.getElementById('verifikasiYearFilter');
-        const year = yearFilter ? yearFilter.value : new Date().getFullYear();
+        const year = yearFilter ? parseInt(yearFilter.value) : new Date().getFullYear();
         
         let realisasis = await apiCall('getRealisasis', { year: year });
         
@@ -7180,7 +7381,9 @@ function displayVerifikasiFiltered() {
     `;
     
     tbody.innerHTML = rows + totalRow;
-    console.log('[VERIFIKASI] Displayed', filteredData.length, 'records, Total:', formatCurrency(totalNominal));
+    console.log("[VERIFIKASI] Displayed", filteredData.length, "records, Total:", formatCurrency(totalNominal));
+    // ✅ Auto Payment: tampilkan summary Include/Exclude
+    apRenderVerifikasiSummary(filteredData).catch(() => {});
 }
 
 // ===== VERIFIKASI: SORT TABLE =====
@@ -7297,3 +7500,525 @@ window.sortVerifikasiTable = sortVerifikasiTable;
 window.sortBudgetTable = sortBudgetTable;
 
 console.log('[BOP FIXED] ✅ New filter system loaded');
+// =====================================================================
+// =================== AUTO PAYMENT MODULE =============================
+// =====================================================================
+// Fitur ini sepenuhnya backward-compatible:
+//  - Jika KUA tidak punya AP config → sistem berjalan seperti biasa
+//  - Data realisasi lama tidak diubah
+//  - Semua perubahan hanya pada layer perhitungan/tampilan
+
+const AP_POS = ['522111', '522112'];
+const AP_POS_NAMES = {
+    '522111': 'Belanja Langganan Listrik',
+    '522112': 'Belanja Langganan Telepon / Internet'
+};
+
+// Session-level cache — diisi sekali per sesi
+let _apConfig   = null;  // { 'KUA Xyz': { '522111': true/false, '522112': true/false } }
+let _apNominals = {};    // { 'BulanTahun': { 'KUA Xyz': { '522111': 0, '522112': 0 } } }
+
+// ------------------------------------------------------------------
+// CORE HELPERS
+// ------------------------------------------------------------------
+/** Ambil config AP (lazy-load, cache sesi) */
+async function apGetConfig() {
+    if (_apConfig !== null) return _apConfig;
+    try {
+        const raw = await apiCall('getAutoPaymentConfig', {});
+        _apConfig = raw || {};
+    } catch (e) {
+        console.warn('[AP] getAutoPaymentConfig failed:', e);
+        _apConfig = {};
+    }
+    return _apConfig;
+}
+
+/** Reset cache config (misal setelah save) */
+function apInvalidateConfig() { _apConfig = null; }
+
+/** Apakah POS kode `code` aktif untuk KUA ini? */
+function apIsActive(kua, code) {
+    if (!_apConfig || !_apConfig[kua]) return false;
+    return _apConfig[kua][code] === true;
+}
+
+/** KUA-KUA yang punya setidaknya satu POS AP aktif */
+function apGetActiveKUAs() {
+    if (!_apConfig) return [];
+    return Object.keys(_apConfig).filter(kua =>
+        AP_POS.some(code => _apConfig[kua][code] === true)
+    );
+}
+
+/** Ambil nominal AP untuk bulan+tahun (lazy-load, cache sesi) */
+async function apGetNominals(month, year) {
+    const key = `${month}_${year}`;
+    if (_apNominals[key]) return _apNominals[key];
+    try {
+        const raw = await apiCall('getAutoPaymentNominal', { month, year });
+        _apNominals[key] = raw || {};
+    } catch (e) {
+        console.warn('[AP] getAutoPaymentNominal failed:', e);
+        _apNominals[key] = {};
+    }
+    return _apNominals[key];
+}
+
+/** Parse angka dari input (handle dot/comma separator) */
+function apParseNumber(str) {
+    if (typeof str === 'number') return str;
+    return parseFloat((str || '').toString().replace(/\./g, '').replace(',', '.')) || 0;
+}
+
+/**
+ * Hitung total Include & Exclude Auto Payment untuk sebuah list realisasi
+ * @param {Array}  realisasiList
+ * @param {Object} cfg       - _apConfig
+ * @param {Object} nomByKUA  - { KUA: { '522111': n, '522112': n } }
+ */
+function apCalcTotals(realisasiList, cfg, nomByKUA) {
+    let include = 0, exclude = 0;
+    (realisasiList || []).forEach(real => {
+        const kua  = real.kua;
+        const kuaCfg = cfg && cfg[kua] ? cfg[kua] : null;
+        const nom    = nomByKUA && nomByKUA[kua] ? nomByKUA[kua] : {};
+
+        if (!real.data || !kuaCfg) {
+            // KUA tanpa AP config → both mode pakai nilai manual
+            const t = parseFloat(real.total || 0);
+            include += t; exclude += t;
+            return;
+        }
+
+        let incT = 0, excT = 0;
+        Object.entries(real.data).forEach(([code, items]) => {
+            const isAuto = kuaCfg[code] === true;
+            const manualSum = Object.values(items).reduce((s, v) => s + (parseFloat(v) || 0), 0);
+            if (isAuto) {
+                incT += parseFloat(nom[code] || 0);  // include → nominal admin
+                excT += 0;                            // exclude → 0
+            } else {
+                incT += manualSum;
+                excT += manualSum;
+            }
+        });
+        include += incT; exclude += excT;
+    });
+    return { include, exclude };
+}
+
+// ------------------------------------------------------------------
+// PAGE INIT & TAB SWITCHING
+// ------------------------------------------------------------------
+function initAutoPaymentPage() {
+    console.log('[AP] Initializing Auto Payment page');
+    // Populate bulan dropdown
+    const monthSel = document.getElementById('apNominalMonth');
+    if (monthSel && monthSel.options.length <= 1) {
+        const curMonth = APP_CONFIG.MONTHS[new Date().getMonth()];
+        APP_CONFIG.MONTHS.forEach(m => {
+            const opt = document.createElement('option');
+            opt.value = m; opt.textContent = m;
+            if (m === curMonth) opt.selected = true;
+            monthSel.appendChild(opt);
+        });
+    }
+    switchAPTab('config');
+}
+
+function switchAPTab(tab) {
+    document.getElementById('apTabConfig').style.display  = tab === 'config'  ? 'block' : 'none';
+    document.getElementById('apTabNominal').style.display = tab === 'nominal' ? 'block' : 'none';
+    document.getElementById('tabConfigBtn').className  = tab === 'config'  ? 'btn btn-sm'           : 'btn btn-sm btn-secondary';
+    document.getElementById('tabNominalBtn').className = tab === 'nominal' ? 'btn btn-sm'           : 'btn btn-sm btn-secondary';
+}
+
+// ------------------------------------------------------------------
+// TAB 1: CONFIG
+// ------------------------------------------------------------------
+async function loadAPConfig() {
+    console.log('[AP] Loading config...');
+    showLoading();
+    try {
+        const raw = await apiCall('getAutoPaymentConfig', {});
+        _apConfig = raw || {};
+
+        const tbody = document.querySelector('#apConfigTable tbody');
+        if (!tbody) { hideLoading(); return; }
+
+        tbody.innerHTML = APP_CONFIG.KUA_LIST.map(kua => {
+            const cfg = _apConfig[kua] || {};
+            return `<tr>
+                <td>${kua}</td>
+                <td style="text-align:center;">
+                    <input type="checkbox" data-kua="${kua}" data-code="522111" class="ap-cfg-cb"
+                        ${cfg['522111'] ? 'checked' : ''}>
+                </td>
+                <td style="text-align:center;">
+                    <input type="checkbox" data-kua="${kua}" data-code="522112" class="ap-cfg-cb"
+                        ${cfg['522112'] ? 'checked' : ''}>
+                </td>
+            </tr>`;
+        }).join('');
+
+        hideLoading();
+        showNotification('Config Auto Payment berhasil dimuat', 'success');
+    } catch (e) {
+        hideLoading();
+        console.error('[AP] loadAPConfig error:', e);
+    }
+}
+
+async function saveAPConfig() {
+    const checkboxes = document.querySelectorAll('.ap-cfg-cb');
+    if (checkboxes.length === 0) {
+        showNotification('Load data terlebih dahulu sebelum menyimpan', 'warning');
+        return;
+    }
+
+    const newCfg = {};
+    checkboxes.forEach(cb => {
+        const kua = cb.dataset.kua, code = cb.dataset.code;
+        if (!newCfg[kua]) newCfg[kua] = { '522111': false, '522112': false };
+        newCfg[kua][code] = cb.checked;
+    });
+
+    try {
+        await apiCall('saveAutoPaymentConfig', { config: newCfg });
+        _apConfig = newCfg;  // update cache
+        showNotification('Konfigurasi Auto Payment berhasil disimpan ✅', 'success');
+    } catch (e) { console.error('[AP] saveAPConfig error:', e); }
+}
+
+// ------------------------------------------------------------------
+// TAB 2: INPUT NOMINAL
+// ------------------------------------------------------------------
+async function loadAPNominal() {
+    const month = document.getElementById('apNominalMonth').value;
+    const year  = document.getElementById('apNominalYear').value;
+    if (!month || !year) {
+        showNotification('Pilih bulan dan tahun terlebih dahulu', 'warning');
+        return;
+    }
+
+    // Pastikan config ter-load
+    await apGetConfig();
+    const activeKUAs = apGetActiveKUAs();
+    if (activeKUAs.length === 0) {
+        showNotification('Belum ada KUA dengan Auto Payment aktif. Atur Config terlebih dahulu.', 'info');
+        return;
+    }
+
+    showLoading();
+    try {
+        const raw = await apiCall('getAutoPaymentNominal', { month, year });
+        const nomData = raw || {};
+        const key = `${month}_${year}`;
+        _apNominals[key] = nomData;
+
+        _renderAPNominalTable(activeKUAs, month, year, nomData);
+        hideLoading();
+        showNotification('Nominal Auto Payment berhasil dimuat', 'success');
+    } catch (e) {
+        hideLoading();
+        console.error('[AP] loadAPNominal error:', e);
+    }
+}
+
+function _renderAPNominalTable(activeKUAs, month, year, nomData) {
+    const tbody = document.querySelector('#apNominalTable tbody');
+    if (!tbody) return;
+
+    let grandTotal = 0;
+    tbody.innerHTML = activeKUAs.map(kua => {
+        const cfg = _apConfig[kua] || {};
+        const nom = nomData[kua] || {};
+        const v1  = cfg['522111'] ? (parseFloat(nom['522111']) || 0) : null;
+        const v2  = cfg['522112'] ? (parseFloat(nom['522112']) || 0) : null;
+        const rowTotal = (v1 || 0) + (v2 || 0);
+        grandTotal += rowTotal;
+
+        const inputStyle = 'text-align:right; width:140px; border:1px solid #ddd; border-radius:6px; padding:6px 10px;';
+        const cell1 = cfg['522111']
+            ? `<input type="text" class="ap-nom-inp auto-format-number" data-kua="${kua}" data-code="522111"
+                   value="${v1}" style="${inputStyle}" oninput="apUpdateRowTotal(this)">`
+            : `<span style="color:#999; font-size:12px;">—</span>`;
+        const cell2 = cfg['522112']
+            ? `<input type="text" class="ap-nom-inp auto-format-number" data-kua="${kua}" data-code="522112"
+                   value="${v2}" style="${inputStyle}" oninput="apUpdateRowTotal(this)">`
+            : `<span style="color:#999; font-size:12px;">—</span>`;
+
+        return `<tr>
+            <td>${kua}</td>
+            <td style="text-align:right;">${cell1}</td>
+            <td style="text-align:right;">${cell2}</td>
+            <td style="text-align:right; font-weight:bold;" id="apRow_${kua.replace(/[\s/]/g,'_')}">${formatCurrency(rowTotal)}</td>
+        </tr>`;
+    }).join('');
+
+    document.getElementById('apNominalGrandTotal').textContent = formatCurrency(grandTotal);
+    document.getElementById('apNominalFooter').style.display = 'block';
+
+    setTimeout(() => {
+        if (typeof setupAllAutoFormatInputs === 'function') {
+            setupAllAutoFormatInputs('.ap-nom-inp');
+        }
+        document.querySelectorAll('.ap-nom-inp').forEach(inp => inp.addEventListener('input', apRecalcGrand));
+    }, 80);
+}
+
+function apUpdateRowTotal(inp) {
+    const kua   = inp.dataset.kua;
+    const rowEl = document.getElementById('apRow_' + kua.replace(/[\s/]/g, '_'));
+    if (!rowEl) return;
+    let total = 0;
+    document.querySelectorAll(`.ap-nom-inp[data-kua="${kua}"]`).forEach(i => total += apParseNumber(i.value));
+    rowEl.textContent = formatCurrency(total);
+}
+
+function apRecalcGrand() {
+    let grand = 0;
+    document.querySelectorAll('.ap-nom-inp').forEach(inp => grand += apParseNumber(inp.value));
+    const el = document.getElementById('apNominalGrandTotal');
+    if (el) el.textContent = formatCurrency(grand);
+}
+
+async function saveAPNominal() {
+    const month = document.getElementById('apNominalMonth').value;
+    const year  = document.getElementById('apNominalYear').value;
+    if (!month || !year) { showNotification('Pilih bulan dan tahun', 'warning'); return; }
+
+    const inputs = document.querySelectorAll('.ap-nom-inp');
+    if (inputs.length === 0) { showNotification('Load data dulu sebelum menyimpan', 'warning'); return; }
+
+    const nominals = {};
+    inputs.forEach(inp => {
+        const kua = inp.dataset.kua, code = inp.dataset.code;
+        const val = apParseNumber(inp.value);
+        if (val < 0) { showNotification('Nominal tidak boleh negatif', 'error'); return; }
+        if (!nominals[kua]) nominals[kua] = { '522111': 0, '522112': 0 };
+        nominals[kua][code] = val;
+    });
+
+    try {
+        await apiCall('saveAutoPaymentNominal', { month, year, nominals });
+        // Update cache
+        const key = `${month}_${year}`;
+        if (!_apNominals[key]) _apNominals[key] = {};
+        Object.assign(_apNominals[key], nominals);
+        showNotification('Nominal Auto Payment berhasil disimpan ✅', 'success');
+    } catch (e) { console.error('[AP] saveAPNominal error:', e); }
+}
+
+// ------------------------------------------------------------------
+// INTEGRASI FORM REALISASI (Operator) — Disable input POS aktif
+// ------------------------------------------------------------------
+async function apApplyToForm(kua, month, year) {
+    if (!kua || !month || !year) return;
+    await apGetConfig();
+    const cfg = _apConfig[kua];
+    if (!cfg) return;  // Tidak ada AP config untuk KUA ini → skip
+
+    const hasSomeActive = AP_POS.some(code => cfg[code] === true);
+    if (!hasSomeActive) return;
+
+    const nomData = await apGetNominals(month, year);
+    const nom     = (nomData && nomData[kua]) ? nomData[kua] : {};
+
+    AP_POS.forEach(code => {
+        if (!cfg[code]) return;
+        const apNom = parseFloat(nom[code] || 0);
+
+        // Disable semua input dengan data-code ini
+        document.querySelectorAll(`.realisasi-input[data-code="${code}"]`).forEach(inp => {
+            inp.value    = apNom;
+            inp.disabled = true;
+            inp.style.cssText = 'background:#e8f4fd; color:#4a6cf7; font-weight:bold; text-align:right; border:2px solid #667eea; border-radius:6px;';
+            inp.title = `Auto Payment: ${formatCurrency(apNom)} (ditetapkan Admin)`;
+            if (inp.classList.contains('auto-format-number')) {
+                inp.value = apNom.toLocaleString('id-ID');
+            }
+        });
+
+        // Tambahkan badge info di header POS
+        document.querySelectorAll('.rpd-item').forEach(item => {
+            const h4 = item.querySelector('h4');
+            if (h4 && h4.textContent.includes(code) && !item.querySelector('.ap-badge')) {
+                const badge = document.createElement('div');
+                badge.className = 'ap-badge';
+                badge.style.cssText = 'display:inline-flex; align-items:center; gap:6px; background:linear-gradient(135deg,#667eea,#764ba2); color:white; padding:5px 12px; border-radius:20px; font-size:12px; margin-bottom:10px; font-weight:500;';
+                badge.innerHTML = `⚡ Auto Payment Aktif — Nominal Admin: <strong>${formatCurrency(apNom)}</strong>`;
+                h4.insertAdjacentElement('afterend', badge);
+            }
+        });
+    });
+
+    calculateRealisasiTotal();
+}
+
+// ------------------------------------------------------------------
+// INTEGRASI VERIFIKASI — Tampilkan total Include/Exclude di bawah tabel
+// ------------------------------------------------------------------
+async function apRenderVerifikasiSummary(filteredData) {
+    await apGetConfig();
+    const activeKUAs = apGetActiveKUAs();
+    if (activeKUAs.length === 0) {
+        // Tidak ada AP → hapus summary jika ada
+        const el = document.getElementById('apVerifikasiSummary');
+        if (el) el.remove();
+        return;
+    }
+
+    // Ambil semua bulan+tahun unik dari data terfilter
+    const monthYearPairs = [...new Set(
+        filteredData.map(r => `${r.month}_${r.year}`)
+    )];
+
+    // Kumpulkan semua nominal yang diperlukan
+    const allNom = {};
+    for (const pair of monthYearPairs) {
+        const [month, year] = pair.split('_');
+        const nomData = await apGetNominals(month, year);
+        // Merge ke allNom per KUA (aggregate per month jika multiple)
+        Object.entries(nomData).forEach(([kua, codes]) => {
+            if (!allNom[kua]) allNom[kua] = { '522111': 0, '522112': 0 };
+            AP_POS.forEach(code => {
+                allNom[kua][code] += parseFloat(codes[code] || 0);
+            });
+        });
+    }
+
+    const { include, exclude } = apCalcTotals(filteredData, _apConfig, allNom);
+
+    // Render / update summary block
+    let summaryEl = document.getElementById('apVerifikasiSummary');
+    if (!summaryEl) {
+        summaryEl = document.createElement('div');
+        summaryEl.id = 'apVerifikasiSummary';
+        const table = document.getElementById('verifikasiTable');
+        if (table) table.insertAdjacentElement('afterend', summaryEl);
+    }
+
+    summaryEl.innerHTML = `
+        <div style="background:linear-gradient(135deg,#f0f4ff,#e8f4fd); border:2px solid #667eea;
+                    border-radius:12px; padding:16px; margin-top:16px; display:grid;
+                    grid-template-columns:1fr 1fr; gap:12px; align-items:center;">
+            <div style="grid-column:1/-1; font-weight:700; color:#667eea; font-size:14px;">
+                ⚡ Total Auto Payment — Perhitungan
+            </div>
+            <div style="background:white; border-radius:8px; padding:12px; text-align:center; box-shadow:0 2px 6px rgba(0,0,0,.07);">
+                <div style="font-size:11px; color:#666; margin-bottom:4px; text-transform:uppercase; letter-spacing:.5px;">Include Auto Payment</div>
+                <div style="font-size:20px; font-weight:800; color:#28a745;">${formatCurrency(include)}</div>
+                <div style="font-size:10px; color:#999; margin-top:3px;">Manual non-auto + Nominal Admin</div>
+            </div>
+            <div style="background:white; border-radius:8px; padding:12px; text-align:center; box-shadow:0 2px 6px rgba(0,0,0,.07);">
+                <div style="font-size:11px; color:#666; margin-bottom:4px; text-transform:uppercase; letter-spacing:.5px;">Exclude Auto Payment</div>
+                <div style="font-size:20px; font-weight:800; color:#dc3545;">${formatCurrency(exclude)}</div>
+                <div style="font-size:10px; color:#999; margin-top:3px;">Hanya pos manual non-auto</div>
+            </div>
+        </div>`;
+}
+
+// ------------------------------------------------------------------
+// INTEGRASI MODAL VERIFIKASI — Tampilkan summary AP
+// ------------------------------------------------------------------
+async function apRenderVerifyModalSummary(realisasi) {
+    await apGetConfig();
+    const kua = realisasi.kua;
+    const cfg  = _apConfig && _apConfig[kua] ? _apConfig[kua] : null;
+    if (!cfg) return;
+    const hasSome = AP_POS.some(code => cfg[code] === true);
+    if (!hasSome) return;
+
+    const nomData = await apGetNominals(realisasi.month, realisasi.year);
+    const nom     = (nomData && nomData[kua]) ? nomData[kua] : {};
+
+    const { include, exclude } = apCalcTotals([realisasi], _apConfig, { [kua]: nom });
+
+    const placeholder = document.getElementById('apSummaryPlaceholder');
+    if (!placeholder) return;
+
+    placeholder.innerHTML = `
+        <div style="background:linear-gradient(135deg,#f0f4ff,#e8f4fd); border:2px solid #667eea;
+                    border-radius:12px; padding:16px; margin-top:12px;">
+            <div style="font-weight:700; color:#667eea; margin-bottom:10px; font-size:14px;">
+                ⚡ Perhitungan Auto Payment
+            </div>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+                <div style="background:white; border-radius:8px; padding:12px; text-align:center;">
+                    <div style="font-size:11px; color:#666; margin-bottom:4px;">Include AP</div>
+                    <div style="font-size:18px; font-weight:800; color:#28a745;">${formatCurrency(include)}</div>
+                    <div style="font-size:10px; color:#999; margin-top:2px;">Manual + Nominal Admin</div>
+                </div>
+                <div style="background:white; border-radius:8px; padding:12px; text-align:center;">
+                    <div style="font-size:11px; color:#666; margin-bottom:4px;">Exclude AP</div>
+                    <div style="font-size:18px; font-weight:800; color:#dc3545;">${formatCurrency(exclude)}</div>
+                    <div style="font-size:10px; color:#999; margin-top:2px;">Non-auto saja</div>
+                </div>
+            </div>
+            <div style="margin-top:10px; font-size:11px; color:#555;">
+                ${AP_POS.filter(code => cfg[code]).map(code => `
+                    📌 <strong>${AP_POS_NAMES[code]}:</strong> ${formatCurrency(parseFloat(nom[code]||0))}
+                `).join('&emsp;')}
+            </div>
+        </div>`;
+}
+
+// ------------------------------------------------------------------
+// INTEGRASI FORM TAMBAH/EDIT REALISASI — Tampilkan summary AP
+// ------------------------------------------------------------------
+async function apRenderFormModalSummary(kua, month, year) {
+    const container = document.getElementById('apModalSummary');
+    if (!container) return;
+    await apGetConfig();
+    const cfg = _apConfig && _apConfig[kua] ? _apConfig[kua] : null;
+    if (!cfg || !AP_POS.some(code => cfg[code])) {
+        container.style.display = 'none';
+        return;
+    }
+    const nomData = await apGetNominals(month, year);
+    const nom     = (nomData && nomData[kua]) ? nomData[kua] : {};
+    
+    // Build a fake realisasi from current inputs to calc totals
+    const fakeReal = { kua, month, year, data: {}, total: 0 };
+    document.querySelectorAll('.realisasi-input').forEach(inp => {
+        const code = inp.dataset.code, item = inp.dataset.item;
+        if (!code || !item) return;
+        if (!fakeReal.data[code]) fakeReal.data[code] = {};
+        const v = parseFloat(inp.value.replace(/\./g,'').replace(',','.')) || 0;
+        fakeReal.data[code][item] = v;
+        fakeReal.total += v;
+    });
+    
+    const totals = apCalcTotals([fakeReal], _apConfig, { [kua]: nom });
+    
+    container.style.display = 'block';
+    container.innerHTML = `
+        <div style="background:linear-gradient(135deg,#f0f4ff,#e8f4fd); border:2px solid #667eea;
+                    border-radius:10px; padding:14px;">
+            <div style="font-weight:700; color:#667eea; margin-bottom:8px; font-size:13px;">⚡ Kalkulasi Auto Payment</div>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+                <div style="background:white; border-radius:6px; padding:10px; text-align:center;">
+                    <div style="font-size:10px; color:#666; margin-bottom:3px;">Include AP</div>
+                    <div style="font-size:16px; font-weight:800; color:#28a745;">${formatCurrency(totals.include)}</div>
+                </div>
+                <div style="background:white; border-radius:6px; padding:10px; text-align:center;">
+                    <div style="font-size:10px; color:#666; margin-bottom:3px;">Exclude AP</div>
+                    <div style="font-size:16px; font-weight:800; color:#dc3545;">${formatCurrency(totals.exclude)}</div>
+                </div>
+            </div>
+        </div>`;
+}
+
+// ------------------------------------------------------------------
+// EXPOSE TO WINDOW
+// ------------------------------------------------------------------
+window.switchAPTab      = switchAPTab;
+window.loadAPConfig     = loadAPConfig;
+window.saveAPConfig     = saveAPConfig;
+window.loadAPNominal    = loadAPNominal;
+window.saveAPNominal    = saveAPNominal;
+window.apUpdateRowTotal = apUpdateRowTotal;
+
+console.log('[AUTO_PAYMENT] ✅ Auto Payment module loaded');
