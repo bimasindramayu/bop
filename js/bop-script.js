@@ -288,6 +288,39 @@ async function preloadAllData() {
         // ✅ Wait for all data to load
         await Promise.all(promises);
         
+        // ===== PRELOAD AP CONFIG & NOMINALS =====
+        // Dilakukan SETELAH Promise.all agar data realisasi sudah tersedia.
+        // Tujuan: saat user klik Lihat/Edit/Tambah Realisasi atau Verifikasi,
+        // _apConfig dan _apNominals sudah ter-cache di sesi — TANPA API call tambahan.
+        try {
+            // Preload AP Config (untuk semua role)
+            await apGetConfig();
+            console.log('[PRELOAD] ✅ AP Config preloaded');
+            
+            // Preload AP Nominal untuk bulan-bulan yang ada di realisasi cache
+            const _cachedReal = getLocalCache('realisasis') || [];
+            const _monthKeys = new Set();
+            _cachedReal.forEach(r => { if (r.month && r.year) _monthKeys.add(`${r.month}|${r.year}`); });
+            
+            // Preload SEMUA 12 bulan untuk tahun saat ini (agar Tambah Realisasi tidak hit API)
+            const _now = new Date();
+            const _curYear = _now.getFullYear();
+            const _monthNames = ['Januari','Februari','Maret','April','Mei','Juni',
+                                 'Juli','Agustus','September','Oktober','November','Desember'];
+            // Tambah semua 12 bulan tahun ini
+            _monthNames.forEach(m => _monthKeys.add(`${m}|${_curYear}`));
+            
+            const _nomPromises = [];
+            _monthKeys.forEach(mk => {
+                const [_m, _y] = mk.split('|');
+                _nomPromises.push(apGetNominals(_m, parseInt(_y)));
+            });
+            await Promise.all(_nomPromises);
+            console.log('[PRELOAD] ✅ AP Nominals preloaded for', _monthKeys.size, 'month(s) (all 12 months of', _curYear, ')');
+        } catch (_apErr) {
+            console.warn('[PRELOAD] AP preload error (non-fatal):', _apErr);
+        }
+        
         console.log('[PRELOAD] ========== ALL DATA LOADED SUCCESSFULLY ==========');
         console.log('[PRELOAD] Cache status:', {
             dashboardStats: !!localCache.dashboardStats,
@@ -360,6 +393,8 @@ function populateYearFilters() {
         realisasiYearFilter.innerHTML = years.map(year => 
             `<option value="${year}" ${year === currentYear ? 'selected' : ''}>${year}</option>`
         ).join('');
+        // ✅ Override onchange: gunakan loadRealisasisForYear agar year change fetch data baru
+        realisasiYearFilter.onchange = function() { loadRealisasisForYear(); };
     }
 
     // Verifikasi Year Filter
@@ -2262,6 +2297,39 @@ function editRPD(rpd) {
 }
 
 // ===== REALISASI MANAGEMENT =====
+async function loadRealisasisForYear() {
+    // ✅ Dipanggil dari year filter onchange — selalu fetch tahun baru dari server
+    const yearFilter = document.getElementById('realisasiYearFilter');
+    const newYear = yearFilter ? parseInt(yearFilter.value) : new Date().getFullYear();
+    const currentYear = new Date().getFullYear();
+    
+    if (newYear === currentYear) {
+        // Tahun saat ini: cek cache
+        const cachedData = getLocalCache('realisasis');
+        if (cachedData) {
+            console.log('[REALISASI YEAR FILTER] Same year, using cache');
+            displayRealisasis(cachedData);
+            if (currentUser.role === 'Operator KUA') updateRealisasiButtonState();
+            return;
+        }
+    }
+    
+    // Tahun berbeda atau cache kosong: fetch dari server
+    console.log('[REALISASI YEAR FILTER] Fetching year:', newYear);
+    try {
+        const realisasis = await apiCall('getRealisasis', { kua: currentUser.kua, year: newYear });
+        const sorted = sortByMonth(realisasis);
+        if (newYear === currentYear) {
+            updateLocalCache('realisasis', sorted); // hanya cache tahun saat ini
+        }
+        displayRealisasis(sorted);
+        if (currentUser.role === 'Operator KUA') updateRealisasiButtonState();
+    } catch (error) {
+        console.error('[REALISASI YEAR FILTER ERROR]', error);
+        showNotification('Gagal memuat data realisasi', 'error');
+    }
+}
+
 async function loadRealisasis(forceRefresh = false) {
     console.log('[REALISASI] Loading realisasis', { forceRefresh });
     
@@ -4195,9 +4263,21 @@ function viewRealisasi(realisasi) {
         
         detailHTML += `<div class="rpd-item" data-code="${code}">`;
         
+        // AP context untuk SAKTI badge
+        const _dCfg = _apConfig && realisasi.kua && _apConfig[realisasi.kua] ? _apConfig[realisasi.kua] : {};
+        const _dNomData = _apNominals[`${realisasi.month}_${realisasi.year}`] || {};
+        const _dNom = (_dNomData && _dNomData[realisasi.kua]) ? _dNomData[realisasi.kua] : {};
+        const _dSaktiNom = _dCfg[code] ? parseFloat(_dNom[code] || 0) : null;
+        const _dSaktiBadge = _dSaktiNom !== null
+            ? `<div style="display:inline-flex;align-items:center;gap:6px;background:linear-gradient(135deg,#667eea,#764ba2);color:white;padding:4px 12px;border-radius:20px;font-size:12px;margin:0 0 8px 0;font-weight:500;">
+                ⚡ Total pembayaran melalui SAKTI: <strong>${formatCurrency(_dSaktiNom)}</strong>
+               </div>`
+            : '';
+
         if (onlyNominal) {
             const nominalValue = items['Nominal'];
             detailHTML += `
+                ${_dSaktiBadge}
                 <div class="rpd-subitem" style="align-items:center; flex-wrap:wrap; gap:6px;">
                     <span style="font-weight:600; color:#333; flex:1;">${code} — ${param.name}</span>
                     <div style="text-align:right; min-width:160px;">
@@ -4210,7 +4290,7 @@ function viewRealisasi(realisasi) {
                 </div>
             `;
         } else {
-            detailHTML += `<h4>${code} — ${param.name}</h4>`;
+            detailHTML += `<h4>${code} — ${param.name}</h4>${_dSaktiBadge}`;
             itemsArray.forEach(([item, value]) => {
                 const sid = safeId(item);
                 detailHTML += `
@@ -4914,11 +4994,22 @@ function showVerifyModal(realisasi, rpdData, rpdTotal) {
         document.body.appendChild(modal);
     }
     
+    // AP context untuk badge SAKTI di rpd-item
+    const _vCfg = _apConfig && realisasi.kua && _apConfig[realisasi.kua] ? _apConfig[realisasi.kua] : {};
+    const _vNomData = _apNominals[`${realisasi.month}_${realisasi.year}`] || {};
+    const _vNom = (_vNomData && _vNomData[realisasi.kua]) ? _vNomData[realisasi.kua] : {};
+
     let detailHTML = '';
     Object.entries(realisasi.data).forEach(([code, items]) => {
         const param = APP_CONFIG.BOP.RPD_PARAMETERS[code];
+        const _saktiNom = _vCfg[code] ? parseFloat(_vNom[code] || 0) : null;
+        const _saktiBadge = _saktiNom !== null
+            ? `<div style="display:inline-flex;align-items:center;gap:6px;background:linear-gradient(135deg,#667eea,#764ba2);color:white;padding:4px 12px;border-radius:20px;font-size:12px;margin-bottom:8px;font-weight:500;">
+                ⚡ Total pembayaran melalui SAKTI: <strong>${formatCurrency(_saktiNom)}</strong>
+               </div>`
+            : '';
         detailHTML += `<div class="rpd-item">
-            <h4>${code} - ${param.name}</h4>`;
+            <h4>${code} - ${param.name}</h4>${_saktiBadge}`;
         
         Object.entries(items).forEach(([item, realisasiValue]) => {
             // ✅ Cari nilai RPD untuk item yang sama (dari cache)
@@ -6878,6 +6969,7 @@ window.handleFileInputChange = handleFileInputChange;
 
 // ===== NEW: Expose Load Data & Sort Functions =====
 window.loadRPDsWithFilters = loadRPDsWithFilters;
+window.loadRealisasisForYear = loadRealisasisForYear;
 window.loadVerifikasiWithFilters = loadVerifikasiWithFilters;
 window.sortRPDTable = sortRPDTable;
 window.sortVerifikasiTable = sortVerifikasiTable;
@@ -7307,6 +7399,46 @@ async function loadVerifikasiWithFilters() {
         
         hideLoading();
         showNotification('Data verifikasi berhasil dimuat', 'success');
+        
+        // ===== PREFETCH RPDs + AP DATA untuk semua KUA di verifikasi =====
+        // Tujuan: klik tombol Verifikasi tidak perlu API call lagi (data sudah di cache)
+        try {
+            // Kumpulkan unique KUA + month yang ada
+            const _vKUAs  = new Set(realisasis.map(r => r.kua).filter(Boolean));
+            const _vMonths = new Set(realisasis.map(r => r.month && r.year ? `${r.month}|${r.year}` : null).filter(Boolean));
+            
+            const _prefetchPromises = [];
+            
+            // Prefetch RPDs per KUA (merge ke existing cache)
+            _vKUAs.forEach(kua => {
+                const _cachedRPDs = getLocalCache('rpds') || [];
+                const _hasKUA = _cachedRPDs.some(r => r.kua === kua);
+                if (!_hasKUA) {
+                    _prefetchPromises.push(
+                        apiCall('getRPDs', { kua: kua, year: year }).then(rpds => {
+                            const _existing = getLocalCache('rpds') || [];
+                            const _merged   = [..._existing.filter(r => r.kua !== kua), ...rpds];
+                            updateLocalCache('rpds', _merged);
+                            rawData.rpds = sortByMonth(_merged);
+                            console.log('[VERIFIKASI PREFETCH] RPDs cached for KUA:', kua);
+                        }).catch(() => {})
+                    );
+                }
+            });
+            
+            // Prefetch AP Config + Nominals
+            _prefetchPromises.push(apGetConfig());
+            _vMonths.forEach(mk => {
+                const [_vm, _vy] = mk.split('|');
+                _prefetchPromises.push(apGetNominals(_vm, parseInt(_vy)));
+            });
+            
+            Promise.all(_prefetchPromises).then(() => {
+                console.log('[VERIFIKASI PREFETCH] ✅ All RPDs + AP data prefetched,', _vKUAs.size, 'KUAs,', _vMonths.size, 'months');
+            }).catch(() => {});
+        } catch (_pErr) {
+            console.warn('[VERIFIKASI PREFETCH] Error (non-fatal):', _pErr);
+        }
     } catch (error) {
         hideLoading();
         console.error('[VERIFIKASI ERROR]', error);
@@ -7848,7 +7980,7 @@ async function apApplyToForm(kua, month, year) {
                 const badge = document.createElement('div');
                 badge.className = 'ap-badge';
                 badge.style.cssText = 'display:inline-flex; align-items:center; gap:6px; background:linear-gradient(135deg,#667eea,#764ba2); color:white; padding:5px 12px; border-radius:20px; font-size:12px; margin-bottom:10px; font-weight:500;';
-                badge.innerHTML = `⚡ Auto Payment Aktif — Nominal Admin: <strong>${formatCurrency(apNom)}</strong>`;
+                badge.innerHTML = `⚡ Total pembayaran melalui SAKTI: <strong>${formatCurrency(apNom)}</strong>`;
                 h4.insertAdjacentElement('afterend', badge);
             }
         });
@@ -8008,6 +8140,7 @@ async function apRenderFormModalSummary(kua, month, year) {
                     <div style="font-size:16px; font-weight:800; color:#dc3545;">${formatCurrency(totals.exclude)}</div>
                 </div>
             </div>
+
         </div>`;
 }
 
