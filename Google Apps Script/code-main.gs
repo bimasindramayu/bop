@@ -80,6 +80,10 @@ function doPost(e) {
       case 'exportRealisasiPerYear':
       case 'exportRealisasiDetailYear':
       case 'exportRealisasiDetailAllYear':
+      case 'getAutoPaymentConfig':
+      case 'saveAutoPaymentConfig':
+      case 'getAutoPaymentNominal':
+      case 'saveAutoPaymentNominal':
         // Delegate ke BOP module
         result = handleBOPAction(action, data);
         break;
