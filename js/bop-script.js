@@ -7,7 +7,14 @@ function _getVfyPreviewer() {
     if (window._dpVfyInstance) return window._dpVfyInstance;
     if (typeof DocumentPreviewer === 'undefined') return null;
     window._dpVfyInstance = new DocumentPreviewer({
-        googleDriveApiKey : (typeof MY_DP_CONFIG !== 'undefined' && MY_DP_CONFIG.googleDriveApiKey) ? MY_DP_CONFIG.googleDriveApiKey : ((typeof GOOGLE_DRIVE_API_KEY !== 'undefined') ? GOOGLE_DRIVE_API_KEY : ''),
+        googleDriveApiKey : (function() {
+            // Prioritas: 1) Config sheet (aman, tidak di GitHub), 2) MY_DP_CONFIG, 3) env var
+            const _cfg = (typeof getLocalCache === 'function') ? getLocalCache('config') : null;
+            if (_cfg && _cfg.DRIVE_API_KEY) return _cfg.DRIVE_API_KEY;
+            if (typeof MY_DP_CONFIG !== 'undefined' && MY_DP_CONFIG.googleDriveApiKey) return MY_DP_CONFIG.googleDriveApiKey;
+            if (typeof GOOGLE_DRIVE_API_KEY !== 'undefined') return GOOGLE_DRIVE_API_KEY;
+            return '';
+        })(),
         modalId           : 'dp-modal-vfy',
         pdfScale          : 1.5,
         debug             : false,

@@ -1,50 +1,28 @@
 /**
  * ================================================================
  *  document-previewer.config.js
- *  Konfigurasi DocumentPreviewer untuk BOP Dashboard
  *
- *  ⚠️  ISI API KEY DI SINI — jangan hardcode di file lain
+ *  ⚠️  JANGAN isi googleDriveApiKey di sini — file ini ada di GitHub.
+ *
+ *  API Key diambil otomatis dari kolom DRIVE_API_KEY di Sheet Config
+ *  oleh bop-script.js saat runtime. Tidak perlu diubah file ini.
  * ================================================================
  */
 
 const MY_DP_CONFIG = {
 
-    /* ── WAJIB — Google Drive API Key ───────────────────────────
-       Cara dapat: console.cloud.google.com
-         → Buat project → Enable "Google Drive API"
-         → Credentials → Create Credentials → API Key
-       Pastikan file Drive di-share "Anyone with the link can view"
-    ────────────────────────────────────────────────────────── */
-    googleDriveApiKey : 'AIzaSyD2eR04ppTnLInBPfVi7kwh3akCKz9F8DQ',
+    // googleDriveApiKey: // ← DIKOSONGKAN — diisi dari Sheet Config (aman)
 
-
-    /* ── MODAL ID ────────────────────────────────────────────────
-       Jangan diubah — BOP memakai 'dp-modal-vfy' untuk verifikasi
-    ────────────────────────────────────────────────────────── */
-    modalId           : 'dp-modal',
-
-
-    /* ── ZOOM ────────────────────────────────────────────────────*/
-    zoomStep          : 0.25,
-    zoomMin           : 0.25,
-    zoomMax           : 5.0,
-    wheelZoomStep     : 0.1,
-
-
-    /* ── PDF ─────────────────────────────────────────────────────*/
-    pdfScale          : 1.5,
-    pdfWorkerUrl      : 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js',
-    pdfCmapUrl        : 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/cmaps/',
-
-
-    /* ── DEBUG ───────────────────────────────────────────────────
-       Ubah ke true untuk lihat log detail di Console (F12)
-    ────────────────────────────────────────────────────────── */
-    debug             : false,
-
-
-    /* ── CALLBACKS ───────────────────────────────────────────────*/
-    onOpen  : null,
-    onClose : null,
-    onError : null
+    modalId      : 'dp-modal',
+    zoomStep     : 0.25,
+    zoomMin      : 0.25,
+    zoomMax      : 5.0,
+    wheelZoomStep: 0.1,
+    pdfScale     : 1.5,
+    pdfWorkerUrl : 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js',
+    pdfCmapUrl   : 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/cmaps/',
+    debug        : false,
+    onOpen       : null,
+    onClose      : null,
+    onError      : null
 };
