@@ -1,4 +1,37 @@
 // ===== BOP SCRIPT =====
+
+// ─── DocumentPreviewer (injected at runtime) ─────────────────────────────────
+// CSS & JS diambil dari Google Apps Script webApp (bop-dashboard.html menyertakan)
+// Inisialisasi previewer khusus verifikasi (lazy, dibuat sekali)
+function _getVfyPreviewer() {
+    if (window._dpVfyInstance) return window._dpVfyInstance;
+    if (typeof DocumentPreviewer === 'undefined') return null;
+    window._dpVfyInstance = new DocumentPreviewer({
+        googleDriveApiKey : (typeof MY_DP_CONFIG !== 'undefined' && MY_DP_CONFIG.googleDriveApiKey) ? MY_DP_CONFIG.googleDriveApiKey : ((typeof GOOGLE_DRIVE_API_KEY !== 'undefined') ? GOOGLE_DRIVE_API_KEY : ''),
+        modalId           : 'dp-modal-vfy',
+        pdfScale          : 1.5,
+        debug             : false,
+        onClose           : function() {
+            document.querySelectorAll('._dpVfyFileItem.dp-active')
+                    .forEach(function(el){ el.classList.remove('dp-active'); });
+        }
+    });
+    // Match DP width so left panel (42%) + DP (58%) = 100%, seamless
+    // DP CSS uses --dp-width var, we override it on the modal element after mount
+    requestAnimationFrame(function() {
+        const dpEl = document.getElementById('dp-modal-vfy');
+        const dpHeader = document.getElementById('dp-modal-vfy-header');
+        const dpContainer = document.getElementById('dp-modal-vfy-container');
+        const dpControls = dpEl ? dpEl.querySelector('.dp-controls') : null;
+        [dpEl, dpHeader, dpContainer, dpControls].forEach(function(el) {
+            if (el) el.style.setProperty('--dp-width', '58%', 'important');
+        });
+    });
+    window._dpVfyInstance.mount();
+    return window._dpVfyInstance;
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 // File: bop-script.js
 // Untuk: bop-dashboard.html
 // Config & utilities dari config.js
@@ -5221,150 +5254,163 @@ function showVerifyModal(realisasi, rpdData, rpdTotal) {
         `;
     }
     
-    // ── Store all files for multi-file viewer ──
-    window._vfyFiles = Array.isArray(files) ? files : [];
-    window._vfyCurrentIdx = 0;
-    const _hasFiles = window._vfyFiles.length > 0;
+    // ── Prepare files list ──
+    const _vfyFilesList = Array.isArray(files) ? files.filter(function(f){ return f && f.fileName; }) : [];
+    const _hasFiles = _vfyFilesList.length > 0;
+
+    // Build file list HTML for left panel
+    function _fileIcon(mime) {
+        if (!mime) return '📎';
+        if (mime.startsWith('image/')) return '🖼️';
+        if (mime === 'application/pdf') return '📄';
+        return '📎';
+    }
+
+    const _filesListHTML = _hasFiles
+        ? _vfyFilesList.map(function(f, idx) {
+            const _name = f.originalName || f.fileName;
+            const _icon = _fileIcon(f.mimeType);
+            const _size = f.size ? ' · ' + formatFileSize(f.size) : '';
+            return '<div class="_dpVfyFileItem" data-idx="' + idx + '" style="' +
+                'display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:8px;' +
+                'cursor:pointer;margin-bottom:6px;">' +
+                '<span style="font-size:18px;flex-shrink:0;">' + _icon + '</span>' +
+                '<div style="flex:1;min-width:0;">' +
+                    '<div style="font-weight:600;font-size:12px;color:#333;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + _name + '">' + _name + '</div>' +
+                    '<div style="font-size:10px;color:#999;margin-top:2px;">' + (f.mimeType || 'file') + _size + '</div>' +
+                '</div>' +
+                '<button class="_dpVfyPreviewBtn" data-idx="' + idx + '" ' +
+                    'style="background:#667eea;color:white;border:none;padding:4px 10px;border-radius:6px;font-size:11px;cursor:pointer;flex-shrink:0;white-space:nowrap;">👁️ Preview</button>' +
+            '</div>';
+        }).join('')
+        : '<div style="color:#999;font-size:12px;font-style:italic;padding:8px;">Tidak ada dokumen pendukung</div>';
 
     modal.innerHTML = `
-        <div class="modal-content" style="
-            width:100vw; height:100vh; max-width:100vw; max-height:100vh;
-            margin:0; padding:0; border-radius:0;
+        <!-- ╔══════════════════════════════════════════╗
+             ║  VERIFY MODAL — full-screen split view   ║
+             ║  Kiri 42% (dark) · Kanan 58% (DP panel) ║
+             ╚══════════════════════════════════════════╝ -->
+
+        <!-- ── OVERLAY PENUH ── -->
+        <div id="_vfyOverlay" style="
+            position:fixed; inset:0; background:rgba(0,0,0,.55); z-index:8990;
+        "></div>
+
+        <!-- ── PANEL KIRI (42%) — light theme seperti modal biasa ── -->
+        <div id="_vfyLeftPanel" style="
+            position:fixed; left:0; top:0; bottom:0; width:42%;
             display:flex; flex-direction:column; overflow:hidden;
+            background:#f7f8ff; z-index:9010;
+            border-right:1px solid #e0e4f0;
+            box-shadow:4px 0 20px rgba(0,0,0,.15);
         ">
-            <!-- ── HEADER ── -->
-            <div class="modal-header" style="
-                flex:0 0 auto; padding:10px 18px;
+            <!-- Header gradient sama seperti modal verifikasi sebelumnya -->
+            <div style="
+                flex:0 0 auto; padding:12px 16px;
                 background:linear-gradient(135deg,#667eea,#764ba2);
-                color:white; display:flex; align-items:center; justify-content:space-between;
+                display:flex; align-items:center; justify-content:space-between; gap:10px;
             ">
-                <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
-                    <span style="font-size:15px; font-weight:700;">🔍 Verifikasi — ${realisasi.month || ''} ${realisasi.year || ''}</span>
-                    <span style="background:rgba(255,255,255,.2); padding:2px 10px; border-radius:20px; font-size:12px;">🏢 ${realisasi.kua}</span>
-                    <span style="background:rgba(255,255,255,.2); padding:2px 10px; border-radius:20px; font-size:12px;">${realisasi.status}</span>
+                <div style="min-width:0;">
+                    <div style="font-size:14px;font-weight:700;color:white;line-height:1.3;">🔍 Verifikasi Realisasi</div>
+                    <div style="font-size:11px;color:rgba(255,255,255,.8);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+                        🏢 ${realisasi.kua} &nbsp;·&nbsp; 📅 ${realisasi.month} ${realisasi.year} &nbsp;·&nbsp; ${realisasi.status}
+                    </div>
                 </div>
                 <button class="close-btn" onclick="closeModal()" style="
-                    background:rgba(255,255,255,.2); border:none; color:white;
-                    width:32px; height:32px; border-radius:50%; font-size:20px;
-                    cursor:pointer; line-height:1; flex-shrink:0;
+                    flex-shrink:0; width:30px; height:30px; border-radius:50%;
+                    background:rgba(255,255,255,.2); border:none;
+                    color:white; font-size:18px; cursor:pointer; line-height:1;
                 ">&times;</button>
             </div>
 
-            <!-- ── BODY: split-pane ── -->
-            <div style="flex:1 1 0; display:flex; min-height:0;">
+            <!-- Scrollable body -->
+            <div style="flex:1 1 0; overflow-y:auto; padding:14px 16px; display:flex; flex-direction:column; gap:12px;
+                 scrollbar-width:thin; scrollbar-color:#c1c9e0 #f7f8ff;">
 
-                <!-- PANEL KIRI 38% — data + form, scrollable -->
-                <div style="
-                    width:38%; flex-shrink:0; overflow-y:auto;
-                    padding:14px 16px; border-right:2px solid #e0e4f0;
-                    background:#f7f8ff; display:flex; flex-direction:column; gap:12px;
-                ">
-                    <div style="font-weight:700;color:#667eea;font-size:12px;text-transform:uppercase;letter-spacing:.6px;">📊 Data Pos &amp; Nominal</div>
+                <!-- Data Pos & Nominal -->
+                <div>
+                    <div style="font-weight:700;color:#667eea;font-size:11px;text-transform:uppercase;letter-spacing:.6px;margin-bottom:8px;">📊 Data Pos &amp; Nominal</div>
                     ${detailHTML}
-
-                    <div style="background:white;border-radius:10px;padding:12px;border:1px solid #e4e8f0;">
-                        <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #f0f0f0;">
-                            <span style="color:#666;font-size:12px;">Total RPD</span>
-                            <strong style="font-size:12px;">${rpdData ? formatCurrency(rpdTotal) : '<span style="color:#bbb">—</span>'}</strong>
-                        </div>
-                        <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #f0f0f0;">
-                            <span style="color:#666;font-size:12px;">Total Realisasi</span>
-                            <strong style="font-size:12px;color:#667eea;">${formatCurrency(realisasi.total)}</strong>
-                        </div>
-                        ${rpdData ? `<div style="display:flex;justify-content:space-between;padding:6px 0 0;">
-                            <span style="color:#666;font-size:12px;">Selisih</span>
-                            <strong style="font-size:13px;color:${rpdTotal >= realisasi.total ? '#28a745' : '#dc3545'};">
-                                ${formatCurrency(rpdTotal - realisasi.total)}
-                            </strong>
-                        </div>` : ''}
-                    </div>
-
-                    <div id="apSummaryPlaceholder"></div>
-
-                    <div style="background:white;border-radius:10px;padding:14px;border:1px solid #e4e8f0;">
-                        <div style="font-weight:700;color:#495057;font-size:12px;margin-bottom:12px;">✏️ Tindakan Verifikasi</div>
-                        <form id="verifyForm">
-                            <div style="margin-bottom:10px;">
-                                <label style="font-weight:600;font-size:12px;display:block;margin-bottom:5px;">Status</label>
-                                <select id="verifyStatus" required style="width:100%;padding:8px 10px;border:1px solid #ddd;border-radius:8px;font-size:13px;">
-                                    <option value="Waiting"  ${normalizeStatus(realisasi.status) === 'Waiting'  ? 'selected' : ''}>⏳ Waiting</option>
-                                    <option value="Approved" ${normalizeStatus(realisasi.status) === 'Approved' ? 'selected' : ''}>✅ Approved</option>
-                                    <option value="Rejected" ${normalizeStatus(realisasi.status) === 'Rejected' ? 'selected' : ''}>❌ Rejected</option>
-                                    <option value="Paid"     ${normalizeStatus(realisasi.status) === 'Paid'     ? 'selected' : ''}>💰 Paid</option>
-                                </select>
-                            </div>
-                            <div style="margin-bottom:10px;">
-                                <label style="font-weight:600;font-size:12px;display:block;margin-bottom:5px;">Catatan</label>
-                                <textarea id="verifyNotes" rows="3"
-                                    placeholder="Tambahkan catatan jika diperlukan"
-                                    style="width:100%;padding:8px 10px;border:1px solid #ddd;border-radius:8px;font-size:13px;resize:vertical;box-sizing:border-box;"
-                                >${realisasi.notes || ''}</textarea>
-                            </div>
-                            <button type="submit" class="btn" style="width:100%;padding:10px;font-size:14px;font-weight:600;">
-                                💾 Simpan Verifikasi
-                            </button>
-                        </form>
-                    </div>
                 </div>
 
-                <!-- PANEL KANAN 62% — preview dokumen -->
-                <div style="flex:1 1 0;min-width:0;display:flex;flex-direction:column;background:#1a1a2e;overflow:hidden;">
-
-                    <!-- Sub-header: label + viewer controls + open-tab -->
-                    <div id="_vfyHeader" style="flex:0 0 auto;padding:0 14px;background:#16213e;color:white;
-                         display:flex;align-items:center;justify-content:space-between;min-height:44px;">
-                        <span style="font-size:12px;font-weight:600;color:#a0c4ff;white-space:nowrap;">📁 Preview Dokumen</span>
-                        <!-- Viewer controls — always rendered, enabled/disabled by JS -->
-                        <div id="_vfyControls" style="display:flex;align-items:center;gap:4px;flex:1;justify-content:center;">
-                            <button id="_vfyBtnZoomIn"  class="_vfyCtrlBtn" title="Zoom In"   style="${_hasFiles ? '' : 'opacity:.35;cursor:not-allowed;'}" ${_hasFiles ? '' : 'disabled'}>+</button>
-                            <button id="_vfyBtnZoomOut" class="_vfyCtrlBtn" title="Zoom Out"  style="${_hasFiles ? '' : 'opacity:.35;cursor:not-allowed;'}" ${_hasFiles ? '' : 'disabled'}>-</button>
-                            <button id="_vfyBtnRotate"  class="_vfyCtrlBtn" title="Rotate"    style="${_hasFiles ? '' : 'opacity:.35;cursor:not-allowed;'}" ${_hasFiles ? '' : 'disabled'}>↻</button>
-                            <button id="_vfyBtnReset"   class="_vfyCtrlBtn" title="Reset"     style="${_hasFiles ? '' : 'opacity:.35;cursor:not-allowed;'}" ${_hasFiles ? '' : 'disabled'}>⟲</button>
-                            <span   id="_vfyZoomLabel" style="font-size:11px;color:#7fa8d4;min-width:36px;text-align:center;">${_hasFiles ? '100%' : '—'}</span>
-                        </div>
-                        <button id="_vfyOpenBtn" ${_hasFiles ? '' : 'disabled'}
-                            style="background:rgba(255,255,255,${_hasFiles ? '0.15' : '0.05'});color:${_hasFiles ? 'white' : '#666'};
-                                   border:none;padding:5px 12px;border-radius:20px;font-size:11px;
-                                   cursor:${_hasFiles ? 'pointer' : 'not-allowed'};white-space:nowrap;flex-shrink:0;">
-                            🔗 Tab Baru
-                        </button>
+                <!-- Ringkasan Total -->
+                <div style="background:white;border-radius:10px;padding:12px;border:1px solid #e4e8f0;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid #f0f0f0;">
+                        <span style="color:#666;font-size:12px;">Total RPD</span>
+                        <strong style="font-size:12px;">${rpdData ? formatCurrency(rpdTotal) : '<span style="color:#bbb">—</span>'}</strong>
                     </div>
-
-                    <!-- File tabs (hanya tampil jika > 0 file) -->
-                    ${_hasFiles ? `
-                    <div id="_vfyTabs" style="flex:0 0 auto;background:#0f1729;display:flex;overflow-x:auto;border-bottom:1px solid #1e3a5f;
-                         scrollbar-width:thin;scrollbar-color:#2a4a7f #0f1729;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid #f0f0f0;">
+                        <span style="color:#666;font-size:12px;">Total Realisasi</span>
+                        <strong style="font-size:12px;color:#667eea;">${formatCurrency(realisasi.total)}</strong>
+                    </div>
+                    ${rpdData ? `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0 0;">
+                        <span style="color:#666;font-size:12px;">Selisih (RPD − Realisasi)</span>
+                        <strong style="font-size:13px;color:${rpdTotal >= realisasi.total ? '#28a745' : '#dc3545'};">
+                            ${formatCurrency(rpdTotal - realisasi.total)}
+                        </strong>
                     </div>` : ''}
-
-                    <!-- Area preview -->
-                    <div id="_vfyMount" style="flex:1 1 0;position:relative;overflow:hidden;background:#1a1a2e;">
-                        ${_hasFiles
-                            ? '<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;"><div style="width:36px;height:36px;border:3px solid #667eea;border-top-color:transparent;border-radius:50%;animation:spin .8s linear infinite;"></div></div>'
-                            : '<div style="color:#555;padding:60px;text-align:center;font-size:14px;"><div style="font-size:48px;margin-bottom:16px;opacity:.3;">📄</div>Tidak ada dokumen pendukung</div>'
-                        }
-                    </div>
                 </div>
 
+                <!-- AP Summary -->
+                <div id="apSummaryPlaceholder"></div>
+
+                <!-- Dokumen Pendukung -->
+                <div>
+                    <div style="font-weight:700;color:#667eea;font-size:11px;text-transform:uppercase;letter-spacing:.6px;margin-bottom:8px;">
+                        📁 Dokumen Pendukung${_hasFiles ? ' (' + _vfyFilesList.length + ')' : ''}
+                    </div>
+                    ${_filesListHTML}
+                </div>
+
+                <!-- Form Verifikasi -->
+                <div style="background:white;border-radius:10px;padding:14px;border:1px solid #e4e8f0;">
+                    <div style="font-weight:700;color:#495057;font-size:12px;margin-bottom:12px;">✏️ Tindakan Verifikasi</div>
+                    <form id="verifyForm">
+                        <div style="margin-bottom:10px;">
+                            <label style="font-weight:600;font-size:12px;display:block;margin-bottom:5px;">Status</label>
+                            <select id="verifyStatus" required style="width:100%;padding:8px 10px;border:1px solid #ddd;border-radius:8px;font-size:13px;">
+                                <option value="Waiting"  ${normalizeStatus(realisasi.status) === 'Waiting'  ? 'selected' : ''}>⏳ Waiting</option>
+                                <option value="Approved" ${normalizeStatus(realisasi.status) === 'Approved' ? 'selected' : ''}>✅ Approved</option>
+                                <option value="Rejected" ${normalizeStatus(realisasi.status) === 'Rejected' ? 'selected' : ''}>❌ Rejected</option>
+                                <option value="Paid"     ${normalizeStatus(realisasi.status) === 'Paid'     ? 'selected' : ''}>💰 Paid</option>
+                            </select>
+                        </div>
+                        <div style="margin-bottom:10px;">
+                            <label style="font-weight:600;font-size:12px;display:block;margin-bottom:5px;">Catatan</label>
+                            <textarea id="verifyNotes" rows="3"
+                                placeholder="Tambahkan catatan jika diperlukan"
+                                style="width:100%;padding:8px 10px;border:1px solid #ddd;border-radius:8px;font-size:13px;resize:vertical;box-sizing:border-box;font-family:inherit;"
+                            >${realisasi.notes || ''}</textarea>
+                        </div>
+                        <button type="submit" class="btn" style="width:100%;padding:10px;font-size:14px;font-weight:600;">
+                            💾 Simpan Verifikasi
+                        </button>
+                    </form>
+                </div>
+
+                <div style="height:16px;"></div>
             </div>
         </div>
+
         <style>
-            ._vfyCtrlBtn {
-                background: rgba(255,255,255,.12); color: white; border: none;
-                width: 30px; height: 30px; border-radius: 6px; font-size: 14px;
-                cursor: pointer; display:flex; align-items:center; justify-content:center;
-                transition: background .15s;
+            ._dpVfyFileItem {
+                background: rgba(102,126,234,.06) !important;
+                border-color: rgba(102,126,234,.2) !important;
+                transition: background .15s, border-color .15s !important;
             }
-            ._vfyCtrlBtn:hover:not(:disabled) { background: rgba(255,255,255,.25); }
-            ._vfyTab {
-                padding: 8px 14px; font-size: 11px; white-space: nowrap; cursor: pointer;
-                border: none; background: transparent; color: #7fa8d4;
-                border-bottom: 2px solid transparent; transition: all .15s; flex-shrink:0;
-                display:flex; align-items:center; gap:6px; max-width:180px;
+            ._dpVfyFileItem:hover { background: rgba(102,126,234,.14) !important; border-color: rgba(102,126,234,.4) !important; }
+            ._dpVfyFileItem.dp-active { background: rgba(102,126,234,.2) !important; border-color: #667eea !important; }
+            ._dpVfyPreviewBtn:hover { opacity: .85 !important; }
+            #dp-modal-vfy {
+                width: 58% !important;
+                box-shadow: none !important;
+                border-left: 1px solid #e0e4f0 !important;
             }
-            ._vfyTab:hover { background: rgba(255,255,255,.06); color: #a0c4ff; }
-            ._vfyTab.active { color: white; border-bottom-color: #667eea; background: rgba(102,126,234,.15); }
-            ._vfyTabName { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:140px; }
-            @keyframes spin { to { transform: rotate(360deg); } }
+            #dp-modal-vfy-header,
+            #dp-modal-vfy-container,
+            #dp-modal-vfy .dp-controls {
+                width: 58% !important;
+            }
         </style>
     `;
     
@@ -5372,189 +5418,53 @@ function showVerifyModal(realisasi, rpdData, rpdTotal) {
     
     // Initialize image and PDF viewers
     setTimeout(() => {
-        // ✅ Auto Payment summary
+        // ✅ AP Summary
         apRenderVerifyModalSummary(realisasi).catch(() => {});
 
-        const _vfyFiles = window._vfyFiles || [];
-        if (_vfyFiles.length === 0) return;
-
-        // ── Build file tab bar ──
-        const _tabsEl = document.getElementById('_vfyTabs');
-        if (_tabsEl) {
-            _vfyFiles.forEach(function(f, idx) {
-                const _isImg2 = f.mimeType && f.mimeType.startsWith('image/');
-                const _isPDF2 = f.mimeType === 'application/pdf';
-                const _icon = _isImg2 ? '🖼️' : _isPDF2 ? '📄' : '📎';
-                const tab = document.createElement('button');
-                tab.className = '_vfyTab' + (idx === 0 ? ' active' : '');
-                tab.setAttribute('data-idx', idx);
-                tab.innerHTML = '<span>' + _icon + '</span><span class="_vfyTabName" title="' + (f.originalName || f.fileName) + '">' + (f.originalName || f.fileName) + '</span>';
-                tab.addEventListener('click', function() {
-                    window._vfyLoadFile(parseInt(this.getAttribute('data-idx')));
-                });
-                _tabsEl.appendChild(tab);
+        // ✅ Bind file preview buttons → open DocumentPreviewer
+        modal.querySelectorAll('._dpVfyPreviewBtn').forEach(function(btn) {
+            btn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                const idx = parseInt(this.getAttribute('data-idx'));
+                _dpVfyOpenFile(idx);
             });
+        });
+        // Also clicking the whole file item card opens preview
+        modal.querySelectorAll('._dpVfyFileItem').forEach(function(item) {
+            item.addEventListener('click', function() {
+                const idx = parseInt(this.getAttribute('data-idx'));
+                _dpVfyOpenFile(idx);
+            });
+        });
+
+        // Auto-open first file
+        if (_vfyFilesList.length > 0) {
+            _dpVfyOpenFile(0);
         }
 
-        // ── Viewer control wiring ──
-        // Controls call _vfyCurrent* wrappers so they work for both PDF & image
-        window._vfyCurrentType = null; // 'pdf' | 'img' | null
+    }, 150);
 
-        function _vfyUpdateZoomLabel(val) {
-            const lbl = document.getElementById('_vfyZoomLabel');
-            if (lbl) lbl.textContent = Math.round(val * 100) + '%';
+    function _dpVfyOpenFile(idx) {
+        const filesList = _vfyFilesList;
+        const f = filesList[idx];
+        if (!f) return;
+
+        const previewer = _getVfyPreviewer();
+        if (!previewer) {
+            // Fallback: open in new tab if DP not available
+            window.open(f.fileUrl, '_blank');
+            return;
         }
 
-        // Override zoom-level update to also update header label
-        const _origUpdateZoomLevel    = typeof updateZoomLevel    !== 'undefined' ? updateZoomLevel    : null;
-        const _origUpdateZoomLevelPDF = typeof updateZoomLevelPDF !== 'undefined' ? updateZoomLevelPDF : null;
+        const _dName = f.originalName || f.fileName;
 
-        document.getElementById('_vfyBtnZoomIn').addEventListener('click', function() {
-            if (window._vfyCurrentType === 'pdf') zoomInPDF('pdf-viewer-vfy');
-            else if (window._vfyCurrentType === 'img') zoomIn('viewer-vfy');
-        });
-        document.getElementById('_vfyBtnZoomOut').addEventListener('click', function() {
-            if (window._vfyCurrentType === 'pdf') zoomOutPDF('pdf-viewer-vfy');
-            else if (window._vfyCurrentType === 'img') zoomOut('viewer-vfy');
-        });
-        document.getElementById('_vfyBtnRotate').addEventListener('click', function() {
-            if (window._vfyCurrentType === 'pdf') rotatePDF('pdf-viewer-vfy');
-            else if (window._vfyCurrentType === 'img') rotateImage('viewer-vfy');
-        });
-        document.getElementById('_vfyBtnReset').addEventListener('click', function() {
-            if (window._vfyCurrentType === 'pdf') { resetPDF('pdf-viewer-vfy'); _vfyUpdateZoomLabel(1); }
-            else if (window._vfyCurrentType === 'img') { resetImage('viewer-vfy'); _vfyUpdateZoomLabel(1); }
-        });
-        document.getElementById('_vfyOpenBtn').addEventListener('click', function() {
-            const f = _vfyFiles[window._vfyCurrentIdx || 0];
-            if (f) window.open(f.fileUrl, '_blank');
+        // Highlight active item
+        modal.querySelectorAll('._dpVfyFileItem').forEach(function(el) {
+            el.classList.toggle('dp-active', parseInt(el.getAttribute('data-idx')) === idx);
         });
 
-        // ── Load file into mount area ──
-        window._vfyLoadFile = function(idx) {
-            window._vfyCurrentIdx = idx;
-
-            // Update tabs
-            if (_tabsEl) {
-                _tabsEl.querySelectorAll('._vfyTab').forEach(function(t) {
-                    t.classList.toggle('active', parseInt(t.getAttribute('data-idx')) === idx);
-                });
-                // Scroll active tab into view
-                const activeTab = _tabsEl.querySelector('._vfyTab.active');
-                if (activeTab) activeTab.scrollIntoView({behavior:'smooth', block:'nearest', inline:'nearest'});
-            }
-
-            const f = _vfyFiles[idx];
-            if (!f) return;
-            const _isImg = f.mimeType && f.mimeType.startsWith('image/');
-            const _isPDF = f.mimeType === 'application/pdf';
-            const _pUrl  = getDrivePreviewUrl(f.fileUrl, f.mimeType);
-            const _fId   = f.fileId || ((f.fileUrl || '').match(/[-\w]{25,}/) || [])[0] || '';
-            const _dName = f.originalName || f.fileName;
-
-            // Reset zoom label
-            _vfyUpdateZoomLabel(1);
-
-            const _mountEl = document.getElementById('_vfyMount');
-            if (!_mountEl) return;
-            _mountEl.innerHTML = ''; // clear old viewer
-
-            if (_isPDF) {
-                window._vfyCurrentType = 'pdf';
-
-                const _wrap = document.createElement('div');
-                _wrap.className = 'pdf-viewer-wrapper'; _wrap.id = 'pdf-wrapper-vfy';
-                _wrap.style.cssText = 'width:100%;height:100%;overflow:hidden;';
-
-                const _content = document.createElement('div');
-                _content.className = 'pdf-content'; _content.id = 'pdf-content-vfy';
-                _content.setAttribute('data-zoom','1'); _content.setAttribute('data-rotation','0');
-                _content.setAttribute('data-pan-x','0'); _content.setAttribute('data-pan-y','0');
-                _content.style.cssText = 'transform-origin:center center;transition:transform .2s ease-out;cursor:grab;width:100%;height:100%;';
-
-                const _iframe = document.createElement('iframe');
-                _iframe.src = _pUrl; _iframe.id = 'pdf-iframe-vfy';
-                _iframe.style.cssText = 'width:100%;height:100%;border:none;display:block;';
-                _iframe.title = _dName;
-
-                _content.appendChild(_iframe);
-                _wrap.appendChild(_content);
-
-                const _container = document.createElement('div');
-                _container.className = 'pdf-viewer-container'; _container.id = 'pdf-viewer-vfy';
-                _container.style.cssText = 'width:100%;height:100%;display:flex;flex-direction:column;';
-                _container.appendChild(_wrap);
-                _mountEl.appendChild(_container);
-
-                initPDFViewer('pdf-viewer-vfy');
-
-                // Patch updateZoomLevelPDF to mirror header label
-                const _origUZL = window.updateZoomLevelPDF;
-                window._vfyPatchedUZLPDF = function(vid, zoom) {
-                    if (_origUZL) _origUZL(vid, zoom);
-                    if (window._vfyCurrentType === 'pdf') _vfyUpdateZoomLabel(zoom);
-                };
-                // Monkey-patch adjustZoomPDF to update label via our bridge
-                // (simpler: poll data-zoom after adjustZoomPDF call)
-                // Instead: listen on wheel events on wrapper to sync label
-                _wrap.addEventListener('wheel', function() {
-                    setTimeout(function() {
-                        const c = document.getElementById('pdf-content-vfy');
-                        if (c) _vfyUpdateZoomLabel(parseFloat(c.getAttribute('data-zoom')) || 1);
-                    }, 50);
-                }, { passive: true });
-
-            } else if (_isImg) {
-                window._vfyCurrentType = 'img';
-
-                const _wrap = document.createElement('div');
-                _wrap.className = 'image-viewer-wrapper'; _wrap.id = 'wrapper-vfy';
-                _wrap.style.cssText = 'width:100%;height:100%;overflow:hidden;';
-
-                const _img = document.createElement('img');
-                _img.src = _pUrl; _img.alt = _dName;
-                _img.className = 'image-viewer-img'; _img.id = 'img-vfy';
-                _img.setAttribute('data-zoom','1'); _img.setAttribute('data-rotation','0');
-                _img.setAttribute('data-pan-x','0'); _img.setAttribute('data-pan-y','0');
-                _img.draggable = false;
-                _img.onerror = function() { this.onerror=null; this.src='https://drive.google.com/uc?export=view&id=' + _fId; };
-                _wrap.appendChild(_img);
-
-                const _container = document.createElement('div');
-                _container.className = 'image-viewer-container'; _container.id = 'viewer-vfy';
-                _container.style.cssText = 'width:100%;height:100%;';
-                _container.appendChild(_wrap);
-                _mountEl.appendChild(_container);
-
-                initImageViewer('viewer-vfy');
-
-                // Sync zoom label on wheel
-                _wrap.addEventListener('wheel', function() {
-                    setTimeout(function() {
-                        const im = document.getElementById('img-vfy');
-                        if (im) _vfyUpdateZoomLabel(parseFloat(im.getAttribute('data-zoom')) || 1);
-                    }, 50);
-                }, { passive: true });
-
-            } else {
-                window._vfyCurrentType = null;
-                _mountEl.innerHTML = '';
-                const _msg = document.createElement('div');
-                _msg.style.cssText = 'color:#aaa;padding:60px;text-align:center;font-size:14px;';
-                _msg.innerHTML = '<div style="font-size:36px;margin-bottom:12px;">📄</div>' + _dName + '<br><small style="color:#666;font-size:12px;">' + (f.mimeType || 'tipe tidak diketahui') + '</small>';
-                const _openBtn3 = document.createElement('button');
-                _openBtn3.textContent = 'Buka File di Tab Baru';
-                _openBtn3.style.cssText = 'display:block;margin:20px auto 0;padding:10px 24px;background:#667eea;color:white;border:none;border-radius:8px;cursor:pointer;font-size:13px;';
-                _openBtn3.addEventListener('click', function(){ window.open(f.fileUrl,'_blank'); });
-                _msg.appendChild(_openBtn3);
-                _mountEl.appendChild(_msg);
-            }
-        };
-
-        // Load first file immediately
-        window._vfyLoadFile(0);
-
-    }, 100);
+        previewer.open(f.fileUrl, _dName);
+    }
     
     document.getElementById('verifyForm').addEventListener('submit', async (e) => {
         e.preventDefault();
@@ -5989,6 +5899,10 @@ function closeModal(skipConfirmation = false) {
     modal.classList.remove('active');
     modal.innerHTML = '';
     modalHasChanges = false;
+    // Also close DP previewer if open
+    if (window._dpVfyInstance && window._dpVfyInstance._isOpen()) {
+        window._dpVfyInstance.close();
+    }
     
     // ✅ Restart polling jika masih di halaman realisasi
     if (currentPage === 'realisasiPage') {
