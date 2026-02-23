@@ -1546,6 +1546,22 @@ function displayRPDs(rpds) {
     
     let totalNominal = 0;
     
+    // ✅ Cek RPD_STATUS dari cache config
+    const _rpdCfg = getLocalCache('config');
+    const _rpdStatusClosed = _rpdCfg && _rpdCfg.RPD_STATUS === 'closed';
+
+    // Helper: apakah bulan/tahun RPD sudah lewat dari bulan sekarang?
+    function _isRpdMonthPast(rpdMonth, rpdYear) {
+        const _now = new Date();
+        const _curYear  = _now.getFullYear();
+        const _curMonth = _now.getMonth(); // 0-based
+        const _rpdMonthIdx = APP_CONFIG.MONTHS.indexOf(rpdMonth); // 0-based
+        const _rpdYear  = parseInt(rpdYear);
+        if (_rpdYear < _curYear) return true;
+        if (_rpdYear === _curYear && _rpdMonthIdx < _curMonth) return true;
+        return false;
+    }
+
     const rows = filteredData.map((rpd, index) => {
         totalNominal += parseFloat(rpd.total || 0);
         
@@ -1554,6 +1570,11 @@ function displayRPDs(rpds) {
         // ✅ KUA column visibility based on role
         const kuaColumn = currentUser.role === 'Admin' ? 
             `<td>${rpd.kua || '-'}</td>` : '';
+
+        // ✅ Edit button: sembunyikan untuk Operator jika status closed ATAU bulan sudah lewat
+        const _canEdit = currentUser.role !== 'Admin'
+            && !_rpdStatusClosed
+            && !_isRpdMonthPast(rpd.month, rpd.year);
         
         return `
         <tr>
@@ -1566,8 +1587,7 @@ function displayRPDs(rpds) {
             <td>
                 <div class="action-buttons">
                     <button class="btn btn-sm" onclick='viewRPD(${rpdEscaped})'>Lihat</button>
-                    ${currentUser.role !== 'Admin' ? 
-                        `<button class="btn btn-sm" onclick='editRPD(${rpdEscaped})'>Edit</button>` : ''}
+                    ${_canEdit ? `<button class="btn btn-sm" onclick='editRPD(${rpdEscaped})'>Edit</button>` : ''}
                 </div>
             </td>
         </tr>
@@ -1911,9 +1931,14 @@ async function showRPDModal(rpd = null) {
                     <label>Bulan</label>
                     <select id="rpdMonth" required ${rpd ? 'disabled' : ''}>
                         <option value="">-- Pilih Bulan --</option>
-                        ${APP_CONFIG.MONTHS.map((month, index) => `
-                            <option value="${month}" ${rpd && rpd.month === month ? 'selected' : ''}>${month}</option>
-                        `).join('')}
+                        ${APP_CONFIG.MONTHS.map((month, index) => {
+                            const _isPastMonth = !rpd && (
+                                currentYear < new Date().getFullYear() ||
+                                (currentYear === new Date().getFullYear() && index < new Date().getMonth())
+                            );
+                            const _sel = rpd && rpd.month === month ? 'selected' : '';
+                            return `<option value="${month}" ${_sel} ${_isPastMonth ? 'disabled style="color:#bbb;"' : ''}>${month}${_isPastMonth ? ' (lewat)' : ''}</option>`;
+                        }).join('')}
                     </select>
                 </div>
                 
@@ -1975,8 +2000,21 @@ async function showRPDModal(rpd = null) {
         const month = document.getElementById('rpdMonth').value;
         const year = document.getElementById('rpdYear').value;
         
-        // ✅ UPDATED VALIDATION: Check for duplicate month and config status
+        // ✅ UPDATED VALIDATION: Check for duplicate month, past month, and config status
         if (!rpd || !rpd.id) {
+            // Cek bulan sudah lewat (untuk Operator KUA saja)
+            if (currentUser.role !== 'Admin') {
+                const _submitMonthIdx = APP_CONFIG.MONTHS.indexOf(month);
+                const _submitYear = parseInt(year);
+                const _now = new Date();
+                const _isPastSubmit = _submitYear < _now.getFullYear() ||
+                    (_submitYear === _now.getFullYear() && _submitMonthIdx < _now.getMonth());
+                if (_isPastSubmit) {
+                    showNotification('Tidak dapat mengisi RPD untuk bulan yang sudah lewat (' + month + ' ' + year + ').', 'warning');
+                    return;
+                }
+            }
+
             // For NEW RPD, check duplicate month
             const cachedRPDs = getLocalCache('rpds') || [];
             const isDuplicate = cachedRPDs.some(existingRPD => 
@@ -7443,11 +7481,21 @@ function displayRPDsFiltered() {
     // Calculate total
     let totalNominal = 0;
     
+    const _rpdCfg2 = getLocalCache('config');
+    const _rpdStatusClosed2 = _rpdCfg2 && _rpdCfg2.RPD_STATUS === 'closed';
+
     const rows = filteredData.map((rpd, index) => {
         totalNominal += parseFloat(rpd.total || 0);
         
         const rpdEscaped = JSON.stringify(rpd).replace(/"/g, '&quot;');
         const kuaColumn = currentUser.role === 'Admin' ? `<td>${rpd.kua || '-'}</td>` : '';
+
+        const _rpdMonthIdx2 = APP_CONFIG.MONTHS.indexOf(rpd.month);
+        const _rpdYear2 = parseInt(rpd.year);
+        const _now2 = new Date();
+        const _isPast2 = _rpdYear2 < _now2.getFullYear() ||
+            (_rpdYear2 === _now2.getFullYear() && _rpdMonthIdx2 < _now2.getMonth());
+        const _canEdit2 = currentUser.role !== 'Admin' && !_rpdStatusClosed2 && !_isPast2;
         
         return `
         <tr>
@@ -7460,8 +7508,7 @@ function displayRPDsFiltered() {
             <td>
                 <div class="action-buttons">
                     <button class="btn btn-sm" onclick='viewRPD(${rpdEscaped})'>Lihat</button>
-                    ${currentUser.role !== 'Admin' ? 
-                        `<button class="btn btn-sm" onclick='editRPD(${rpdEscaped})'>Edit</button>` : ''}
+                    ${_canEdit2 ? `<button class="btn btn-sm" onclick='editRPD(${rpdEscaped})'>Edit</button>` : ''}
                 </div>
             </td>
         </tr>
