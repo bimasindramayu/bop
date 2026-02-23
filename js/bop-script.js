@@ -5356,8 +5356,8 @@ function showVerifyModal(realisasi, rpdData, rpdTotal) {
                 display:flex; align-items:center; justify-content:space-between; gap:10px;
             ">
                 <div style="min-width:0;">
-                    <div style="font-size:14px;font-weight:700;color:white;line-height:1.3;">🔍 Verifikasi Realisasi</div>
-                    <div style="font-size:11px;color:rgba(255,255,255,.8);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+                    <div style="font-size:17px;font-weight:700;color:white;line-height:1.3;">🔍 Verifikasi Realisasi</div>
+                    <div style="font-size:14px;color:rgba(255,255,255,.85);margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
                         🏢 ${realisasi.kua} &nbsp;·&nbsp; 📅 ${realisasi.month} ${realisasi.year} &nbsp;·&nbsp; ${realisasi.status}
                     </div>
                 </div>
@@ -5373,24 +5373,24 @@ function showVerifyModal(realisasi, rpdData, rpdTotal) {
                  scrollbar-width:thin; scrollbar-color:#c1c9e0 #f7f8ff;">
 
                 <!-- Data Pos & Nominal -->
-                <div>
-                    <div style="font-weight:700;color:#667eea;font-size:11px;text-transform:uppercase;letter-spacing:.6px;margin-bottom:8px;">📊 Data Pos &amp; Nominal</div>
-                    ${detailHTML}
+                <div class="rpd-item">
+                    <h4>📊 Data Pos &amp; Nominal</h4>
                 </div>
+                ${detailHTML}
 
                 <!-- Ringkasan Total -->
-                <div style="background:white;border-radius:10px;padding:12px;border:1px solid #e4e8f0;">
-                    <div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid #f0f0f0;">
-                        <span style="color:#666;font-size:12px;">Total RPD</span>
-                        <strong style="font-size:12px;">${rpdData ? formatCurrency(rpdTotal) : '<span style="color:#bbb">—</span>'}</strong>
+                <div class="rpd-item">
+                    <div class="rpd-subitem">
+                        <span>Total RPD</span>
+                        <strong>${rpdData ? formatCurrency(rpdTotal) : '<span style="color:#bbb">—</span>'}</strong>
                     </div>
-                    <div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid #f0f0f0;">
-                        <span style="color:#666;font-size:12px;">Total Realisasi</span>
-                        <strong style="font-size:12px;color:#667eea;">${formatCurrency(realisasi.total)}</strong>
+                    <div class="rpd-subitem">
+                        <span>Total Realisasi</span>
+                        <strong style="color:#667eea;">${formatCurrency(realisasi.total)}</strong>
                     </div>
-                    ${rpdData ? `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0 0;">
-                        <span style="color:#666;font-size:12px;">Selisih (RPD − Realisasi)</span>
-                        <strong style="font-size:13px;color:${rpdTotal >= realisasi.total ? '#28a745' : '#dc3545'};">
+                    ${rpdData ? `<div class="rpd-subitem">
+                        <span>Selisih (RPD − Realisasi)</span>
+                        <strong style="color:${rpdTotal >= realisasi.total ? '#28a745' : '#dc3545'};">
                             ${formatCurrency(rpdTotal - realisasi.total)}
                         </strong>
                     </div>` : ''}
@@ -5400,34 +5400,32 @@ function showVerifyModal(realisasi, rpdData, rpdTotal) {
                 <div id="apSummaryPlaceholder"></div>
 
                 <!-- Dokumen Pendukung -->
-                <div>
-                    <div style="font-weight:700;color:#667eea;font-size:11px;text-transform:uppercase;letter-spacing:.6px;margin-bottom:8px;">
-                        📁 Dokumen Pendukung${_hasFiles ? ' (' + _vfyFilesList.length + ')' : ''}
-                    </div>
+                <div class="rpd-item">
+                    <h4>📁 Dokumen Pendukung${_hasFiles ? ' (' + _vfyFilesList.length + ')' : ''}</h4>
                     ${_filesListHTML}
                 </div>
 
                 <!-- Form Verifikasi -->
-                <div style="background:white;border-radius:10px;padding:14px;border:1px solid #e4e8f0;">
-                    <div style="font-weight:700;color:#495057;font-size:12px;margin-bottom:12px;">✏️ Tindakan Verifikasi</div>
-                    <form id="verifyForm">
-                        <div style="margin-bottom:10px;">
-                            <label style="font-weight:600;font-size:12px;display:block;margin-bottom:5px;">Status</label>
-                            <select id="verifyStatus" required style="width:100%;padding:8px 10px;border:1px solid #ddd;border-radius:8px;font-size:13px;">
+                <div class="rpd-item">
+                    <h4>✏️ Tindakan Verifikasi</h4>
+                    <form id="verifyForm" style="margin-top:8px;">
+                        <div style="margin-bottom:12px;">
+                            <label style="font-weight:600;font-size:14px;display:block;margin-bottom:6px;">Status</label>
+                            <select id="verifyStatus" required style="width:100%;padding:8px 10px;border:1px solid #ddd;border-radius:8px;font-size:14px;">
                                 <option value="Waiting"  ${normalizeStatus(realisasi.status) === 'Waiting'  ? 'selected' : ''}>⏳ Waiting</option>
                                 <option value="Approved" ${normalizeStatus(realisasi.status) === 'Approved' ? 'selected' : ''}>✅ Approved</option>
                                 <option value="Rejected" ${normalizeStatus(realisasi.status) === 'Rejected' ? 'selected' : ''}>❌ Rejected</option>
                                 <option value="Paid"     ${normalizeStatus(realisasi.status) === 'Paid'     ? 'selected' : ''}>💰 Paid</option>
                             </select>
                         </div>
-                        <div style="margin-bottom:10px;">
-                            <label style="font-weight:600;font-size:12px;display:block;margin-bottom:5px;">Catatan</label>
+                        <div style="margin-bottom:12px;">
+                            <label style="font-weight:600;font-size:14px;display:block;margin-bottom:6px;">Catatan</label>
                             <textarea id="verifyNotes" rows="3"
                                 placeholder="Tambahkan catatan jika diperlukan"
-                                style="width:100%;padding:8px 10px;border:1px solid #ddd;border-radius:8px;font-size:13px;resize:vertical;box-sizing:border-box;font-family:inherit;"
+                                style="width:100%;padding:8px 10px;border:1px solid #ddd;border-radius:8px;font-size:14px;resize:vertical;box-sizing:border-box;font-family:inherit;"
                             >${realisasi.notes || ''}</textarea>
                         </div>
-                        <button type="submit" class="btn" style="width:100%;padding:10px;font-size:14px;font-weight:600;">
+                        <button type="submit" class="btn" style="width:100%;padding:10px;font-size:15px;font-weight:600;">
                             💾 Simpan Verifikasi
                         </button>
                     </form>
