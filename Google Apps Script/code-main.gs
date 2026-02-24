@@ -97,6 +97,9 @@ function doPost(e) {
       case 'updateBMNVerifikasi':
       case 'getBMNRiwayat':
       case 'exportLaporanBMN':
+      case 'getBMNConfig':
+      case 'getBMNSettings':
+      case 'saveBMNSetting':
         // Delegate ke BMN module
         result = handleBMNAction(action, data);
         break;

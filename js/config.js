@@ -4,7 +4,7 @@
 
 const APP_CONFIG = {
     // API Configuration
-    SCRIPT_URL: 'https://script.google.com/macros/s/AKfycbyzOdLa5Pw0XlQ9filF0qVpEBcw_cpqScLgWgcOR6ZX4Q0M_1j0ct90hHA3zsT0QCiq/exec',
+    SCRIPT_URL: 'https://script.google.com/macros/s/AKfycbyt8ean9aXzBK9s0ro1AmsTA_-1DLBJVpdIBG2gt9T9_cwFce7-CPtxuOlrsKkjUkCB/exec',
 
     // KUA List
     KUA_LIST: [
@@ -61,7 +61,7 @@ const APP_CONFIG = {
         JENIS_BMN: ['Tanah', 'Gedung/Bangunan', 'Kendaraan', 'Peralatan & Mesin', 'Aset Lainnya'],
         KONDISI_BMN: ['Baik', 'Rusak Ringan', 'Rusak Berat'],
         STATUS_BMN: ['Digunakan', 'Tidak Digunakan', 'Diusulkan Penghapusan'],
-        SUMBER_PEROLEHAN: ['APBN', 'APBD', 'Hibah', 'Pembelian', 'Bantuan', 'Lainnya'],
+        SUMBER_PEROLEHAN: ['APBN', 'APBD', 'Hibah', 'Swadaya', 'Bantuan'],
         MAX_PHOTO_SIZE: 5 * 1024 * 1024, // 5MB
         MAX_PHOTOS: 5,
         

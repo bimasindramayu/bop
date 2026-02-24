@@ -2,10 +2,330 @@
 <html lang="id">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>Menu Utama - Sistem Kemenag</title>
     <link rel="icon" type="image/png" href="assets/kemenag.png">
     <link rel="stylesheet" href="style/main-styles.css">
+    <style>
+    /* ============================================================
+       PASSWORD MODAL — Redesigned, Fully Responsive
+    ============================================================ */
+
+    /* Overlay */
+    #changePasswordModal {
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: rgba(10, 10, 30, 0.65);
+        backdrop-filter: blur(4px);
+        -webkit-backdrop-filter: blur(4px);
+        z-index: 2000;
+        align-items: center;
+        justify-content: center;
+        padding: 16px 12px;
+        overflow-y: auto;
+    }
+    #changePasswordModal.active { display: flex; }
+
+    /* Card */
+    .pw-card {
+        background: #ffffff;
+        border-radius: 20px;
+        width: 100%;
+        max-width: 440px;
+        margin: auto;
+        box-shadow: 0 24px 64px rgba(0, 0, 0, 0.22);
+        overflow: hidden;
+        position: relative;
+    }
+
+    /* Top gradient banner */
+    .pw-banner {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        padding: 28px 28px 52px;
+        position: relative;
+        text-align: center;
+    }
+    .pw-banner-close {
+        position: absolute;
+        top: 14px; right: 16px;
+        background: rgba(255,255,255,.18);
+        border: 1px solid rgba(255,255,255,.25);
+        color: #fff;
+        width: 32px; height: 32px;
+        border-radius: 50%;
+        font-size: 18px; line-height: 1;
+        cursor: pointer;
+        display: flex; align-items: center; justify-content: center;
+        transition: background .15s, transform .2s;
+    }
+    .pw-banner-close:hover {
+        background: rgba(255,255,255,.32);
+        transform: rotate(90deg);
+    }
+    .pw-avatar {
+        width: 72px; height: 72px;
+        background: rgba(255,255,255,.22);
+        border: 3px solid rgba(255,255,255,.5);
+        border-radius: 50%;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 30px;
+        margin: 0 auto 14px;
+    }
+    .pw-banner h3 {
+        margin: 0 0 5px;
+        color: #fff;
+        font-size: 20px;
+        font-weight: 700;
+    }
+    .pw-banner p {
+        margin: 0;
+        color: rgba(255,255,255,.78);
+        font-size: 13px;
+    }
+
+    /* Curved overlap between banner and body */
+    .pw-body {
+        padding: 0 28px 24px;
+        margin-top: -28px;
+        position: relative;
+        z-index: 1;
+    }
+    .pw-body-inner {
+        background: #fff;
+        border-radius: 16px;
+        padding: 24px 22px;
+        box-shadow: 0 -4px 20px rgba(102, 126, 234, .08);
+    }
+
+    /* Field */
+    .pw-field {
+        margin-bottom: 18px;
+    }
+    .pw-field:last-of-type { margin-bottom: 0; }
+
+    .pw-field label {
+        display: block;
+        font-size: 12px;
+        font-weight: 700;
+        color: #555;
+        margin-bottom: 7px;
+        text-transform: uppercase;
+        letter-spacing: .4px;
+    }
+
+    .pw-field-wrap {
+        position: relative;
+        display: flex;
+        align-items: center;
+    }
+    .pw-field-wrap input {
+        width: 100%;
+        padding: 11px 44px 11px 14px;
+        border: 1.5px solid #e0e0e0;
+        border-radius: 10px;
+        font-size: 14px;
+        font-family: inherit;
+        color: #333;
+        background: #fafafa;
+        transition: border-color .2s, box-shadow .2s, background .2s;
+        box-sizing: border-box;
+    }
+    .pw-field-wrap input:focus {
+        outline: none;
+        border-color: #667eea;
+        background: #fff;
+        box-shadow: 0 0 0 3px rgba(102, 126, 234, .14);
+    }
+    .pw-field-wrap input.pw-error {
+        border-color: #e53e3e;
+        box-shadow: 0 0 0 3px rgba(229, 62, 62, .12);
+    }
+    .pw-toggle {
+        position: absolute;
+        right: 12px;
+        background: none;
+        border: none;
+        cursor: pointer;
+        font-size: 17px;
+        color: #aaa;
+        padding: 4px;
+        line-height: 1;
+        transition: color .15s;
+        display: flex; align-items: center;
+    }
+    .pw-toggle:hover { color: #667eea; }
+
+    /* Password strength bar */
+    .pw-strength {
+        margin-top: 8px;
+        display: none;
+    }
+    .pw-strength.visible { display: block; }
+    .pw-strength-bar {
+        height: 4px;
+        border-radius: 3px;
+        background: #eee;
+        overflow: hidden;
+        margin-bottom: 4px;
+    }
+    .pw-strength-fill {
+        height: 100%;
+        border-radius: 3px;
+        transition: width .35s, background .35s;
+    }
+    .pw-strength-text {
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: .4px;
+    }
+
+    /* Match indicator */
+    .pw-match {
+        font-size: 11px;
+        margin-top: 6px;
+        font-weight: 600;
+        display: none;
+    }
+    .pw-match.visible { display: block; }
+
+    /* Inline field hint */
+    .pw-hint {
+        font-size: 11px;
+        color: #e53e3e;
+        margin-top: 5px;
+        display: none;
+    }
+    .pw-hint.visible { display: block; }
+
+    /* Divider */
+    .pw-divider {
+        border: none;
+        border-top: 1px solid #f0f0f0;
+        margin: 20px 0;
+    }
+
+    /* Submit button */
+    .pw-submit {
+        width: 100%;
+        padding: 13px;
+        background: linear-gradient(135deg, #667eea, #764ba2);
+        color: #fff;
+        border: none;
+        border-radius: 10px;
+        font-size: 15px;
+        font-weight: 700;
+        cursor: pointer;
+        letter-spacing: .3px;
+        transition: opacity .2s, transform .15s, box-shadow .2s;
+        box-shadow: 0 4px 16px rgba(102, 126, 234, .35);
+    }
+    .pw-submit:hover {
+        opacity: .92;
+        transform: translateY(-1px);
+        box-shadow: 0 6px 22px rgba(102, 126, 234, .42);
+    }
+    .pw-submit:active  { transform: translateY(0); }
+    .pw-submit:disabled {
+        background: #ccc;
+        cursor: not-allowed;
+        box-shadow: none;
+        transform: none;
+    }
+
+    /* ── Responsive ──────────────────────────── */
+    @media (max-width: 480px) {
+        #changePasswordModal { padding: 10px 8px; align-items: flex-start; }
+        .pw-card  { border-radius: 16px; }
+        .pw-banner { padding: 22px 20px 46px; }
+        .pw-banner h3 { font-size: 18px; }
+        .pw-avatar { width: 62px; height: 62px; font-size: 26px; }
+        .pw-body  { padding: 0 16px 20px; margin-top: -24px; }
+        .pw-body-inner { padding: 20px 16px; }
+    }
+    @media (max-width: 360px) {
+        .pw-banner { padding: 18px 14px 42px; }
+        .pw-body  { padding: 0 10px 16px; }
+        .pw-body-inner { padding: 16px 12px; }
+        .pw-field-wrap input { font-size: 13px; padding: 10px 40px 10px 12px; }
+    }
+
+    /* ============================================================
+       MAIN MENU — Enhanced card styles
+    ============================================================ */
+    .main-container {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 24px 16px;
+        min-height: 100vh;
+    }
+    .header {
+        background: rgba(255,255,255,.95);
+        backdrop-filter: blur(8px);
+        padding: 18px 24px;
+        border-radius: 16px;
+        margin-bottom: 28px;
+        box-shadow: 0 2px 16px rgba(0,0,0,.1);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 12px;
+    }
+    .header h1 { color: #333; font-size: 22px; margin: 0 0 3px; }
+    .user-info strong { display: block; color: #333; font-size: 15px; }
+    .user-info small  { color: #888; font-size: 13px; }
+
+    .menu-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+        gap: 18px;
+    }
+    .menu-card {
+        background: rgba(255,255,255,.97);
+        padding: 28px 22px;
+        border-radius: 16px;
+        box-shadow: 0 4px 18px rgba(0,0,0,.09);
+        cursor: pointer;
+        transition: transform .2s, box-shadow .2s;
+        text-align: center;
+        border-top: 4px solid transparent;
+    }
+    .menu-card:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 10px 32px rgba(0,0,0,.14);
+    }
+    .menu-card:nth-child(1) { border-top-color: #667eea; }
+    .menu-card:nth-child(2) { border-top-color: #28a745; }
+    .menu-card:nth-child(3) { border-top-color: #fd7e14; }
+    .menu-card:nth-child(4) { border-top-color: #17a2b8; }
+    .menu-card:nth-child(5) { border-top-color: #6f42c1; }
+    .menu-card:nth-child(6) { border-top-color: #764ba2; }
+    .menu-card:nth-child(7) { border-top-color: #6c757d; }
+
+    .menu-icon { font-size: 48px; margin-bottom: 14px; line-height: 1; }
+    .menu-card h3 { color: #333; font-size: 17px; margin: 0 0 8px; }
+    .menu-card p  { color: #777; font-size: 13px; line-height: 1.55; margin: 0; }
+
+    @media (max-width: 600px) {
+        .main-container { padding: 14px 10px; }
+        .header { padding: 14px 16px; border-radius: 12px; }
+        .header h1 { font-size: 17px; }
+        .menu-grid { grid-template-columns: repeat(2, 1fr); gap: 12px; }
+        .menu-card { padding: 20px 14px; border-radius: 12px; }
+        .menu-icon { font-size: 38px; margin-bottom: 10px; }
+        .menu-card h3 { font-size: 14px; margin-bottom: 5px; }
+        .menu-card p  { font-size: 12px; }
+    }
+    @media (max-width: 380px) {
+        .menu-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+        .menu-card { padding: 16px 10px; }
+        .menu-icon { font-size: 32px; }
+        .menu-card h3 { font-size: 13px; }
+        .menu-card p  { display: none; }
+    }
+    </style>
 </head>
 <body>
     <!-- Loading Spinner -->
@@ -19,7 +339,9 @@
     <!-- Main Menu -->
     <div class="main-container">
         <div class="header">
-            <h1>Entry Data Bimas Kemenag Indramayu</h1>
+            <div>
+                <h1>Entry Data Bimas Kemenag Indramayu</h1>
+            </div>
             <div class="user-info">
                 <strong id="userName"></strong>
                 <small id="userRole"></small>
@@ -33,25 +355,27 @@
                 <p>Kelola Budget, RPD, dan Realisasi</p>
             </div>
 
-            <!-- <div class="menu-card" onclick="window.location.href='bmn-dashboard.html'">
+            <div class="menu-card" onclick="window.location.href='bmn-dashboard.html'">
                 <div class="menu-icon">📦</div>
                 <h3>BMN Management</h3>
-                <p>Kelola Barang Milik Negara</p>
+                <p>Pendataan Barang Milik Negara</p>
             </div>
 
-            <div class="menu-card" onclick="window.location.href='nikah-dashboard.html'">
+            <!-- <div class="menu-card" onclick="window.location.href='nikah-dashboard.html'">
                 <div class="menu-icon">💍</div>
                 <h3>Data Pernikahan</h3>
                 <p>Pendataan Peristiwa Nikah KUA</p>
             </div>
 
-            <div class="menu-card" id="menuKelolInfoKUA" style="display: none;" onclick="window.location.href='nikah-dashboard.html?action=kuainfo'">
+            <div class="menu-card" id="menuKelolInfoKUA" style="display:none;"
+                 onclick="window.location.href='nikah-dashboard.html?action=kuainfo'">
                 <div class="menu-icon">📋</div>
                 <h3>Kelola Info KUA</h3>
                 <p>Update Kepala KUA &amp; NIP</p>
             </div> -->
 
-            <div class="menu-card" id="menuPengguna" style="display: none;" onclick="window.location.href='user-management.html'">
+            <div class="menu-card" id="menuPengguna" style="display:none;"
+                 onclick="window.location.href='user-management.html'">
                 <div class="menu-icon">👥</div>
                 <h3>Kelola Pengguna</h3>
                 <p>Manajemen user dan akses</p>
@@ -71,37 +395,93 @@
         </div>
     </div>
 
-    <!-- Password Change Modal -->
-    <div class="modal" id="changePasswordModal">
-        <div class="modal-content">
-            <div class="modal-header">
+    <!-- =====================================================
+         PASSWORD MODAL — Redesigned
+    ===================================================== -->
+    <div id="changePasswordModal">
+        <div class="pw-card">
+
+            <!-- Banner -->
+            <div class="pw-banner">
+                <button class="pw-banner-close" onclick="closePasswordModal()"
+                    aria-label="Tutup">×</button>
+                <div class="pw-avatar">🔐</div>
                 <h3>Ubah Password</h3>
-                <button class="close-btn" onclick="closePasswordModal()">&times;</button>
+                <p id="pwUserName">Perbarui kata sandi akun Anda</p>
             </div>
-            <form id="changePasswordForm">
-                <div class="form-group">
-                    <label>Password Lama</label>
-                    <div class="password-input">
-                        <input type="password" id="oldPassword" required>
-                        <button type="button" class="toggle-password" onclick="togglePassword('oldPassword')">👁️</button>
-                    </div>
+
+            <!-- Body -->
+            <div class="pw-body">
+                <div class="pw-body-inner">
+                    <form id="changePasswordForm" autocomplete="off" novalidate>
+
+                        <!-- Password Lama -->
+                        <div class="pw-field">
+                            <label for="oldPassword">Password Saat Ini</label>
+                            <div class="pw-field-wrap">
+                                <input type="password" id="oldPassword"
+                                    placeholder="Masukkan password lama"
+                                    required autocomplete="current-password">
+                                <button type="button" class="pw-toggle"
+                                    onclick="pwToggle('oldPassword', this)"
+                                    aria-label="Tampilkan password">👁️</button>
+                            </div>
+                            <div class="pw-hint" id="hintOld">Password lama tidak boleh kosong</div>
+                        </div>
+
+                        <hr class="pw-divider">
+
+                        <!-- Password Baru -->
+                        <div class="pw-field">
+                            <label for="newPassword">Password Baru</label>
+                            <div class="pw-field-wrap">
+                                <input type="password" id="newPassword"
+                                    placeholder="Minimal 6 karakter"
+                                    required minlength="6"
+                                    autocomplete="new-password"
+                                    oninput="checkStrength(this.value); checkMatch()">
+                                <button type="button" class="pw-toggle"
+                                    onclick="pwToggle('newPassword', this)"
+                                    aria-label="Tampilkan password">👁️</button>
+                            </div>
+                            <!-- Strength bar -->
+                            <div class="pw-strength" id="pwStrength">
+                                <div class="pw-strength-bar">
+                                    <div class="pw-strength-fill" id="pwStrengthFill"></div>
+                                </div>
+                                <span class="pw-strength-text" id="pwStrengthText"></span>
+                            </div>
+                            <div class="pw-hint" id="hintNew">Password baru minimal 6 karakter</div>
+                        </div>
+
+                        <!-- Konfirmasi -->
+                        <div class="pw-field">
+                            <label for="confirmPassword">Konfirmasi Password Baru</label>
+                            <div class="pw-field-wrap">
+                                <input type="password" id="confirmPassword"
+                                    placeholder="Ulangi password baru"
+                                    required minlength="6"
+                                    autocomplete="new-password"
+                                    oninput="checkMatch()">
+                                <button type="button" class="pw-toggle"
+                                    onclick="pwToggle('confirmPassword', this)"
+                                    aria-label="Tampilkan password">👁️</button>
+                            </div>
+                            <!-- Match indicator -->
+                            <div class="pw-match" id="pwMatch"></div>
+                            <div class="pw-hint" id="hintConfirm">Password tidak cocok</div>
+                        </div>
+
+                        <div style="margin-top:22px;">
+                            <button type="submit" class="pw-submit" id="btnUbahPassword">
+                                🔒 Ubah Password
+                            </button>
+                        </div>
+
+                    </form>
                 </div>
-                <div class="form-group">
-                    <label>Password Baru</label>
-                    <div class="password-input">
-                        <input type="password" id="newPassword" required minlength="6">
-                        <button type="button" class="toggle-password" onclick="togglePassword('newPassword')">👁️</button>
-                    </div>
-                </div>
-                <div class="form-group">
-                    <label>Konfirmasi Password Baru</label>
-                    <div class="password-input">
-                        <input type="password" id="confirmPassword" required minlength="6">
-                        <button type="button" class="toggle-password" onclick="togglePassword('confirmPassword')">👁️</button>
-                    </div>
-                </div>
-                <button type="submit" class="btn">Ubah Password</button>
-            </form>
+            </div>
+
         </div>
     </div>
 
@@ -109,5 +489,155 @@
     <script src="js/config.js"></script>
     <script src="js/config-enhanced.js"></script>
     <script src="js/main-script.js"></script>
+
+    <script>
+    /* ── Password Modal Helpers ──────────────────────────────── */
+
+    function showPasswordModal() {
+        const modal = document.getElementById('changePasswordModal');
+        const user  = typeof SessionManager !== 'undefined'
+            ? SessionManager.getCurrentUser()
+            : null;
+        if (user) {
+            const el = document.getElementById('pwUserName');
+            if (el) el.textContent = user.name || 'Perbarui kata sandi Anda';
+        }
+        modal.classList.add('active');
+        // Reset form
+        document.getElementById('changePasswordForm').reset();
+        clearPasswordUI();
+        // Focus first input
+        setTimeout(() => document.getElementById('oldPassword').focus(), 120);
+    }
+
+    function closePasswordModal() {
+        document.getElementById('changePasswordModal').classList.remove('active');
+        document.getElementById('changePasswordForm').reset();
+        clearPasswordUI();
+    }
+
+    function clearPasswordUI() {
+        ['oldPassword','newPassword','confirmPassword'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.classList.remove('pw-error');
+        });
+        setVisible('hintOld',    false);
+        setVisible('hintNew',    false);
+        setVisible('hintConfirm',false);
+        setVisible('pwStrength', false);
+        setVisible('pwMatch',    false);
+    }
+
+    function setVisible(id, show) {
+        const el = document.getElementById(id);
+        if (el) { show ? el.classList.add('visible') : el.classList.remove('visible'); }
+    }
+
+    /* Toggle show / hide */
+    function pwToggle(inputId, btn) {
+        const input = document.getElementById(inputId);
+        if (!input) return;
+        if (input.type === 'password') {
+            input.type = 'text';
+            btn.textContent = '🙈';
+        } else {
+            input.type = 'password';
+            btn.textContent = '👁️';
+        }
+    }
+
+    /* Strength checker */
+    function checkStrength(val) {
+        const bar  = document.getElementById('pwStrengthFill');
+        const txt  = document.getElementById('pwStrengthText');
+        if (!val) { setVisible('pwStrength', false); return; }
+
+        setVisible('pwStrength', true);
+        let score = 0;
+        if (val.length >= 6)  score++;
+        if (val.length >= 10) score++;
+        if (/[A-Z]/.test(val)) score++;
+        if (/[0-9]/.test(val)) score++;
+        if (/[^A-Za-z0-9]/.test(val)) score++;
+
+        const levels = [
+            { w:'20%', color:'#e53e3e', label:'Sangat Lemah' },
+            { w:'40%', color:'#f6993f', label:'Lemah' },
+            { w:'60%', color:'#ecc94b', label:'Cukup' },
+            { w:'80%', color:'#68d391', label:'Kuat' },
+            { w:'100%',color:'#38a169', label:'Sangat Kuat' }
+        ];
+        const lvl = levels[Math.min(score, 4)];
+        bar.style.width    = lvl.w;
+        bar.style.background = lvl.color;
+        txt.textContent    = lvl.label;
+        txt.style.color    = lvl.color;
+    }
+
+    /* Match check */
+    function checkMatch() {
+        const nv = document.getElementById('newPassword').value;
+        const cv = document.getElementById('confirmPassword').value;
+        const el = document.getElementById('pwMatch');
+        if (!cv) { setVisible('pwMatch', false); return; }
+        setVisible('pwMatch', true);
+        if (nv === cv) {
+            el.textContent = '✓ Password cocok';
+            el.style.color = '#38a169';
+        } else {
+            el.textContent = '✗ Password belum cocok';
+            el.style.color = '#e53e3e';
+        }
+    }
+
+    /* Form submit */
+    document.getElementById('changePasswordForm').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        clearPasswordUI();
+
+        const oldPw  = document.getElementById('oldPassword').value.trim();
+        const newPw  = document.getElementById('newPassword').value;
+        const confPw = document.getElementById('confirmPassword').value;
+
+        let ok = true;
+
+        if (!oldPw) {
+            document.getElementById('oldPassword').classList.add('pw-error');
+            setVisible('hintOld', true); ok = false;
+        }
+        if (!newPw || newPw.length < 6) {
+            document.getElementById('newPassword').classList.add('pw-error');
+            setVisible('hintNew', true); ok = false;
+        }
+        if (newPw !== confPw) {
+            document.getElementById('confirmPassword').classList.add('pw-error');
+            setVisible('hintConfirm', true); ok = false;
+        }
+        if (!ok) return;
+
+        const btn = document.getElementById('btnUbahPassword');
+        btn.disabled = true; btn.textContent = '⏳ Memproses...';
+
+        try {
+            // Use existing changePassword function from main-script.js
+            await changePassword(oldPw, newPw);
+            closePasswordModal();
+        } catch (err) {
+            // error notification handled by changePassword
+        } finally {
+            btn.disabled = false; btn.textContent = '🔒 Ubah Password';
+        }
+    });
+
+    /* Close on backdrop click */
+    document.getElementById('changePasswordModal').addEventListener('click', function(e) {
+        if (e.target === this) closePasswordModal();
+    });
+
+    /* Close on Escape */
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') closePasswordModal();
+    });
+    </script>
 </body>
 </html>

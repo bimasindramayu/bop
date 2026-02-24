@@ -6,7 +6,9 @@
     <title>Sistem Pendataan BMN - Kemenag Indramayu</title>
     <link rel="icon" type="image/png" href="assets/kemenag.png">
     <link rel="stylesheet" href="style/bmn-styles.css">
+    <link rel="stylesheet" href="style/document-previewer.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 </head>
 <body>
     <!-- Loading Spinner -->
@@ -100,10 +102,10 @@
                     </div>
                 </div>
 
-                <!-- Riwayat Page -->
-                <div class="page" id="riwayatPage">
-                    <h2 style="margin-bottom: 20px;">Riwayat Perubahan</h2>
-                    <div id="riwayatContainer"></div>
+                <!-- Konfigurasi Page (Admin only) -->
+                <div class="page" id="konfigurasiPage">
+                    <h2 style="margin-bottom:20px;">⚙️ Konfigurasi BMN</h2>
+                    <div id="konfigurasiContent"></div>
                 </div>
 
                 <!-- Laporan Page -->
@@ -113,7 +115,8 @@
                     <div class="summary-box">
                         <h3 style="margin-bottom: 15px; color: #28a745;">📊 Laporan Per KUA</h3>
                         <select id="exportKUA" style="margin-bottom: 10px;">
-                            <option value="">Pilih KUA</option>
+                            <option value="">— Pilih KUA —</option>
+                            <option value="ALL">📋 Semua KUA</option>
                         </select>
                         <div style="display: flex; gap: 10px;">
                             <button class="btn btn-sm btn-success" onclick="exportLaporan('perKUA', 'excel')">📥 Excel</button>
@@ -149,17 +152,17 @@
         </div>
     </div>
 
-    <!-- Modals will be added by JavaScript -->
-    
+    <!-- Modal (diisi oleh JavaScript) -->
+    <div id="modal" class="modal"></div>
+
     <!-- Load Config & Scripts -->
     <script src="js/config.js"></script>
+    <script src="js/document-previewer.config.js"></script>
+    <script src="js/document-previewer.js"></script>
     <script src="js/bmn-script.js"></script>
-    
+
     <script>
-        // Logout function for BMN
-        function logoutBMN() {
-            commonLogout();
-        }
+        function logoutBMN() { commonLogout(); }
     </script>
 </body>
 </html>
