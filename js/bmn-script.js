@@ -9,9 +9,15 @@ let uploadedPhotos    = [];    // sudah di-upload ke Drive
 let pendingPhotoFiles = [];    // dipilih user, belum diupload
 let _editSourceBMN    = null;
 
-const bmnCache  = { statsLoaded: false, dataLoaded: false };
-// Konfigurasi akses Operator KUA (diambil dari sheet Config)
-let bmnConfig = { allowTambah: true, allowEdit: true };
+const bmnCache  = {
+    statsLoaded:   false,   // Dashboard stats
+    dataLoaded:    false,   // Data BMN table
+    laporanLoaded: false,   // Laporan dropdown options
+    configLoaded:  false    // Konfigurasi / bmnConfig
+};
+let _lastStats = null; // cache stats object untuk re-render instan
+// Konfigurasi akses Operator KUA — satu toggle untuk Tambah & Edit
+let bmnConfig = { allowDataEntry: true };
 
 // ===== INIT =====
 window.addEventListener('DOMContentLoaded', function () {
@@ -37,11 +43,21 @@ async function initBMNDashboard() {
     renderNavMenu();
     navigateTo('dashboardPage');
 
-    await Promise.all([
-        initDocumentPreviewer(),
-        preloadBMNData(),
-        loadBMNSettings()
-    ]);
+    const isAdmin = currentUser.role === 'Admin';
+
+    // Semua data di-fetch paralel saat pertama kali masuk — tab switching jadi instan
+    const initTasks = [
+        initDocumentPreviewer(),   // mount previewer + ambil Drive API key
+        _preloadStats(),           // Dashboard stats (semua role)
+        preloadBMNData(),          // Tabel Data BMN (semua role)
+        loadBMNSettings()          // Konfigurasi allowDataEntry (semua role)
+    ];
+
+    if (isAdmin) {
+        initTasks.push(_preloadLaporanOptions()); // Dropdown KUA untuk Laporan (Admin only)
+    }
+
+    await Promise.all(initTasks);
 }
 
 // ===== DOCUMENT PREVIEWER =====
@@ -80,6 +96,26 @@ async function preloadBMNData() {
     } catch (e) { /* silent — retry on tab switch */ }
 }
 
+// Preload stats (Dashboard) diam-diam saat init
+async function _preloadStats() {
+    if (bmnCache.statsLoaded) return;
+    try {
+        const stats = await apiCall('getBMNStats', {
+            role: currentUser.role,
+            kua:  currentUser.role === 'Admin' ? '' : currentUser.kua
+        });
+        bmnCache.statsLoaded = true;
+        displayDashboardStats(stats);
+    } catch (e) { /* silent — akan dicoba lagi saat klik tab Dashboard */ }
+}
+
+// Preload dropdown KUA untuk Laporan (Admin only) — diam-diam saat init
+async function _preloadLaporanOptions() {
+    if (bmnCache.laporanLoaded) return;
+    _renderLaporanOptions();   // isi dropdown dari APP_CONFIG (tidak butuh API call)
+    bmnCache.laporanLoaded = true;
+}
+
 // ===== NAV MENU =====
 function renderNavMenu() {
     const navMenu = document.getElementById('navMenu');
@@ -107,7 +143,7 @@ function navigateTo(pageId) {
     if (btn)  btn.classList.add('active');
 
     controlColumnVisibility();
-    
+
     const isKUA     = currentUser.role.includes('KUA');
     const filterKUA = document.getElementById('filterKUA');
     const isAdmin = currentUser.role === 'Admin';
@@ -119,14 +155,14 @@ function navigateTo(pageId) {
         if (isAdmin) {
             btnTambah.style.display = 'none';
         } else if (isKUA) {
-            btnTambah.style.display = bmnConfig.allowTambah ? 'inline-block' : 'none';
+            btnTambah.style.display = bmnConfig.allowDataEntry ? 'inline-block' : 'none';
         }
     }
 
-    if      (pageId === 'dashboardPage')   { if (!bmnCache.statsLoaded)  loadBMNDashboardStats(); }
-    else if (pageId === 'dataBMNPage')     { if (!allBMNData.length) loadBMNData(); else applyFilters(); }
-    else if (pageId === 'laporanBMNPage')  { loadLaporanOptions(); }
-    else if (pageId === 'konfigurasiPage') { loadKonfigurasiPage(); }
+    if      (pageId === 'dashboardPage')   { if (!bmnCache.statsLoaded)  loadBMNDashboardStats(); else displayDashboardStats(_lastStats); }
+    else if (pageId === 'dataBMNPage')     { if (!bmnCache.dataLoaded) loadBMNData(); else applyFilters(); }
+    else if (pageId === 'laporanBMNPage')  { if (!bmnCache.laporanLoaded) loadLaporanOptions(); }
+    else if (pageId === 'konfigurasiPage') { _renderKonfigurasiPage(); /* render dari state, tidak fetch ulang */ }
 }
 
 function controlColumnVisibility() {
@@ -151,6 +187,8 @@ async function loadBMNDashboardStats() {
 }
 
 function displayDashboardStats(stats) {
+    if (!stats) return;
+    _lastStats = stats; // simpan untuk re-render instan saat balik ke tab Dashboard
     const s = {
         total:     stats.totalBMN    || stats.totalBarang       || 0,
         baik:      stats.kondisiBaik || stats.barangBaik        || 0,
@@ -316,6 +354,13 @@ function _opt(arr, sel, prefix = '— Pilih —') {
 
 // ===== MODAL TAMBAH / EDIT BMN (CSS-class driven, fully responsive) =====
 function showBMNModal(bmn = null) {
+    const isKUA  = currentUser.role.includes('KUA');
+    // Guard FE: tolak jika config tertutup untuk KUA
+    if (isKUA && !bmnConfig.allowDataEntry) {
+        showNotification('Input Data BMN sedang ditutup oleh Admin', 'warning');
+        return;
+    }
+
     const modal  = document.getElementById('modal');
     const isEdit = bmn !== null;
 
@@ -636,8 +681,8 @@ async function saveBMN(existingBMN) {
 // ===== EDIT / CANCEL =====
 function editBMN(bmn) { _editSourceBMN = null; closeModal(); setTimeout(() => showBMNModal(bmn), 250); }
 function _editBMNFromDetail(bmn) {
-    if (!bmnConfig.allowEdit && currentUser.role.includes('KUA')) {
-        showNotification('Edit Data BMN sedang ditutup oleh Admin', 'warning');
+    if (!bmnConfig.allowDataEntry && currentUser.role.includes('KUA')) {
+        showNotification('Input Data BMN sedang ditutup oleh Admin', 'warning');
         return;
     }
     _editSourceBMN = bmn; closeModal(); setTimeout(() => showBMNModal(bmn), 250);
@@ -717,7 +762,7 @@ function viewBMN(bmn) {
                 </div>
             </div>
             <div class="bm-hdr-actions">
-                ${isKUA && bmnConfig.allowEdit ? `
+                ${isKUA && bmnConfig.allowDataEntry ? `
                 <button class="bm-hdr-edit-btn"
                     onclick='_editBMNFromDetail(${JSON.stringify(bmn).replace(/'/g,"&apos;")})'>
                     ✏️ Edit Data
@@ -795,90 +840,123 @@ function _infoRow(label, val) {
 // ===== BMN SETTINGS / KONFIGURASI =====
 
 async function loadBMNSettings() {
+    if (bmnCache.configLoaded) return;
     try {
         const cfg = await apiCall('getBMNSettings', {});
-        bmnConfig.allowTambah = cfg.allowTambah !== false; // default true
-        bmnConfig.allowEdit   = cfg.allowEdit   !== false;
+        bmnConfig.allowDataEntry = cfg.allowDataEntry !== false; // default true
+        bmnCache.configLoaded    = true;
     } catch (e) {
-        // fallback: izinkan semua
-        bmnConfig = { allowTambah: true, allowEdit: true };
+        bmnConfig = { allowDataEntry: true }; // fallback aman
     }
 }
 
+// Fetch config lalu render — dipakai hanya jika config belum ter-cache
 async function loadKonfigurasiPage() {
     const el = document.getElementById('konfigurasiContent');
     if (!el) return;
+    if (!bmnCache.configLoaded) {
+        el.innerHTML = `<div style="text-align:center;padding:30px;color:#999;">⏳ Memuat konfigurasi...</div>`;
+        await loadBMNSettings(); // fetch + set bmnCache.configLoaded = true
+    }
+    _renderKonfigurasiPage();
+}
 
-    // Refresh settings dulu
-    await loadBMNSettings();
+// Pure render dari state bmnConfig — tanpa API call sama sekali
+function _renderKonfigurasiPage() {
+    const el = document.getElementById('konfigurasiContent');
+    if (!el) return;
 
-    const toggleUI = (id, label, desc, enabled) => `
-    <div style="background:#fff;border:1px solid #e9ecef;border-radius:12px;padding:20px 22px;
-                display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;
-                margin-bottom:14px;box-shadow:0 1px 6px rgba(0,0,0,.06);">
-        <div style="min-width:0;flex:1;">
-            <div style="font-size:15px;font-weight:700;color:#333;margin-bottom:4px;">${label}</div>
-            <div style="font-size:13px;color:#888;line-height:1.5;">${desc}</div>
-        </div>
-        <button id="toggle_${id}" onclick="toggleBMNSetting('${id}')"
-            style="flex-shrink:0;min-width:96px;padding:10px 20px;border:none;border-radius:8px;
-                   font-size:14px;font-weight:700;cursor:pointer;transition:all .2s;
-                   ${enabled
-                       ? 'background:#d4edda;color:#155724;box-shadow:0 0 0 2px #28a74533;'
-                       : 'background:#f8d7da;color:#721c24;box-shadow:0 0 0 2px #dc354533;'}">
-            ${enabled ? '✅ Dibuka' : '🔒 Ditutup'}
-        </button>
-    </div>`;
-
+    const on = bmnConfig.allowDataEntry;
     el.innerHTML = `
+    <!-- Banner -->
     <div style="background:linear-gradient(135deg,#667eea,#764ba2);border-radius:12px;
-                padding:20px 24px;margin-bottom:24px;color:#fff;">
+                padding:20px 24px;margin-bottom:22px;color:#fff;">
         <h3 style="margin:0 0 6px;color:#fff;font-size:17px;">⚙️ Hak Akses Operator KUA</h3>
         <p style="margin:0;opacity:.85;font-size:13px;line-height:1.6;">
-            Kontrol aksi yang boleh dilakukan oleh <strong>Operator KUA</strong> pada Data BMN.
-            Perubahan langsung berlaku — Operator KUA perlu me-refresh halaman untuk melihat efeknya.
+            Kontrol apakah <strong>Operator KUA</strong> boleh menambah atau mengedit Data BMN.
+            Perubahan langsung berlaku &amp; dijaga di sisi server — Operator KUA perlu
+            me-refresh halaman untuk melihat efeknya.
         </p>
     </div>
 
-    ${toggleUI('allowTambah',
-        '➕ Tambah Data BMN',
-        'Izinkan Operator KUA menambahkan data BMN baru.',
-        bmnConfig.allowTambah)}
+    <!-- Single toggle card -->
+    <div style="background:#fff;border:1px solid #e9ecef;border-radius:14px;
+                padding:24px 26px;display:flex;align-items:center;
+                justify-content:space-between;gap:20px;flex-wrap:wrap;
+                box-shadow:0 2px 12px rgba(0,0,0,.07);">
+        <div style="min-width:0;flex:1;">
+            <div style="font-size:16px;font-weight:700;color:#333;margin-bottom:6px;">
+                ✏️ Input Data BMN (Tambah &amp; Edit)
+            </div>
+            <div style="font-size:13px;color:#777;line-height:1.65;">
+                Satu toggle ini mengontrol <strong>sekaligus</strong>: tombol
+                <em>+ Tambah BMN</em> dan tombol <em>✏️ Edit Data</em> di modal Detail.<br>
+                Ketika <strong>Ditutup</strong>, permintaan dari Operator KUA juga akan
+                ditolak di sisi server meski melewati halaman ini.
+            </div>
+        </div>
+        <div style="flex-shrink:0;display:flex;flex-direction:column;align-items:center;gap:10px;">
+            <button id="toggle_allowDataEntry" onclick="toggleBMNSetting('allowDataEntry')"
+                style="min-width:120px;padding:12px 24px;border:none;border-radius:10px;
+                       font-size:15px;font-weight:700;cursor:pointer;letter-spacing:.3px;
+                       transition:all .2s;
+                       ${on
+                           ? 'background:#d4edda;color:#155724;box-shadow:0 0 0 2px #28a74555;'
+                           : 'background:#f8d7da;color:#721c24;box-shadow:0 0 0 2px #dc354555;'}">
+                ${on ? '✅ Dibuka' : '🔒 Ditutup'}
+            </button>
+            <div style="font-size:11px;color:#aaa;text-align:center;">
+                Klik untuk ${on ? 'menutup' : 'membuka'}
+            </div>
+        </div>
+    </div>
 
-    ${toggleUI('allowEdit',
-        '✏️ Edit Data BMN',
-        'Izinkan Operator KUA mengedit data BMN yang sudah ada.',
-        bmnConfig.allowEdit)}
+    <!-- Status info box -->
+    <div style="margin-top:16px;background:${on ? '#f0fff4' : '#fff8f0'};
+                border-radius:10px;padding:14px 18px;
+                border-left:4px solid ${on ? '#28a745' : '#fd7e14'};
+                font-size:13px;color:#555;line-height:1.6;">
+        ${on
+            ? '✅ <strong>Saat ini DIBUKA</strong> — Operator KUA dapat menambah dan mengedit data BMN.'
+            : '🔒 <strong>Saat ini DITUTUP</strong> — Operator KUA tidak dapat menambah atau mengedit data BMN. Permintaan akan ditolak oleh server.'}
+    </div>
 
-    <div style="margin-top:10px;background:#f8f9fa;border-radius:10px;padding:14px 18px;
-                border-left:4px solid #667eea;font-size:13px;color:#555;line-height:1.6;">
-        💡 <strong>Catatan:</strong> Ketika "Edit Data BMN" ditutup, tombol ✏️ Edit Data tidak akan
-        muncul di modal Detail untuk semua Operator KUA. Ketika "Tambah Data BMN" ditutup,
-        tombol + Tambah BMN tidak akan tampil.
+    <!-- Info note -->
+    <div style="margin-top:12px;background:#f8f9fa;border-radius:10px;padding:13px 16px;
+                border-left:4px solid #667eea;font-size:12px;color:#666;line-height:1.7;">
+        💡 <strong>Catatan teknis:</strong> Penjagaan berlapis — Frontend menyembunyikan tombol,
+        Backend menolak request. Sehingga aksi tidak bisa dilakukan walaupun seseorang
+        mencoba langsung via API.
     </div>`;
 }
 
 async function toggleBMNSetting(key) {
-    const btn = document.getElementById(`toggle_${key}`);
-    if (btn) { btn.disabled = true; btn.textContent = '⏳...'; }
+    const btn    = document.getElementById(`toggle_${key}`);
+    if (btn) { btn.disabled = true; btn.textContent = '⏳ Menyimpan...'; }
 
     const newVal = !bmnConfig[key];
     try {
-        await apiCall('saveBMNSetting', { key, value: newVal });
+        // Sertakan username agar backend dapat memverifikasi bahwa pemohon benar-benar Admin
+        await apiCall('saveBMNSetting', { key, value: newVal, username: currentUser.username });
         bmnConfig[key] = newVal;
         showNotification(
-            `${key === 'allowTambah' ? 'Tambah' : 'Edit'} Data BMN berhasil ${newVal ? 'dibuka' : 'ditutup'}`,
-            'success'
+            `Input Data BMN berhasil ${newVal ? 'dibuka ✅' : 'ditutup 🔒'}`,
+            newVal ? 'success' : 'warning'
         );
-        loadKonfigurasiPage(); // re-render
+        _renderKonfigurasiPage(); // re-render dari state — tanpa fetch ulang
     } catch (e) {
-        showNotification(e.message, 'error');
-        if (btn) { btn.disabled = false; btn.textContent = bmnConfig[key] ? '✅ Dibuka' : '🔒 Ditutup'; }
+        showNotification(e.message || 'Gagal menyimpan konfigurasi', 'error');
+        if (btn) {
+            btn.disabled = false;
+            btn.textContent = bmnConfig[key] ? '✅ Dibuka' : '🔒 Ditutup';
+        }
     }
 }
 
 // ===== LAPORAN =====
-async function loadLaporanOptions() {
+
+// Pure render — isi dropdown dari APP_CONFIG (tidak butuh API call)
+function _renderLaporanOptions() {
     const el = document.getElementById('exportKUA');
     if (!el) return;
     el.innerHTML =
@@ -886,6 +964,12 @@ async function loadLaporanOptions() {
         '<option value="ALL">📋 Semua KUA</option>' +
         APP_CONFIG.KUA_LIST.slice().sort().map(k => `<option value="${k}">${k}</option>`).join('');
     el.disabled = false;
+}
+
+// Wrapper (dipakai navigateTo saat laporanLoaded masih false)
+async function loadLaporanOptions() {
+    _renderLaporanOptions();
+    bmnCache.laporanLoaded = true;
 }
 
 async function exportLaporan(type, format) {
