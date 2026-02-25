@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Input Kegiatan – Seksi Bimas Islam</title>
+
+  <!-- Suppress favicon 404 -->
+  <link rel="icon" href="data:,">
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Amiri:wght@400;700&display=swap" rel="stylesheet" />
+
+  <!-- Bootstrap 5 CDN -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
+
+  <!-- Bootstrap Icons -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet" />
+
+  <!-- Custom CSS -->
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- ── HEADER ── -->
+  <header class="site-header">
+    <div class="header-ornament"></div>
+    <div class="container">
+      <div class="header-inner">
+        <div class="header-logo">
+          <div class="logo-icon">
+            <i class="bi bi-moon-stars-fill"></i>
+          </div>
+          <div class="header-text">
+            <span class="header-super">Kementerian Agama</span>
+            <h1 class="header-title">Seksi Bimas Islam</h1>
+            <span class="header-sub">Sistem Input Data Kegiatan</span>
+          </div>
+        </div>
+        <div class="header-badge">
+          <span>TA <strong id="currentYear"></strong></span>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- ── MAIN ── -->
+  <main class="main-content">
+    <div class="container">
+
+      <!-- Page intro -->
+      <div class="page-intro">
+        <div class="intro-line"></div>
+        <p>Formulir pencatatan kegiatan resmi Seksi Bimas Islam. Pastikan seluruh data diisi dengan lengkap dan benar sebelum mengirimkan.</p>
+      </div>
+
+      <!-- ── FORM CARD ── -->
+      <div class="form-card">
+        <div class="form-card-header">
+          <i class="bi bi-clipboard2-pulse-fill"></i>
+          <span>Data Kegiatan</span>
+        </div>
+
+        <form id="kegiatanForm" novalidate>
+
+          <!-- Row 1: Nama & Tanggal + Jam -->
+          <div class="row g-4">
+            <div class="col-md-7">
+              <div class="field-group">
+                <label for="namaKegiatan" class="field-label">
+                  <i class="bi bi-bookmark-fill"></i> Nama Kegiatan
+                </label>
+                <input
+                  type="text"
+                  id="namaKegiatan"
+                  name="namaKegiatan"
+                  class="field-input"
+                  placeholder="Contoh: Manasik Haji, Penyuluhan Zakat…"
+                  required
+                />
+                <div class="invalid-feedback">Nama kegiatan wajib diisi.</div>
+              </div>
+            </div>
+            <div class="col-md-5">
+              <div class="field-group">
+                <label for="tanggalKegiatan" class="field-label">
+                  <i class="bi bi-calendar3-event"></i> Tanggal &amp; Jam Kegiatan
+                </label>
+                <input
+                  type="datetime-local"
+                  id="tanggalKegiatan"
+                  name="tanggalKegiatan"
+                  class="field-input"
+                  min="2000-01-01T00:00"
+                  max="2099-12-31T23:59"
+                  required
+                />
+                <div class="invalid-feedback" id="tanggalError">Tanggal &amp; jam wajib diisi.</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Row 2: Lokasi & PJ -->
+          <div class="row g-4 mt-0">
+            <div class="col-md-6">
+              <div class="field-group">
+                <label for="lokasi" class="field-label">
+                  <i class="bi bi-geo-alt-fill"></i> Lokasi
+                </label>
+                <input
+                  type="text"
+                  id="lokasi"
+                  name="lokasi"
+                  class="field-input"
+                  placeholder="Contoh: Aula Kemenag Kab. Bandung"
+                  required
+                />
+                <div class="invalid-feedback">Lokasi wajib diisi.</div>
+              </div>
+            </div>
+            <div class="col-md-6">
+              <div class="field-group">
+                <label for="penanggungjawab" class="field-label">
+                  <i class="bi bi-person-badge-fill"></i> Penanggung Jawab
+                </label>
+                <input
+                  type="text"
+                  id="penanggungjawab"
+                  name="penanggungjawab"
+                  class="field-input"
+                  placeholder="Nama pegawai / pejabat"
+                  required
+                />
+                <div class="invalid-feedback">Penanggung jawab wajib diisi.</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Row 3: Sumber Dana & Nominal -->
+          <div class="row g-4 mt-0">
+            <div class="col-md-4">
+              <div class="field-group">
+                <label for="sumberDana" class="field-label">
+                  <i class="bi bi-bank2"></i> Sumber Dana
+                </label>
+                <select id="sumberDana" name="sumberDana" class="field-input" required>
+                  <option value="">— Pilih Sumber Dana —</option>
+                  <option value="DIPA">DIPA</option>
+                  <option value="Non DIPA">Non DIPA</option>
+                </select>
+                <div class="invalid-feedback">Sumber dana wajib dipilih.</div>
+              </div>
+            </div>
+            <div class="col-md-8">
+              <div class="field-group">
+                <label for="nominal" class="field-label">
+                  <i class="bi bi-cash-stack"></i> Nominal Anggaran
+                </label>
+                <div class="input-rupiah-wrapper">
+                  <span class="rupiah-prefix">Rp</span>
+                  <input
+                    type="text"
+                    id="nominal"
+                    name="nominal"
+                    class="field-input with-prefix"
+                    placeholder="0"
+                    inputmode="numeric"
+                    required
+                  />
+                </div>
+                <div class="invalid-feedback">Nominal anggaran wajib diisi.</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Row 4: Keterangan -->
+          <div class="row g-4 mt-0">
+            <div class="col-12">
+              <div class="field-group">
+                <label for="keterangan" class="field-label">
+                  <i class="bi bi-chat-left-text-fill"></i> Keterangan
+                </label>
+                <textarea
+                  id="keterangan"
+                  name="keterangan"
+                  class="field-input"
+                  rows="3"
+                  placeholder="Deskripsi singkat kegiatan, peserta, atau catatan penting…"
+                  required
+                ></textarea>
+                <div class="invalid-feedback">Keterangan wajib diisi.</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Row 5: Upload -->
+          <div class="row g-4 mt-0">
+            <div class="col-12">
+              <div class="field-group">
+                <label class="field-label">
+                  <i class="bi bi-paperclip"></i> Upload Dokumen
+                  <span class="field-hint">PDF / JPG / PNG, maks. 5 MB per file</span>
+                </label>
+                <div class="upload-area" id="uploadArea">
+                  <input
+                    type="file"
+                    id="dokumen"
+                    name="dokumen"
+                    class="upload-input"
+                    accept=".pdf,.jpg,.jpeg,.png"
+                    multiple
+                    required
+                  />
+                  <div class="upload-visual">
+                    <i class="bi bi-cloud-arrow-up-fill upload-icon"></i>
+                    <p class="upload-text">Klik atau seret file ke sini</p>
+                    <p class="upload-sub">PDF, JPG, PNG · Maks 5 MB per file</p>
+                  </div>
+                </div>
+                <div class="invalid-feedback" id="fileError">Dokumen wajib diunggah.</div>
+
+                <!-- File preview list -->
+                <ul class="file-list mt-3" id="fileList"></ul>
+              </div>
+            </div>
+          </div>
+
+          <!-- Submit -->
+          <div class="form-actions mt-4">
+            <button type="button" class="btn-reset" id="btnReset">
+              <i class="bi bi-arrow-counterclockwise"></i> Reset
+            </button>
+            <button type="submit" class="btn-submit" id="btnSubmit">
+              <span class="btn-submit-text">
+                <i class="bi bi-send-fill"></i> Kirim Data
+              </span>
+              <span class="btn-loading d-none">
+                <span class="spinner-border spinner-border-sm" role="status"></span>
+                Mengirim…
+              </span>
+            </button>
+          </div>
+
+        </form>
+      </div><!-- /form-card -->
+
+      <!-- ── SUCCESS TOAST ── -->
+      <div class="toast-container position-fixed bottom-0 end-0 p-4" style="z-index:9999">
+        <div id="toastSuccess" class="toast-custom toast-success" role="alert" aria-atomic="true">
+          <div class="toast-icon"><i class="bi bi-check-circle-fill"></i></div>
+          <div class="toast-body-custom">
+            <strong>Berhasil!</strong>
+            <p id="toastMsg">Data kegiatan berhasil disimpan.</p>
+          </div>
+          <button class="toast-close" data-bs-dismiss="toast"><i class="bi bi-x-lg"></i></button>
+        </div>
+
+        <div id="toastError" class="toast-custom toast-error" role="alert" aria-atomic="true">
+          <div class="toast-icon"><i class="bi bi-exclamation-circle-fill"></i></div>
+          <div class="toast-body-custom">
+            <strong>Gagal!</strong>
+            <p id="toastErrMsg">Terjadi kesalahan, coba lagi.</p>
+          </div>
+          <button class="toast-close" data-bs-dismiss="toast"><i class="bi bi-x-lg"></i></button>
+        </div>
+      </div>
+
+    </div><!-- /container -->
+  </main>
+
+  <!-- ── FOOTER ── -->
+  <footer class="site-footer">
+    <div class="container">
+      <p>© <span id="footerYear"></span> Seksi Bimbingan Masyarakat Islam &nbsp;·&nbsp; Kementerian Agama</p>
+    </div>
+  </footer>
+
+  <!-- Bootstrap JS Bundle -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <!-- Custom JS -->
+  <script src="script.js"></script>
+</body>
+</html>
