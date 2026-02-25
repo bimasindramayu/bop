@@ -100,24 +100,73 @@ function validateTanggal(el) {
 // UPLOAD AREA
 // ═══════════════════════════════════════════════════════════════
 function initUploadArea() {
-  const area  = document.getElementById('uploadArea');
-  const input = document.getElementById('dokumen');
-  if (!area || !input) { LOG.error('uploadArea atau input#dokumen tidak ditemukan'); return; }
+  // uploadArea sekarang adalah <label for="dokumen">
+  // Klik label otomatis membuka file picker – tidak perlu programmatic .click()
+  // Kita hanya perlu: drag-and-drop events + input change event
+  var area  = document.getElementById('uploadArea');
+  var input = document.getElementById('dokumen');
 
-  area.addEventListener('dragover', (e) => { e.preventDefault(); area.classList.add('drag-over'); });
-  area.addEventListener('dragleave', () => area.classList.remove('drag-over'));
-  area.addEventListener('drop', (e) => {
+  if (!area || !input) {
+    LOG.error('uploadArea atau input#dokumen tidak ditemukan');
+    return;
+  }
+
+  LOG.info('uploadArea tag:', area.tagName, '| input id:', input.id);
+
+  // ── Drag & Drop ──
+  // dragover: prevent default agar drop bisa terjadi
+  area.addEventListener('dragover', function(e) {
     e.preventDefault();
-    area.classList.remove('drag-over');
-    LOG.info('drop – jumlah file:', e.dataTransfer.files.length);
-    handleFiles(e.dataTransfer.files);
+    e.stopPropagation();
+    area.classList.add('drag-over');
+    LOG.info('dragover aktif');
   });
 
-  input.addEventListener('change', () => {
-    LOG.info('file picker – jumlah file:', input.files.length);
-    handleFiles(input.files);
-    input.value = '';
+  // dragleave: perlu cek apakah cursor benar-benar keluar area
+  // (dragleave sering trigger saat hover child element)
+  area.addEventListener('dragleave', function(e) {
+    // Hanya hapus drag-over jika cursor keluar dari area sepenuhnya
+    if (!area.contains(e.relatedTarget)) {
+      area.classList.remove('drag-over');
+      LOG.info('dragleave');
+    }
   });
+
+  area.addEventListener('drop', function(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    area.classList.remove('drag-over');
+    var files = e.dataTransfer ? e.dataTransfer.files : null;
+    if (files && files.length > 0) {
+      LOG.info('drop event – jumlah file:', files.length);
+      handleFiles(files);
+    } else {
+      LOG.warn('drop event tanpa file');
+    }
+  });
+
+  // ── Keyboard support (Space/Enter membuka file picker) ──
+  // uploadArea punya tabindex="0" di HTML, jadi bisa difokus
+  area.addEventListener('keydown', function(e) {
+    if (e.key === ' ' || e.key === 'Enter') {
+      e.preventDefault();
+      LOG.info('Keyboard trigger – membuka file picker');
+      input.click();
+    }
+  });
+
+  // ── File picker via <label for> ──
+  // Klik area -> label trigger -> input file terbuka secara native
+  // Kita hanya perlu listen event 'change' pada input
+  input.addEventListener('change', function() {
+    var files = input.files;
+    LOG.info('input change event – jumlah file:', files.length);
+    handleFiles(files);
+    // Reset agar file yang sama bisa dipilih lagi
+    try { input.value = ''; } catch(e) { /* IE doesn't support direct reset */ }
+  });
+
+  LOG.info('Upload area siap (label-based, drag-drop, keyboard)');
 }
 
 function handleFiles(files) {
