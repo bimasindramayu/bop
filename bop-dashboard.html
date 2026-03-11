@@ -43,10 +43,6 @@
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
                         <h2 style="margin: 0;">Dashboard</h2>
                         <select id="dashboardYearFilter" onchange="loadDashboardStats(true)" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px;">
-                            <option value="2024">2024</option>
-                            <option value="2025">2025</option>
-                            <option value="2026" selected>2026</option>
-                            <option value="2027">2027</option>
                         </select>
                     </div>
                     <div class="stats-grid" id="statsGrid"></div>
@@ -58,10 +54,6 @@
                     <div class="toolbar">
                         <button class="btn btn-success btn-sm" onclick="showBudgetModal()">Tambah/Edit Budget</button>
                         <select id="budgetYearFilter" onchange="loadBudgets()">
-                            <option value="2024">2024</option>
-                            <option value="2025">2025</option>
-                            <option value="2026" selected>2026</option>
-                            <option value="2027">2027</option>
                         </select>
                     </div>
                     <div class="table-container">
@@ -109,10 +101,6 @@
                         </select>
                         
                         <select id="rpdYearFilter">
-                            <option value="2024">2024</option>
-                            <option value="2025">2025</option>
-                            <option value="2026" selected>2026</option>
-                            <option value="2027">2027</option>
                         </select>
                         
                         <button class="btn btn-info btn-sm" onclick="loadRPDsWithFilters()">🔍 Load Data</button>
@@ -149,10 +137,6 @@
                         </button>
                         
                         <select id="realisasiYearFilter" onchange="loadRealisasis()">
-                            <option value="2024">2024</option>
-                            <option value="2025">2025</option>
-                            <option value="2026" selected>2026</option>
-                            <option value="2027">2027</option>
                         </select>
                     </div>
                     <div class="table-container">
@@ -179,10 +163,6 @@
                     <h2 style="margin-bottom: 20px;">Verifikasi Realisasi</h2>
                     <div class="toolbar">
                         <select id="verifikasiYearFilter">
-                            <option value="2024">2024</option>
-                            <option value="2025">2025</option>
-                            <option value="2026" selected>2026</option>
-                            <option value="2027">2027</option>
                         </select>                        
                         <select id="verifikasiKUAFilter">
                             <option value="">Semua KUA</option>
@@ -204,10 +184,9 @@
                         </select>
                         <select id="verifikasiStatusFilter">
                             <option value="">Semua Status</option>
-                            <option value="Waiting">⏳ Waiting</option>
-                            <option value="Approved">✅ Approved</option>
-                            <option value="Rejected">❌ Rejected</option>
-                            <option value="Paid">💰 Paid</option>
+                            <option value="Pending">Pending</option>
+                            <option value="Diterima">Diterima</option>
+                            <option value="Ditolak">Ditolak</option>
                         </select>
                         <button class="btn btn-info btn-sm" onclick="loadVerifikasiWithFilters()">🔍 Load Data</button>
                     </div>
@@ -304,11 +283,7 @@
                                 <option value="">-- Pilih Bulan --</option>
                             </select>
                             <select id="apNominalYear">
-                                <option value="2024">2024</option>
-                                <option value="2025">2025</option>
-                                <option value="2026" selected>2026</option>
-                                <option value="2027">2027</option>
-                            </select>
+                        </select>
                             <button class="btn btn-sm" onclick="loadAPNominal()">🔄 Load Data</button>
                             <button class="btn btn-sm btn-success" onclick="saveAPNominal()">💾 Save Data</button>
                         </div>
@@ -348,11 +323,7 @@
                                 <option value="">Semua KUA</option>
                             </select>
                             <select id="exportRPDPerYearYear" style="flex: 1;">
-                                <option value="2024">2024</option>
-                                <option value="2025">2025</option>
-                                <option value="2026" selected>2026</option>
-                                <option value="2027">2027</option>
-                            </select>
+                        </select>
                         </div>
                         <div style="display: flex; gap: 10px;">
                             <button class="btn btn-sm" onclick="downloadRPDPerYear('excel')">📥 Excel</button>
@@ -360,16 +331,34 @@
                         </div>
                     </div>
 
-                    <!-- 2. RPD Detail Semua KUA (Setahun) -->
+                    <!-- 2. RPD Detail Semua KUA (Setahun/Bulanan) -->
                     <div class="summary-box" style="margin-top: 20px;">
-                        <h3 style="margin-bottom: 15px;">📋 RPD Detail Semua KUA (Setahun)</h3>
+                        <h3 style="margin-bottom: 15px;">📋 RPD Detail Semua KUA</h3>
                         <p style="font-size: 12px; color: #666; margin-bottom: 10px;">Menampilkan detail per akun untuk semua KUA</p>
-                        <select id="exportRPDDetailYear" style="margin-bottom: 10px; width: 100%;">
-                            <option value="2024">2024</option>
-                            <option value="2025">2025</option>
-                            <option value="2026" selected>2026</option>
-                            <option value="2027">2027</option>
-                        </select>
+                        <div style="display: flex; gap: 10px; margin-bottom: 10px; align-items: center;">
+                            <label style="font-size:13px; color:#555; white-space:nowrap;">📅 Mode:</label>
+                            <select id="exportRPDDetailMode" style="flex: 1;" onchange="toggleRPDDetailMonthFilter()">
+                                <option value="tahunan">Tahunan</option>
+                                <option value="bulanan">Bulanan</option>
+                            </select>
+                        </div>
+                        <select id="exportRPDDetailYear" style="margin-bottom: 10px; width: 100%;"></select>
+                        <div id="exportRPDDetailMonthGroup" style="display: none; margin-bottom: 10px;">
+                            <select id="exportRPDDetailMonth" style="width: 100%;">
+                                <option value="Januari">Januari</option>
+                                <option value="Februari">Februari</option>
+                                <option value="Maret">Maret</option>
+                                <option value="April">April</option>
+                                <option value="Mei">Mei</option>
+                                <option value="Juni">Juni</option>
+                                <option value="Juli">Juli</option>
+                                <option value="Agustus">Agustus</option>
+                                <option value="September">September</option>
+                                <option value="Oktober">Oktober</option>
+                                <option value="November">November</option>
+                                <option value="Desember">Desember</option>
+                            </select>
+                        </div>
                         <div style="display: flex; gap: 10px;">
                             <button class="btn btn-sm" onclick="downloadRPDDetailYear('excel')">📥 Excel</button>
                             <button class="btn btn-sm" onclick="downloadRPDDetailYear('pdf')">📄 PDF</button>
@@ -385,11 +374,7 @@
                                 <option value="">Semua KUA</option>
                             </select>
                             <select id="exportRealisasiPerYearYear" style="flex: 1;">
-                                <option value="2024">2024</option>
-                                <option value="2025">2025</option>
-                                <option value="2026" selected>2026</option>
-                                <option value="2027">2027</option>
-                            </select>
+                        </select>
                         </div>
                         <div style="display: flex; gap: 10px; margin-bottom: 10px; align-items: center;">
                             <label style="font-size:13px; color:#555; white-space:nowrap;">⚡ Auto Payment:</label>
@@ -404,16 +389,34 @@
                         </div>
                     </div>
 
-                    <!-- 4. Realisasi Detail Semua KUA (Setahun) -->
+                    <!-- 4. Realisasi Detail Semua KUA (Setahun/Bulanan) -->
                     <div class="summary-box" style="margin-top: 20px;">
-                        <h3 style="margin-bottom: 15px;">📑 Realisasi Detail Semua KUA (Setahun)</h3>
+                        <h3 style="margin-bottom: 15px;">📑 Realisasi Detail Semua KUA</h3>
                         <p style="font-size: 12px; color: #666; margin-bottom: 10px;">Menampilkan detail per akun untuk semua KUA</p>
-                        <select id="exportRealisasiDetailYear" style="margin-bottom: 10px; width: 100%;">
-                            <option value="2024">2024</option>
-                            <option value="2025">2025</option>
-                            <option value="2026" selected>2026</option>
-                            <option value="2027">2027</option>
-                        </select>
+                        <div style="display: flex; gap: 10px; margin-bottom: 10px; align-items: center;">
+                            <label style="font-size:13px; color:#555; white-space:nowrap;">📅 Mode:</label>
+                            <select id="exportRealisasiDetailMode" style="flex: 1;" onchange="toggleRealisasiDetailMonthFilter()">
+                                <option value="tahunan">Tahunan</option>
+                                <option value="bulanan">Bulanan</option>
+                            </select>
+                        </div>
+                        <select id="exportRealisasiDetailYear" style="margin-bottom: 10px; width: 100%;"></select>
+                        <div id="exportRealisasiDetailMonthGroup" style="display: none; margin-bottom: 10px;">
+                            <select id="exportRealisasiDetailMonth" style="width: 100%;">
+                                <option value="Januari">Januari</option>
+                                <option value="Februari">Februari</option>
+                                <option value="Maret">Maret</option>
+                                <option value="April">April</option>
+                                <option value="Mei">Mei</option>
+                                <option value="Juni">Juni</option>
+                                <option value="Juli">Juli</option>
+                                <option value="Agustus">Agustus</option>
+                                <option value="September">September</option>
+                                <option value="Oktober">Oktober</option>
+                                <option value="November">November</option>
+                                <option value="Desember">Desember</option>
+                            </select>
+                        </div>
                         <div style="display: flex; gap: 10px; margin-bottom: 10px; align-items: center;">
                             <label style="font-size:13px; color:#555; white-space:nowrap;">⚡ Auto Payment:</label>
                             <select id="exportRealisasiDetailAPMode" style="flex: 1;">

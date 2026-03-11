@@ -407,42 +407,38 @@ function showDashboard() {
 function populateYearFilters() {
     const currentYear = new Date().getFullYear();
     const years = [];
-    for (let i = currentYear - 2; i <= currentYear + 1; i++) {
+    for (let i = currentYear - 5; i <= currentYear + 1; i++) {
         years.push(i);
     }
 
-    // Budget Year Filter
-    const budgetYearFilter = document.getElementById('budgetYearFilter');
-    if (budgetYearFilter) {
-        budgetYearFilter.innerHTML = years.map(year => 
-            `<option value="${year}" ${year === currentYear ? 'selected' : ''}>${year}</option>`
-        ).join('');
-    }
+    const yearOptions = years.map(year => 
+        `<option value="${year}" ${year === currentYear ? 'selected' : ''}>${year}</option>`
+    ).join('');
 
-    // RPD Year Filter
-    const rpdYearFilter = document.getElementById('rpdYearFilter');
-    if (rpdYearFilter) {
-        rpdYearFilter.innerHTML = years.map(year => 
-            `<option value="${year}" ${year === currentYear ? 'selected' : ''}>${year}</option>`
-        ).join('');
-    }
+    // IDs untuk semua year filter/select yang perlu dipopulasi
+    const yearSelectIds = [
+        'dashboardYearFilter',
+        'budgetYearFilter',
+        'rpdYearFilter',
+        'realisasiYearFilter',
+        'verifikasiYearFilter',
+        'apNominalYear',
+        'exportRPDPerYearYear',
+        'exportRPDDetailYear',
+        'exportRealisasiPerYearYear',
+        'exportRealisasiDetailYear'
+    ];
 
-    // Realisasi Year Filter
+    yearSelectIds.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.innerHTML = yearOptions;
+    });
+
+    // Verifikasi Year Filter — tetap pakai yearOptions sudah di atas
+    // Override onchange realisasiYearFilter agar fetch data baru
     const realisasiYearFilter = document.getElementById('realisasiYearFilter');
     if (realisasiYearFilter) {
-        realisasiYearFilter.innerHTML = years.map(year => 
-            `<option value="${year}" ${year === currentYear ? 'selected' : ''}>${year}</option>`
-        ).join('');
-        // ✅ Override onchange: gunakan loadRealisasisForYear agar year change fetch data baru
         realisasiYearFilter.onchange = function() { loadRealisasisForYear(); };
-    }
-
-    // Verifikasi Year Filter
-    const verifikasiYearFilter = document.getElementById('verifikasiYearFilter');
-    if (verifikasiYearFilter) {
-        verifikasiYearFilter.innerHTML = years.map(year => 
-            `<option value="${year}" ${year === currentYear ? 'selected' : ''}>${year}</option>`
-        ).join('');
     }
 
     // Verifikasi KUA Filter
@@ -452,7 +448,6 @@ function populateYearFilters() {
             APP_CONFIG.KUA_LIST.map(kua => `<option value="${kua}">${kua}</option>`).join('');
     }
 }
-
 function getMonthIndex(monthName) {
     return APP_CONFIG.MONTHS.indexOf(monthName);
 }
@@ -1046,7 +1041,7 @@ function showBudgetModal(budget = null) {
                 <div class="form-group">
                     <label>Tahun Anggaran</label>
                     <select id="budgetYear" required ${budget ? 'disabled' : ''}>
-                        ${[currentYear - 1, currentYear, currentYear + 1].map(year => `
+                        ${Array.from({length: 7}, (_, i) => currentYear - 5 + i).map(year => `
                             <option value="${year}" ${budget && budget.year == year ? 'selected' : year === currentYear ? 'selected' : ''}>${year}</option>
                         `).join('')}
                     </select>
@@ -1952,7 +1947,7 @@ async function showRPDModal(rpd = null) {
                 <div class="form-group">
                     <label>Tahun</label>
                     <select id="rpdYear" required ${rpd ? 'disabled' : ''}>
-                        ${[currentYear - 1, currentYear, currentYear + 1].map(year => `
+                        ${Array.from({length: 7}, (_, i) => currentYear - 5 + i).map(year => `
                             <option value="${year}" ${rpd && rpd.year == year ? 'selected' : year === currentYear ? 'selected' : ''}>${year}</option>
                         `).join('')}
                     </select>
@@ -5714,7 +5709,7 @@ function showExportModal(type) {
     }
     const currentYear = new Date().getFullYear();
     const years = [];
-    for (let i = currentYear - 2; i <= currentYear + 1; i++) {
+    for (let i = currentYear - 5; i <= currentYear + 1; i++) {
         years.push(i);
     }
     
@@ -6048,7 +6043,7 @@ function initializeReportsPage() {
     
     const currentYear = new Date().getFullYear();
     const years = [];
-    for (let i = currentYear - 2; i <= currentYear + 1; i++) {
+    for (let i = currentYear - 5; i <= currentYear + 1; i++) {
         years.push(i);
     }
     
@@ -6355,17 +6350,28 @@ async function downloadRPDPerYear(format) {
     }
 }
 
-// 2. Download RPD Detail Year
+// 2. Download RPD Detail Year / Month
 async function downloadRPDDetailYear(format) {
-    const year = document.getElementById('exportRPDDetailYear').value;
-    
+    const mode  = (document.getElementById('exportRPDDetailMode') || {}).value || 'tahunan';
+    const year  = document.getElementById('exportRPDDetailYear').value;
+    const month = (document.getElementById('exportRPDDetailMonth') || {}).value || '';
+
+    if (!year) {
+        showNotification('Pilih tahun terlebih dahulu', 'warning');
+        return;
+    }
+    if (mode === 'bulanan' && !month) {
+        showNotification('Pilih bulan terlebih dahulu', 'warning');
+        return;
+    }
+
     try {
         showLoading();
-        const result = await apiCall('exportRPDDetailYear', {
-            year: parseInt(year),
-            format: format
-        });
-        
+        const action = mode === 'bulanan' ? 'exportRPDDetailMonth' : 'exportRPDDetailYear';
+        const payload = { year: parseInt(year), format };
+        if (mode === 'bulanan') payload.month = month;
+
+        const result = await apiCall(action, payload);
         window.downloadFile(result.fileData, result.fileName, result.mimeType);
         showNotification('File berhasil diunduh', 'success');
     } catch (error) {
@@ -6399,19 +6405,29 @@ async function downloadRealisasiPerYear(format) {
     }
 }
 
-// 4. Download Realisasi Detail Year
+// 4. Download Realisasi Detail Year / Month
 async function downloadRealisasiDetailYear(format) {
+    const mode   = (document.getElementById('exportRealisasiDetailMode') || {}).value || 'tahunan';
     const year   = document.getElementById('exportRealisasiDetailYear').value;
+    const month  = (document.getElementById('exportRealisasiDetailMonth') || {}).value || '';
     const apMode = (document.getElementById('exportRealisasiDetailAPMode') || {}).value || 'exclude';
-    
+
+    if (!year) {
+        showNotification('Pilih tahun terlebih dahulu', 'warning');
+        return;
+    }
+    if (mode === 'bulanan' && !month) {
+        showNotification('Pilih bulan terlebih dahulu', 'warning');
+        return;
+    }
+
     try {
         showLoading();
-        const result = await apiCall('exportRealisasiDetailYear', {
-            year: parseInt(year),
-            format: format,
-            apMode: apMode
-        });
-        
+        const action = mode === 'bulanan' ? 'exportRealisasiDetailMonth' : 'exportRealisasiDetailYear';
+        const payload = { year: parseInt(year), format, apMode };
+        if (mode === 'bulanan') payload.month = month;
+
+        const result = await apiCall(action, payload);
         window.downloadFile(result.fileData, result.fileName, result.mimeType);
         showNotification(`File berhasil diunduh (${apMode === 'include' ? 'Include' : 'Exclude'} Auto Payment)`, 'success');
     } catch (error) {
@@ -6419,6 +6435,19 @@ async function downloadRealisasiDetailYear(format) {
     } finally {
         hideLoading();
     }
+}
+
+// ===== TOGGLE MONTH FILTER FOR DETAIL EXPORTS =====
+function toggleRPDDetailMonthFilter() {
+    const mode  = (document.getElementById('exportRPDDetailMode') || {}).value;
+    const group = document.getElementById('exportRPDDetailMonthGroup');
+    if (group) group.style.display = mode === 'bulanan' ? 'block' : 'none';
+}
+
+function toggleRealisasiDetailMonthFilter() {
+    const mode  = (document.getElementById('exportRealisasiDetailMode') || {}).value;
+    const group = document.getElementById('exportRealisasiDetailMonthGroup');
+    if (group) group.style.display = mode === 'bulanan' ? 'block' : 'none';
 }
 
 function formatFileSize(bytes) {
@@ -7171,6 +7200,8 @@ window.downloadRPDPerYear = downloadRPDPerYear;
 window.downloadRPDDetailYear = downloadRPDDetailYear;
 window.downloadRealisasiPerYear = downloadRealisasiPerYear;
 window.downloadRealisasiDetailYear = downloadRealisasiDetailYear;
+window.toggleRPDDetailMonthFilter = toggleRPDDetailMonthFilter;
+window.toggleRealisasiDetailMonthFilter = toggleRealisasiDetailMonthFilter;
 window.loadRPDDataFromSelect = loadRPDDataFromSelect;
 window.closeRealisasiModal = closeRealisasiModal;
 window.removeUploadedFile = removeUploadedFile;
