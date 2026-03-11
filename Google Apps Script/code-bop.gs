@@ -559,8 +559,9 @@ function calculateTotalRealisasi(kua, year) {
     let total = 0;
     
     for (let i = 1; i < rows.length; i++) {
-      // Hanya hitung realisasi yang sudah Approved
-      if (rows[i][1] === kua && rows[i][4] == year && normalizeStatus(rows[i][8]) === 'Approved') {
+      // Hitung realisasi yang sudah Approved atau Paid
+      const s = normalizeStatus(rows[i][8]);
+      if (rows[i][1] === kua && rows[i][4] == year && (s === 'Approved' || s === 'Paid')) {
         total += parseFloat(rows[i][5]) || 0;
       }
     }
