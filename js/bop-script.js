@@ -8,23 +8,24 @@ function _getVfyPreviewer() {
     if (typeof DocumentPreviewer === 'undefined') return null;
     window._dpVfyInstance = new DocumentPreviewer({
         googleDriveApiKey : (function() {
-            // Prioritas: 1) Config sheet (aman, tidak di GitHub), 2) MY_DP_CONFIG, 3) env var
             const _cfg = (typeof getLocalCache === 'function') ? getLocalCache('config') : null;
             if (_cfg && _cfg.DRIVE_API_KEY) return _cfg.DRIVE_API_KEY;
             if (typeof MY_DP_CONFIG !== 'undefined' && MY_DP_CONFIG.googleDriveApiKey) return MY_DP_CONFIG.googleDriveApiKey;
             if (typeof GOOGLE_DRIVE_API_KEY !== 'undefined') return GOOGLE_DRIVE_API_KEY;
             return '';
         })(),
-        modalId           : 'dp-modal-vfy',
-        pdfScale          : 1.5,
-        debug             : false,
-        onClose           : function() {
+        modalId : 'dp-modal-vfy',
+        pdfScale: 1.5,
+        debug   : false,
+        onClose : function() {
             document.querySelectorAll('._dpVfyFileItem.dp-active')
                     .forEach(function(el){ el.classList.remove('dp-active'); });
+            // Switch left panel back to centered modal when preview is closed
+            if (typeof window._vfySwitchToCenter === 'function') {
+                window._vfySwitchToCenter();
+            }
         }
     });
-    // Match DP width so left panel (42%) + DP (58%) = 100%, seamless
-    // DP CSS uses --dp-width var, we override it on the modal element after mount
     requestAnimationFrame(function() {
         const dpEl = document.getElementById('dp-modal-vfy');
         const dpHeader = document.getElementById('dp-modal-vfy-header');
@@ -411,11 +412,11 @@ function populateYearFilters() {
         years.push(i);
     }
 
-    const yearOptions = years.map(year => 
+    const yearOptions = years.map(year =>
         `<option value="${year}" ${year === currentYear ? 'selected' : ''}>${year}</option>`
     ).join('');
 
-    // IDs untuk semua year filter/select yang perlu dipopulasi
+    // Semua select ID yang perlu diisi dengan opsi tahun
     const yearSelectIds = [
         'dashboardYearFilter',
         'budgetYearFilter',
@@ -434,7 +435,6 @@ function populateYearFilters() {
         if (el) el.innerHTML = yearOptions;
     });
 
-    // Verifikasi Year Filter — tetap pakai yearOptions sudah di atas
     // Override onchange realisasiYearFilter agar fetch data baru
     const realisasiYearFilter = document.getElementById('realisasiYearFilter');
     if (realisasiYearFilter) {
@@ -444,10 +444,11 @@ function populateYearFilters() {
     // Verifikasi KUA Filter
     const verifikasiKUAFilter = document.getElementById('verifikasiKUAFilter');
     if (verifikasiKUAFilter) {
-        verifikasiKUAFilter.innerHTML = '<option value="">Semua KUA</option>' + 
+        verifikasiKUAFilter.innerHTML = '<option value="">Semua KUA</option>' +
             APP_CONFIG.KUA_LIST.map(kua => `<option value="${kua}">${kua}</option>`).join('');
     }
 }
+
 function getMonthIndex(monthName) {
     return APP_CONFIG.MONTHS.indexOf(monthName);
 }
@@ -5336,13 +5337,17 @@ function showVerifyModal(realisasi, rpdData, rpdTotal) {
             position:fixed; inset:0; background:rgba(0,0,0,.55); z-index:8990;
         "></div>
 
-        <!-- ── PANEL KIRI (42%) — light theme seperti modal biasa ── -->
+        <!-- ── PANEL KIRI — responsive: split(42% left) ↔ center(600px) ── -->
         <div id="_vfyLeftPanel" style="
-            position:fixed; left:0; top:0; bottom:0; width:42%;
+            position:fixed; z-index:9010;
             display:flex; flex-direction:column; overflow:hidden;
-            background:#f7f8ff; z-index:9010;
+            background:#f7f8ff;
+            transition: left .3s ease, width .3s ease, top .3s ease, bottom .3s ease,
+                        transform .3s ease, border-radius .3s ease, box-shadow .3s ease;
+            left:0; top:0; bottom:0; width:42%;
             border-right:1px solid #e0e4f0;
             box-shadow:4px 0 20px rgba(0,0,0,.15);
+            border-radius:0;
         ">
             <!-- Header gradient sama seperti modal verifikasi sebelumnya -->
             <div style="
@@ -5439,21 +5444,68 @@ function showVerifyModal(realisasi, rpdData, rpdTotal) {
             ._dpVfyFileItem:hover { background: rgba(102,126,234,.14) !important; border-color: rgba(102,126,234,.4) !important; }
             ._dpVfyFileItem.dp-active { background: rgba(102,126,234,.2) !important; border-color: #667eea !important; }
             ._dpVfyPreviewBtn:hover { opacity: .85 !important; }
+            /* Split mode — DP takes right 58% */
             #dp-modal-vfy {
                 width: 58% !important;
                 box-shadow: none !important;
                 border-left: 1px solid #e0e4f0 !important;
+                transition: opacity .25s ease, transform .25s ease !important;
             }
             #dp-modal-vfy-header,
             #dp-modal-vfy-container,
             #dp-modal-vfy .dp-controls {
                 width: 58% !important;
             }
+            /* Center mode — hide DP smoothly */
+            #dp-modal-vfy.dp-hidden {
+                opacity: 0 !important;
+                pointer-events: none !important;
+                transform: translateX(60px) !important;
+            }
         </style>
     `;
     
     modal.classList.add('active');
-    
+
+    // ── Split ↔ Center helpers ────────────────────────────────────────────────
+    const _leftPanel = document.getElementById('_vfyLeftPanel');
+
+    // Styles for each mode
+    const _SPLIT_STYLE = {
+        left:'0', top:'0', bottom:'0', width:'42%',
+        height:'', transform:'none', borderRadius:'0',
+        borderRight:'1px solid #e0e4f0',
+        boxShadow:'4px 0 20px rgba(0,0,0,.15)',
+        maxHeight:''
+    };
+    const _CENTER_STYLE = {
+        left:'50%', top:'50%', bottom:'auto', width:'min(860px, 92vw)',
+        height:'min(92vh, 920px)',
+        transform:'translateX(-50%) translateY(-50%)',
+        borderRadius:'16px',
+        borderRight:'none',
+        boxShadow:'0 24px 64px rgba(0,0,0,.35)',
+        maxHeight:'92vh'
+    };
+
+    function _applyPanelStyle(styles) {
+        if (!_leftPanel) return;
+        Object.assign(_leftPanel.style, styles);
+    }
+
+    window._vfySwitchToCenter = function() {
+        _applyPanelStyle(_CENTER_STYLE);
+        const dp = document.getElementById('dp-modal-vfy');
+        if (dp) dp.classList.add('dp-hidden');
+    };
+
+    window._vfySwitchToSplit = function() {
+        _applyPanelStyle(_SPLIT_STYLE);
+        const dp = document.getElementById('dp-modal-vfy');
+        if (dp) dp.classList.remove('dp-hidden');
+    };
+    // ─────────────────────────────────────────────────────────────────────────
+
     // Initialize image and PDF viewers
     setTimeout(() => {
         // ✅ AP Summary
@@ -5475,9 +5527,12 @@ function showVerifyModal(realisasi, rpdData, rpdTotal) {
             });
         });
 
-        // Auto-open first file
         if (_vfyFilesList.length > 0) {
+            // Auto-open first file → starts in split mode
             _dpVfyOpenFile(0);
+        } else {
+            // No files → start in center mode
+            window._vfySwitchToCenter();
         }
 
     }, 150);
@@ -5489,12 +5544,14 @@ function showVerifyModal(realisasi, rpdData, rpdTotal) {
 
         const previewer = _getVfyPreviewer();
         if (!previewer) {
-            // Fallback: open in new tab if DP not available
             window.open(f.fileUrl, '_blank');
             return;
         }
 
         const _dName = f.originalName || f.fileName;
+
+        // Switch to split view first, then open file
+        window._vfySwitchToSplit();
 
         // Highlight active item
         modal.querySelectorAll('._dpVfyFileItem').forEach(function(el) {
@@ -6350,27 +6407,20 @@ async function downloadRPDPerYear(format) {
     }
 }
 
-// 2. Download RPD Detail Year / Month
+// 2. Download RPD Detail Year / Month (Tahunan & Bulanan)
 async function downloadRPDDetailYear(format) {
     const mode  = (document.getElementById('exportRPDDetailMode') || {}).value || 'tahunan';
     const year  = document.getElementById('exportRPDDetailYear').value;
     const month = (document.getElementById('exportRPDDetailMonth') || {}).value || '';
 
-    if (!year) {
-        showNotification('Pilih tahun terlebih dahulu', 'warning');
-        return;
-    }
-    if (mode === 'bulanan' && !month) {
-        showNotification('Pilih bulan terlebih dahulu', 'warning');
-        return;
-    }
+    if (!year) { showNotification('Pilih tahun terlebih dahulu', 'warning'); return; }
+    if (mode === 'bulanan' && !month) { showNotification('Pilih bulan terlebih dahulu', 'warning'); return; }
 
     try {
         showLoading();
-        const action = mode === 'bulanan' ? 'exportRPDDetailMonth' : 'exportRPDDetailYear';
+        const action  = mode === 'bulanan' ? 'exportRPDDetailMonth' : 'exportRPDDetailYear';
         const payload = { year: parseInt(year), format };
         if (mode === 'bulanan') payload.month = month;
-
         const result = await apiCall(action, payload);
         window.downloadFile(result.fileData, result.fileName, result.mimeType);
         showNotification('File berhasil diunduh', 'success');
@@ -6393,9 +6443,8 @@ async function downloadRealisasiPerYear(format) {
             kua: kua,
             year: parseInt(year),
             format: format,
-            apMode: apMode   // 'include' | 'exclude'
+            apMode: apMode
         });
-        
         window.downloadFile(result.fileData, result.fileName, result.mimeType);
         showNotification(`File berhasil diunduh (${apMode === 'include' ? 'Include' : 'Exclude'} Auto Payment)`, 'success');
     } catch (error) {
@@ -6405,28 +6454,21 @@ async function downloadRealisasiPerYear(format) {
     }
 }
 
-// 4. Download Realisasi Detail Year / Month
+// 4. Download Realisasi Detail Year / Month (Tahunan & Bulanan)
 async function downloadRealisasiDetailYear(format) {
     const mode   = (document.getElementById('exportRealisasiDetailMode') || {}).value || 'tahunan';
     const year   = document.getElementById('exportRealisasiDetailYear').value;
     const month  = (document.getElementById('exportRealisasiDetailMonth') || {}).value || '';
     const apMode = (document.getElementById('exportRealisasiDetailAPMode') || {}).value || 'exclude';
 
-    if (!year) {
-        showNotification('Pilih tahun terlebih dahulu', 'warning');
-        return;
-    }
-    if (mode === 'bulanan' && !month) {
-        showNotification('Pilih bulan terlebih dahulu', 'warning');
-        return;
-    }
+    if (!year) { showNotification('Pilih tahun terlebih dahulu', 'warning'); return; }
+    if (mode === 'bulanan' && !month) { showNotification('Pilih bulan terlebih dahulu', 'warning'); return; }
 
     try {
         showLoading();
-        const action = mode === 'bulanan' ? 'exportRealisasiDetailMonth' : 'exportRealisasiDetailYear';
+        const action  = mode === 'bulanan' ? 'exportRealisasiDetailMonth' : 'exportRealisasiDetailYear';
         const payload = { year: parseInt(year), format, apMode };
         if (mode === 'bulanan') payload.month = month;
-
         const result = await apiCall(action, payload);
         window.downloadFile(result.fileData, result.fileName, result.mimeType);
         showNotification(`File berhasil diunduh (${apMode === 'include' ? 'Include' : 'Exclude'} Auto Payment)`, 'success');
@@ -6437,13 +6479,14 @@ async function downloadRealisasiDetailYear(format) {
     }
 }
 
-// ===== TOGGLE MONTH FILTER FOR DETAIL EXPORTS =====
+// Toggle visibility bulan untuk RPD Detail
 function toggleRPDDetailMonthFilter() {
     const mode  = (document.getElementById('exportRPDDetailMode') || {}).value;
     const group = document.getElementById('exportRPDDetailMonthGroup');
     if (group) group.style.display = mode === 'bulanan' ? 'block' : 'none';
 }
 
+// Toggle visibility bulan untuk Realisasi Detail
 function toggleRealisasiDetailMonthFilter() {
     const mode  = (document.getElementById('exportRealisasiDetailMode') || {}).value;
     const group = document.getElementById('exportRealisasiDetailMonthGroup');
@@ -7198,10 +7241,10 @@ if (originalShowModal) {
 // Expose to window
 window.downloadRPDPerYear = downloadRPDPerYear;
 window.downloadRPDDetailYear = downloadRPDDetailYear;
-window.downloadRealisasiPerYear = downloadRealisasiPerYear;
-window.downloadRealisasiDetailYear = downloadRealisasiDetailYear;
 window.toggleRPDDetailMonthFilter = toggleRPDDetailMonthFilter;
 window.toggleRealisasiDetailMonthFilter = toggleRealisasiDetailMonthFilter;
+window.downloadRealisasiPerYear = downloadRealisasiPerYear;
+window.downloadRealisasiDetailYear = downloadRealisasiDetailYear;
 window.loadRPDDataFromSelect = loadRPDDataFromSelect;
 window.closeRealisasiModal = closeRealisasiModal;
 window.removeUploadedFile = removeUploadedFile;
