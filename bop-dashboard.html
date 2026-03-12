@@ -311,40 +311,60 @@
                     </div>
                 </div>
 
-                <!-- Laporan Page -->                <div class="page" id="laporanPage">
+                <!-- Laporan Page -->
+                <div class="page" id="laporanPage">
                     <h2 style="margin-bottom: 20px;">Laporan BOP</h2>
-                    
-                    <!-- 1. Download RPD per Tahun -->
-                    <div class="summary-box">
-                        <h3 style="margin-bottom: 15px;">📊 RPD per Tahun</h3>
-                        <p style="font-size: 12px; color: #666; margin-bottom: 10px;">Menampilkan alokasi budget dan RPD per bulan untuk setiap KUA</p>
-                        <div style="display: flex; gap: 10px; margin-bottom: 10px;">
-                            <select id="exportRPDPerYearKua" style="flex: 1;">
-                                <option value="">Semua KUA</option>
-                            </select>
-                            <select id="exportRPDPerYearYear" style="flex: 1;">
-                        </select>
-                        </div>
-                        <div style="display: flex; gap: 10px;">
-                            <button class="btn btn-sm" onclick="downloadRPDPerYear('excel')">📥 Excel</button>
-                            <button class="btn btn-sm" onclick="downloadRPDPerYear('pdf')">📄 PDF</button>
-                        </div>
-                    </div>
 
-                    <!-- 2. RPD Detail Semua KUA (Setahun/Bulanan) -->
-                    <div class="summary-box" style="margin-top: 20px;">
-                        <h3 style="margin-bottom: 15px;">📋 RPD Detail Semua KUA</h3>
-                        <p style="font-size: 12px; color: #666; margin-bottom: 10px;">Menampilkan detail per akun untuk semua KUA</p>
-                        <div style="display: flex; gap: 10px; margin-bottom: 10px; align-items: center;">
-                            <label style="font-size:13px; color:#555; white-space:nowrap;">📅 Mode:</label>
-                            <select id="exportRPDDetailMode" style="flex: 1;" onchange="toggleRPDDetailMonthFilter()">
-                                <option value="tahunan">Tahunan</option>
-                                <option value="bulanan">Bulanan</option>
-                            </select>
+                    <div class="summary-box" style="max-width:520px;">
+
+                        <!-- Row 1: Jenis Laporan (segmented) -->
+                        <div style="margin-bottom:14px;">
+                            <p style="font-size:11px;color:#888;margin:0 0 6px;text-transform:uppercase;letter-spacing:.5px;font-weight:600;">Jenis Laporan</p>
+                            <div style="display:flex;gap:0;border:1.5px solid #d0d5e8;border-radius:8px;overflow:hidden;">
+                                <button id="lapJenisPerTahun" onclick="setLaporanJenis('per-tahun')"
+                                    style="flex:1;padding:8px 4px;border:none;cursor:pointer;font-size:13px;font-weight:600;transition:all .2s;background:#3b5bdb;color:#fff;">
+                                    📊 Per Tahun
+                                </button>
+                                <button id="lapJenisDetail" onclick="setLaporanJenis('detail')"
+                                    style="flex:1;padding:8px 4px;border:none;cursor:pointer;font-size:13px;font-weight:600;transition:all .2s;background:#f8f9ff;color:#555;border-left:1.5px solid #d0d5e8;">
+                                    📋 Detail KUA
+                                </button>
+                            </div>
                         </div>
-                        <select id="exportRPDDetailYear" style="margin-bottom: 10px; width: 100%;"></select>
-                        <div id="exportRPDDetailMonthGroup" style="display: none; margin-bottom: 10px;">
-                            <select id="exportRPDDetailMonth" style="width: 100%;">
+
+                        <!-- Row 2: Sumber Data (segmented) -->
+                        <div style="margin-bottom:14px;">
+                            <p style="font-size:11px;color:#888;margin:0 0 6px;text-transform:uppercase;letter-spacing:.5px;font-weight:600;">Sumber Data</p>
+                            <div style="display:flex;gap:0;border:1.5px solid #d0d5e8;border-radius:8px;overflow:hidden;">
+                                <button id="lapSrcRPD" onclick="setLaporanSumber('rpd')"
+                                    style="flex:1;padding:7px 4px;border:none;cursor:pointer;font-size:12px;font-weight:600;transition:all .2s;background:#3b5bdb;color:#fff;">
+                                    📊 RPD
+                                </button>
+                                <button id="lapSrcRealisasi" onclick="setLaporanSumber('realisasi')"
+                                    style="flex:1;padding:7px 4px;border:none;cursor:pointer;font-size:12px;font-weight:600;transition:all .2s;background:#f8f9ff;color:#555;border-left:1.5px solid #d0d5e8;">
+                                    💰 Realisasi
+                                </button>
+                                <button id="lapSrcFallback" onclick="setLaporanSumber('fallback')"
+                                    style="flex:1;padding:7px 4px;border:none;cursor:pointer;font-size:12px;font-weight:600;transition:all .2s;background:#f8f9ff;color:#555;border-left:1.5px solid #d0d5e8;">
+                                    🔄 Fallback
+                                </button>
+                            </div>
+                            <p id="lapSumberDesc" style="font-size:11px;color:#888;margin:5px 0 0;min-height:16px;"></p>
+                        </div>
+
+                        <!-- Row 3: Filters -->
+                        <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px;">
+
+                            <!-- Tahun (always visible) -->
+                            <div style="display:flex;align-items:center;gap:8px;">
+                                <span style="font-size:12px;color:#555;min-width:52px;">📅 Tahun</span>
+                                <select id="lapTahun" style="flex:1;"></select>
+                            </div>
+
+                            <!-- Bulan (Detail + Bulanan mode only) -->
+                            <div id="lapBulanRow" style="display:none;align-items:center;gap:8px;">
+                                <span style="font-size:12px;color:#555;min-width:52px;">🗓 Bulan</span>
+                                <select id="lapBulan" style="flex:1;">
                                 <option value="Januari">Januari</option>
                                 <option value="Februari">Februari</option>
                                 <option value="Maret">Maret</option>
@@ -357,53 +377,42 @@
                                 <option value="Oktober">Oktober</option>
                                 <option value="November">November</option>
                                 <option value="Desember">Desember</option>
-                            </select>
-                        </div>
-                        <div style="display: flex; gap: 10px;">
-                            <button class="btn btn-sm" onclick="downloadRPDDetailYear('excel')">📥 Excel</button>
-                            <button class="btn btn-sm" onclick="downloadRPDDetailYear('pdf')">📄 PDF</button>
-                        </div>
-                    </div>
+                                </select>
+                            </div>
 
-                    <!-- 3. Realisasi per Tahun -->
-                    <div class="summary-box" style="margin-top: 20px;">
-                        <h3 style="margin-bottom: 15px;">💰 Realisasi per Tahun</h3>
-                        <p style="font-size: 12px; color: #666; margin-bottom: 10px;">Menampilkan alokasi budget dan Realisasi per bulan untuk setiap KUA</p>
-                        <div style="display: flex; gap: 10px; margin-bottom: 10px;">
-                            <select id="exportRealisasiPerYearKua" style="flex: 1;">
-                                <option value="">Semua KUA</option>
-                            </select>
-                            <select id="exportRealisasiPerYearYear" style="flex: 1;">
-                        </select>
-                        </div>
-                        <div style="display: flex; gap: 10px; margin-bottom: 10px; align-items: center;">
-                            <label style="font-size:13px; color:#555; white-space:nowrap;">⚡ Auto Payment:</label>
-                            <select id="exportRealisasiAPMode" style="flex: 1;">
-                                <option value="exclude">Exclude Auto Payment</option>
-                                <option value="include">Include Auto Payment</option>
-                            </select>
-                        </div>
-                        <div style="display: flex; gap: 10px;">
-                            <button class="btn btn-sm" onclick="downloadRealisasiPerYear('excel')">📥 Excel</button>
-                            <button class="btn btn-sm" onclick="downloadRealisasiPerYear('pdf')">📄 PDF</button>
-                        </div>
-                    </div>
+                            <!-- Mode Tahunan/Bulanan (Detail only) -->
+                            <div id="lapModeRow" style="display:none;align-items:center;gap:8px;">
+                                <span style="font-size:12px;color:#555;min-width:52px;">📅 Mode</span>
+                                <select id="lapMode" style="flex:1;" onchange="onLaporanModeChange()">
+                                    <option value="tahunan">Tahunan (Setahun Penuh)</option>
+                                    <option value="bulanan">Bulanan (Per Bulan)</option>
+                                </select>
+                            </div>
 
-                    <!-- 4. Realisasi Detail Semua KUA (Setahun/Bulanan) -->
-                    <div class="summary-box" style="margin-top: 20px;">
-                        <h3 style="margin-bottom: 15px;">📑 Realisasi Detail Semua KUA</h3>
-                        <p style="font-size: 12px; color: #666; margin-bottom: 10px;">Menampilkan detail per akun untuk semua KUA</p>
-                        <div style="display: flex; gap: 10px; margin-bottom: 10px; align-items: center;">
-                            <label style="font-size:13px; color:#555; white-space:nowrap;">📅 Mode:</label>
-                            <select id="exportRealisasiDetailMode" style="flex: 1;" onchange="toggleRealisasiDetailMonthFilter()">
-                                <option value="tahunan">Tahunan</option>
-                                <option value="bulanan">Bulanan</option>
-                            </select>
+                            <!-- KUA (Per Tahun only) -->
+                            <div id="lapKuaRow" style="display:flex;align-items:center;gap:8px;">
+                                <span style="font-size:12px;color:#555;min-width:52px;">🏢 KUA</span>
+                                <select id="lapKua" style="flex:1;">
+                                    <option value="">Semua KUA</option>
+                                </select>
+                            </div>
+
+                            <!-- Auto Payment (Realisasi & Fallback only) -->
+                            <div id="lapAPRow" style="display:none;align-items:center;gap:8px;">
+                                <span style="font-size:12px;color:#555;min-width:52px;">⚡ AP</span>
+                                <select id="lapAPMode" style="flex:1;">
+                                    <option value="exclude">Exclude Auto Payment</option>
+                                    <option value="include">Include Auto Payment</option>
+                                </select>
+                            </div>
                         </div>
-                        <select id="exportRealisasiDetailYear" style="margin-bottom: 10px; width: 100%;"></select>
-                        <div id="exportRealisasiDetailMonthGroup" style="display: none; margin-bottom: 10px;">
-                            <select id="exportRealisasiDetailMonth" style="width: 100%;">
-                                <option value="Januari">Januari</option>
+
+                        <!-- Hidden legacy IDs for backward-compat with old JS functions -->
+                        <select id="exportRPDPerYearKua"        style="display:none"></select>
+                        <select id="exportRPDPerYearYear"        style="display:none"></select>
+                        <select id="exportRPDDetailMode"         style="display:none"><option value="tahunan">Tahunan</option><option value="bulanan">Bulanan</option></select>
+                        <select id="exportRPDDetailYear"         style="display:none"></select>
+                        <select id="exportRPDDetailMonth"        style="display:none">                                <option value="Januari">Januari</option>
                                 <option value="Februari">Februari</option>
                                 <option value="Maret">Maret</option>
                                 <option value="April">April</option>
@@ -414,58 +423,13 @@
                                 <option value="September">September</option>
                                 <option value="Oktober">Oktober</option>
                                 <option value="November">November</option>
-                                <option value="Desember">Desember</option>
-                            </select>
-                        </div>
-                        <div style="display: flex; gap: 10px; margin-bottom: 10px; align-items: center;">
-                            <label style="font-size:13px; color:#555; white-space:nowrap;">⚡ Auto Payment:</label>
-                            <select id="exportRealisasiDetailAPMode" style="flex: 1;">
-                                <option value="exclude">Exclude Auto Payment</option>
-                                <option value="include">Include Auto Payment</option>
-                            </select>
-                        </div>
-                        <div style="display: flex; gap: 10px;">
-                            <button class="btn btn-sm" onclick="downloadRealisasiDetailYear('excel')">📥 Excel</button>
-                            <button class="btn btn-sm" onclick="downloadRealisasiDetailYear('pdf')">📄 PDF</button>
-                        </div>
-                    </div>
-
-                    <!-- 5. Realisasi + RPD Fallback per Tahun -->
-                    <div class="summary-box" style="margin-top: 20px; border-left: 4px solid #0e7490;">
-                        <h3 style="margin-bottom: 6px;">🔄 Realisasi + RPD Fallback per Tahun</h3>
-                        <p style="font-size: 12px; color: #666; margin-bottom: 10px;">Per KUA per bulan: pakai <strong>Realisasi</strong> (Approved/Paid); jika tidak ada → pakai <strong>RPD</strong> bulan tsb</p>
-                        <select id="fallbackPerYearKua" style="margin-bottom: 10px; width: 100%;">
-                            <option value="">Semua KUA</option>
-                        </select>
-                        <select id="fallbackPerYearYear" style="margin-bottom: 10px; width: 100%;"></select>
-                        <div style="display: flex; gap: 10px; margin-bottom: 10px; align-items: center;">
-                            <label style="font-size:13px; color:#555; white-space:nowrap;">⚡ Auto Payment:</label>
-                            <select id="fallbackPerYearAPMode" style="flex: 1;">
-                                <option value="exclude">Exclude Auto Payment</option>
-                                <option value="include">Include Auto Payment</option>
-                            </select>
-                        </div>
-                        <div style="display: flex; gap: 10px;">
-                            <button class="btn btn-sm" onclick="downloadFallbackPerYear('excel')">📥 Excel</button>
-                            <button class="btn btn-sm" onclick="downloadFallbackPerYear('pdf')">📄 PDF</button>
-                        </div>
-                    </div>
-
-                    <!-- 6. Realisasi + RPD Fallback Detail Semua KUA -->
-                    <div class="summary-box" style="margin-top: 20px; border-left: 4px solid #0e7490;">
-                        <h3 style="margin-bottom: 6px;">🔄 Realisasi + RPD Fallback Detail Semua KUA</h3>
-                        <p style="font-size: 12px; color: #666; margin-bottom: 10px;">Detail per akun: pakai <strong>Realisasi</strong> (Approved/Paid); jika tidak ada → pakai <strong>detail RPD</strong></p>
-                        <div style="display: flex; gap: 10px; margin-bottom: 10px; align-items: center;">
-                            <label style="font-size:13px; color:#555; white-space:nowrap;">📅 Mode:</label>
-                            <select id="fallbackDetailMode" style="flex: 1;" onchange="toggleFallbackDetailMonthFilter()">
-                                <option value="tahunan">Tahunan</option>
-                                <option value="bulanan">Bulanan</option>
-                            </select>
-                        </div>
-                        <select id="fallbackDetailYear" style="margin-bottom: 10px; width: 100%;"></select>
-                        <div id="fallbackDetailMonthGroup" style="display: none; margin-bottom: 10px;">
-                            <select id="fallbackDetailMonth" style="width: 100%;">
-                                <option value="Januari">Januari</option>
+                                <option value="Desember">Desember</option></select>
+                        <select id="exportRealisasiPerYearKua"   style="display:none"></select>
+                        <select id="exportRealisasiPerYearYear"  style="display:none"></select>
+                        <select id="exportRealisasiAPMode"       style="display:none"><option value="exclude">Exclude</option><option value="include">Include</option></select>
+                        <select id="exportRealisasiDetailMode"   style="display:none"><option value="tahunan">Tahunan</option><option value="bulanan">Bulanan</option></select>
+                        <select id="exportRealisasiDetailYear"   style="display:none"></select>
+                        <select id="exportRealisasiDetailMonth"  style="display:none">                                <option value="Januari">Januari</option>
                                 <option value="Februari">Februari</option>
                                 <option value="Maret">Maret</option>
                                 <option value="April">April</option>
@@ -476,19 +440,31 @@
                                 <option value="September">September</option>
                                 <option value="Oktober">Oktober</option>
                                 <option value="November">November</option>
-                                <option value="Desember">Desember</option>
-                            </select>
-                        </div>
-                        <div style="display: flex; gap: 10px; margin-bottom: 10px; align-items: center;">
-                            <label style="font-size:13px; color:#555; white-space:nowrap;">⚡ Auto Payment:</label>
-                            <select id="fallbackDetailAPMode" style="flex: 1;">
-                                <option value="exclude">Exclude Auto Payment</option>
-                                <option value="include">Include Auto Payment</option>
-                            </select>
-                        </div>
-                        <div style="display: flex; gap: 10px;">
-                            <button class="btn btn-sm" onclick="downloadFallbackDetail('excel')">📥 Excel</button>
-                            <button class="btn btn-sm" onclick="downloadFallbackDetail('pdf')">📄 PDF</button>
+                                <option value="Desember">Desember</option></select>
+                        <select id="exportRealisasiDetailAPMode" style="display:none"><option value="exclude">Exclude</option><option value="include">Include</option></select>
+                        <select id="fallbackPerYearKua"          style="display:none"></select>
+                        <select id="fallbackPerYearYear"         style="display:none"></select>
+                        <select id="fallbackPerYearAPMode"       style="display:none"><option value="exclude">Exclude</option><option value="include">Include</option></select>
+                        <select id="fallbackDetailMode"          style="display:none"><option value="tahunan">Tahunan</option><option value="bulanan">Bulanan</option></select>
+                        <select id="fallbackDetailYear"          style="display:none"></select>
+                        <select id="fallbackDetailMonth"         style="display:none">                                <option value="Januari">Januari</option>
+                                <option value="Februari">Februari</option>
+                                <option value="Maret">Maret</option>
+                                <option value="April">April</option>
+                                <option value="Mei">Mei</option>
+                                <option value="Juni">Juni</option>
+                                <option value="Juli">Juli</option>
+                                <option value="Agustus">Agustus</option>
+                                <option value="September">September</option>
+                                <option value="Oktober">Oktober</option>
+                                <option value="November">November</option>
+                                <option value="Desember">Desember</option></select>
+                        <select id="fallbackDetailAPMode"        style="display:none"><option value="exclude">Exclude</option><option value="include">Include</option></select>
+
+                        <!-- Download Buttons -->
+                        <div style="display:flex;gap:10px;margin-top:4px;">
+                            <button class="btn" style="flex:1;padding:10px;font-size:14px;" onclick="downloadLaporan('excel')">📥 Unduh Excel</button>
+                            <button class="btn btn-secondary" style="flex:1;padding:10px;font-size:14px;" onclick="downloadLaporan('pdf')">📄 Unduh PDF</button>
                         </div>
                     </div>
                 </div>

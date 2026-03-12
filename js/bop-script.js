@@ -429,7 +429,8 @@ function populateYearFilters() {
         'exportRealisasiPerYearYear',
         'exportRealisasiDetailYear',
         'fallbackPerYearYear',
-        'fallbackDetailYear'
+        'fallbackDetailYear',
+        'lapTahun'
     ];
 
     yearSelectIds.forEach(id => {
@@ -7299,6 +7300,125 @@ window.downloadRealisasiDetailYear = downloadRealisasiDetailYear;
 window.downloadFallbackPerYear       = downloadFallbackPerYear;
 window.downloadFallbackDetail        = downloadFallbackDetail;
 window.toggleFallbackDetailMonthFilter = toggleFallbackDetailMonthFilter;
+
+// ===== LAPORAN UNIFIED CONTROLLER =====
+const _LAP = {
+    jenis:  'per-tahun',  // 'per-tahun' | 'detail'
+    sumber: 'rpd'         // 'rpd' | 'realisasi' | 'fallback'
+};
+
+const _LAP_DESC = {
+    rpd:       'Data RPD yang telah diinput KUA',
+    realisasi: 'Data Realisasi yang sudah Approved atau Paid',
+    fallback:  'Realisasi jika ada, RPD jika bulan tersebut belum ada realisasi'
+};
+
+function _lapSyncHiddenSelects() {
+    const y = (document.getElementById('lapTahun')  || {}).value || '';
+    const m = (document.getElementById('lapBulan')  || {}).value || '';
+    const mode   = (document.getElementById('lapMode')   || {}).value || 'tahunan';
+    const kua    = (document.getElementById('lapKua')    || {}).value || '';
+    const apMode = (document.getElementById('lapAPMode') || {}).value || 'exclude';
+    // Sync all legacy hidden selects so old download functions still work
+    [['exportRPDPerYearYear','exportRPDDetailYear','exportRealisasiPerYearYear',
+      'exportRealisasiDetailYear','fallbackPerYearYear','fallbackDetailYear']].flat()
+        .forEach(id => { const el = document.getElementById(id); if (el) el.value = y; });
+    [['exportRPDPerYearKua','exportRealisasiPerYearKua','fallbackPerYearKua']].flat()
+        .forEach(id => { const el = document.getElementById(id); if (el) el.value = kua; });
+    [['exportRPDDetailMode','exportRealisasiDetailMode','fallbackDetailMode']].flat()
+        .forEach(id => { const el = document.getElementById(id); if (el) el.value = mode; });
+    [['exportRPDDetailMonth','exportRealisasiDetailMonth','fallbackDetailMonth']].flat()
+        .forEach(id => { const el = document.getElementById(id); if (el) el.value = m; });
+    [['exportRealisasiAPMode','exportRealisasiDetailAPMode','fallbackPerYearAPMode','fallbackDetailAPMode']].flat()
+        .forEach(id => { const el = document.getElementById(id); if (el) el.value = apMode; });
+}
+
+function _lapUpdateUI() {
+    const isDetail   = _LAP.jenis  === 'detail';
+    const isRPDOnly  = _LAP.sumber === 'rpd';
+    const mode       = (document.getElementById('lapMode') || {}).value || 'tahunan';
+    const isBulanan  = isDetail && mode === 'bulanan';
+
+    // Show/hide rows
+    const show = (id, vis) => { const el = document.getElementById(id); if (el) el.style.display = vis ? 'flex' : 'none'; };
+    show('lapModeRow',  isDetail);
+    show('lapBulanRow', isBulanan);
+    show('lapKuaRow',   !isDetail);
+    show('lapAPRow',    !isRPDOnly);
+
+    // Segmented button active states — Jenis
+    const btnPerTahun = document.getElementById('lapJenisPerTahun');
+    const btnDetail   = document.getElementById('lapJenisDetail');
+    if (btnPerTahun && btnDetail) {
+        btnPerTahun.style.background = !isDetail ? '#3b5bdb' : '#f8f9ff';
+        btnPerTahun.style.color      = !isDetail ? '#fff'    : '#555';
+        btnDetail.style.background   =  isDetail ? '#3b5bdb' : '#f8f9ff';
+        btnDetail.style.color        =  isDetail ? '#fff'    : '#555';
+    }
+    // Segmented button active states — Sumber
+    ['rpd','realisasi','fallback'].forEach(s => {
+        const ids = {rpd:'lapSrcRPD', realisasi:'lapSrcRealisasi', fallback:'lapSrcFallback'};
+        const btn = document.getElementById(ids[s]);
+        if (btn) { btn.style.background = _LAP.sumber===s ? '#3b5bdb':'#f8f9ff'; btn.style.color = _LAP.sumber===s ? '#fff':'#555'; }
+    });
+    // Description
+    const desc = document.getElementById('lapSumberDesc');
+    if (desc) desc.textContent = _LAP_DESC[_LAP.sumber] || '';
+}
+
+function setLaporanJenis(j) {
+    _LAP.jenis = j;
+    _lapUpdateUI();
+}
+function setLaporanSumber(s) {
+    _LAP.sumber = s;
+    _lapUpdateUI();
+}
+function onLaporanModeChange() {
+    _lapUpdateUI();
+}
+
+async function downloadLaporan(format) {
+    _lapSyncHiddenSelects();
+    const { jenis, sumber } = _LAP;
+    if      (jenis === 'per-tahun' && sumber === 'rpd')        await downloadRPDPerYear(format);
+    else if (jenis === 'detail'    && sumber === 'rpd')        await downloadRPDDetailYear(format);
+    else if (jenis === 'per-tahun' && sumber === 'realisasi')  await downloadRealisasiPerYear(format);
+    else if (jenis === 'detail'    && sumber === 'realisasi')  await downloadRealisasiDetailYear(format);
+    else if (jenis === 'per-tahun' && sumber === 'fallback')   await downloadFallbackPerYear(format);
+    else if (jenis === 'detail'    && sumber === 'fallback')   await downloadFallbackDetail(format);
+}
+
+window.setLaporanJenis    = setLaporanJenis;
+window.setLaporanSumber   = setLaporanSumber;
+window.onLaporanModeChange = onLaporanModeChange;
+window.downloadLaporan    = downloadLaporan;
+
+// Initialize on page load
+document.addEventListener('DOMContentLoaded', function() {
+    setTimeout(function() {
+        // Populate lapTahun and lapKua
+        const lapTahun = document.getElementById('lapTahun');
+        if (lapTahun && lapTahun.options.length === 0) {
+            const cy = new Date().getFullYear();
+            for (let i = cy-5; i <= cy+1; i++) {
+                const opt = document.createElement('option');
+                opt.value = i; opt.text = i;
+                if (i === cy) opt.selected = true;
+                lapTahun.appendChild(opt);
+            }
+        }
+        const lapKua = document.getElementById('lapKua');
+        if (lapKua && lapKua.options.length <= 1 && typeof APP_CONFIG !== 'undefined') {
+            APP_CONFIG.KUA_LIST.forEach(k => {
+                const opt = document.createElement('option');
+                opt.value = k; opt.text = k;
+                lapKua.appendChild(opt);
+            });
+        }
+        _lapUpdateUI();
+    }, 300);
+});
 window.downloadRealisasiPerYear = downloadRealisasiPerYear;
 window.downloadRealisasiDetailYear = downloadRealisasiDetailYear;
 window.loadRPDDataFromSelect = loadRPDDataFromSelect;
