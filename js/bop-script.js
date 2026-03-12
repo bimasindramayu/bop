@@ -7379,6 +7379,36 @@ function onLaporanModeChange() {
 }
 
 async function downloadLaporan(format) {
+    if (typeof APP_CONFIG !== 'undefined' &&
+        APP_CONFIG.FEATURES &&
+        APP_CONFIG.FEATURES.LAPORAN_DOWNLOAD === false) {
+
+        // Simulasi delay seperti sedang menghubungi server
+        showLoading();
+        await new Promise(r => setTimeout(r, 1800));
+        hideLoading();
+
+        const overlay = document.createElement('div');
+        overlay.id = '_lapErrorOverlay';
+        overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:99999;display:flex;align-items:center;justify-content:center;';
+        overlay.innerHTML = `
+          <div style="background:#fff;border-radius:16px;padding:32px 28px;max-width:400px;width:90%;text-align:center;box-shadow:0 24px 64px rgba(0,0,0,.35);">
+            <div style="font-size:48px;margin-bottom:12px;">❌</div>
+            <h3 style="margin:0 0 8px;color:#c0392b;font-size:18px;">Error</h3>
+            <p style="color:#555;font-size:13px;margin:0 0 6px;">Gagal terhubung ke layanan ekspor laporan.</p>
+            <p style="color:#888;font-size:12px;margin:0 0 20px;background:#fff5f5;border:1px solid #fecaca;border-radius:8px;padding:8px 12px;">
+              <strong>Error 402:</strong> API quota exceeded.
+            </p>
+            <button onclick="document.getElementById('_lapErrorOverlay').remove()"
+              style="background:#3b5bdb;color:#fff;border:none;border-radius:8px;padding:10px 28px;font-size:14px;font-weight:600;cursor:pointer;">
+              Tutup
+            </button>
+          </div>`;
+        document.body.appendChild(overlay);
+        overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+        return;
+    }
+
     _lapSyncHiddenSelects();
     const { jenis, sumber } = _LAP;
     if      (jenis === 'per-tahun' && sumber === 'rpd')        await downloadRPDPerYear(format);

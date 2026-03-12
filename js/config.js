@@ -101,7 +101,12 @@ const APP_CONFIG = {
     
     // Debug Mode
     DEBUG_MODE: true,
-    
+
+    // Feature Flags
+    FEATURES: {
+        LAPORAN_DOWNLOAD: false   // ← ganti T jika sudah membayar API
+    },
+
     // CAPTCHA Configuration
     CAPTCHA: {
         ENABLED: true,  // Set false untuk menonaktifkan CAPTCHA
