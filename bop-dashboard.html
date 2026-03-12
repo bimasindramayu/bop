@@ -429,6 +429,68 @@
                             <button class="btn btn-sm" onclick="downloadRealisasiDetailYear('pdf')">📄 PDF</button>
                         </div>
                     </div>
+
+                    <!-- 5. Realisasi + RPD Fallback per Tahun -->
+                    <div class="summary-box" style="margin-top: 20px; border-left: 4px solid #0e7490;">
+                        <h3 style="margin-bottom: 6px;">🔄 Realisasi + RPD Fallback per Tahun</h3>
+                        <p style="font-size: 12px; color: #666; margin-bottom: 10px;">Per KUA per bulan: pakai <strong>Realisasi</strong> (Approved/Paid); jika tidak ada → pakai <strong>RPD</strong> bulan tsb</p>
+                        <select id="fallbackPerYearKua" style="margin-bottom: 10px; width: 100%;">
+                            <option value="">Semua KUA</option>
+                        </select>
+                        <select id="fallbackPerYearYear" style="margin-bottom: 10px; width: 100%;"></select>
+                        <div style="display: flex; gap: 10px; margin-bottom: 10px; align-items: center;">
+                            <label style="font-size:13px; color:#555; white-space:nowrap;">⚡ Auto Payment:</label>
+                            <select id="fallbackPerYearAPMode" style="flex: 1;">
+                                <option value="exclude">Exclude Auto Payment</option>
+                                <option value="include">Include Auto Payment</option>
+                            </select>
+                        </div>
+                        <div style="display: flex; gap: 10px;">
+                            <button class="btn btn-sm" onclick="downloadFallbackPerYear('excel')">📥 Excel</button>
+                            <button class="btn btn-sm" onclick="downloadFallbackPerYear('pdf')">📄 PDF</button>
+                        </div>
+                    </div>
+
+                    <!-- 6. Realisasi + RPD Fallback Detail Semua KUA -->
+                    <div class="summary-box" style="margin-top: 20px; border-left: 4px solid #0e7490;">
+                        <h3 style="margin-bottom: 6px;">🔄 Realisasi + RPD Fallback Detail Semua KUA</h3>
+                        <p style="font-size: 12px; color: #666; margin-bottom: 10px;">Detail per akun: pakai <strong>Realisasi</strong> (Approved/Paid); jika tidak ada → pakai <strong>detail RPD</strong></p>
+                        <div style="display: flex; gap: 10px; margin-bottom: 10px; align-items: center;">
+                            <label style="font-size:13px; color:#555; white-space:nowrap;">📅 Mode:</label>
+                            <select id="fallbackDetailMode" style="flex: 1;" onchange="toggleFallbackDetailMonthFilter()">
+                                <option value="tahunan">Tahunan</option>
+                                <option value="bulanan">Bulanan</option>
+                            </select>
+                        </div>
+                        <select id="fallbackDetailYear" style="margin-bottom: 10px; width: 100%;"></select>
+                        <div id="fallbackDetailMonthGroup" style="display: none; margin-bottom: 10px;">
+                            <select id="fallbackDetailMonth" style="width: 100%;">
+                                <option value="Januari">Januari</option>
+                                <option value="Februari">Februari</option>
+                                <option value="Maret">Maret</option>
+                                <option value="April">April</option>
+                                <option value="Mei">Mei</option>
+                                <option value="Juni">Juni</option>
+                                <option value="Juli">Juli</option>
+                                <option value="Agustus">Agustus</option>
+                                <option value="September">September</option>
+                                <option value="Oktober">Oktober</option>
+                                <option value="November">November</option>
+                                <option value="Desember">Desember</option>
+                            </select>
+                        </div>
+                        <div style="display: flex; gap: 10px; margin-bottom: 10px; align-items: center;">
+                            <label style="font-size:13px; color:#555; white-space:nowrap;">⚡ Auto Payment:</label>
+                            <select id="fallbackDetailAPMode" style="flex: 1;">
+                                <option value="exclude">Exclude Auto Payment</option>
+                                <option value="include">Include Auto Payment</option>
+                            </select>
+                        </div>
+                        <div style="display: flex; gap: 10px;">
+                            <button class="btn btn-sm" onclick="downloadFallbackDetail('excel')">📥 Excel</button>
+                            <button class="btn btn-sm" onclick="downloadFallbackDetail('pdf')">📄 PDF</button>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>

@@ -480,6 +480,15 @@ function handleBOPAction(action, data) {
       case 'exportRealisasiDetailMonth':
         result = exportRealisasiDetailMonth(data);
         break;
+      case 'exportFallbackPerYear':
+        result = exportFallbackPerYear(data);
+        break;
+      case 'exportFallbackDetailYear':
+        result = exportFallbackDetailYear(data);
+        break;
+      case 'exportFallbackDetailMonth':
+        result = exportFallbackDetailMonth(data);
+        break;
       case 'uploadFile':
         result = uploadFile(data);
         break;
@@ -3305,4 +3314,285 @@ function calculateAutoPaymentTotal(realisasis, apConfig, apNominalByKua, mode) {
     total += realTotal;
   });
   return total;
+}
+
+// =============================================================================
+// EXPORT FALLBACK: Realisasi (Approved/Paid) + Fallback ke RPD jika tdk ada
+// =============================================================================
+
+// ── HELPER: load AP config & nominal ──────────────────────────────────────────
+function _loadAPData(year) {
+  var apCfg = {}, apNom = {};
+  try {
+    var cs = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEETS.AUTO_PAYMENT_CONFIG);
+    if (cs) {
+      var cr = cs.getDataRange().getValues();
+      for (var i = 1; i < cr.length; i++) {
+        if (cr[i][0]) apCfg[cr[i][0]] = { '522111': cr[i][1]===true||cr[i][1]==='TRUE', '522112': cr[i][2]===true||cr[i][2]==='TRUE' };
+      }
+    }
+    var ns = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEETS.AUTO_PAYMENT_NOMINAL);
+    if (ns) {
+      var nr = ns.getDataRange().getValues();
+      for (var j = 1; j < nr.length; j++) {
+        var nk = nr[j][0], nm = nr[j][1], ny = nr[j][2];
+        if (nk && ny == year) {
+          if (!apNom[nk]) apNom[nk] = {};
+          apNom[nk][nm] = { '522111': parseFloat(nr[j][3])||0, '522112': parseFloat(nr[j][4])||0 };
+        }
+      }
+    }
+  } catch(e) { Logger.log('[_loadAPData ERR] ' + e); }
+  return { apCfg: apCfg, apNom: apNom };
+}
+
+// ── HELPER: hitung total nominal 1 row Realisasi (handle AP) ─────────────────
+function _calcRealisasiRowTotal(rRow, apCfg, apNom, apMode) {
+  var kua    = rRow[1], month = rRow[2];
+  var kuaCfg = apCfg[kua] || null;
+  var hasAP  = kuaCfg && (kuaCfg['522111'] || kuaCfg['522112']);
+  var total  = 0;
+  if (!hasAP || apMode === 'exclude') {
+    if (!hasAP) { return parseFloat(rRow[5]) || 0; }
+    var rd = {}; try { rd = JSON.parse(rRow[6]||'{}'); } catch(e) {}
+    Object.keys(rd).forEach(function(c) { if (kuaCfg[c]) return; Object.values(rd[c]).forEach(function(v){ total += parseFloat(v)||0; }); });
+  } else {
+    var rd2 = {}; try { rd2 = JSON.parse(rRow[6]||'{}'); } catch(e) {}
+    var nomM = (apNom[kua] && apNom[kua][month]) ? apNom[kua][month] : {};
+    Object.keys(rd2).forEach(function(c) {
+      if (kuaCfg[c]) { total += parseFloat(nomM[c]||0); }
+      else { Object.values(rd2[c]).forEach(function(v){ total += parseFloat(v)||0; }); }
+    });
+  }
+  return total;
+}
+
+// ── HELPER: agregat detail items 1 row Realisasi ke byKUA[kua][code][item] ────
+function _agregateRealisasiRowDetail(rRow, byKUA, apCfg, apNom, apMode) {
+  var kua = rRow[1], month = rRow[2];
+  if (!byKUA[kua]) byKUA[kua] = {};
+  var rd = {}; try { rd = JSON.parse(rRow[6]||'{}'); } catch(e) {}
+  var kuaCfg = apCfg[kua]||null, hasAP = kuaCfg&&(kuaCfg['522111']||kuaCfg['522112']);
+  var nomM = (apNom[kua]&&apNom[kua][month]) ? apNom[kua][month] : {};
+  Object.keys(rd).forEach(function(code) {
+    if (!byKUA[kua][code]) byKUA[kua][code] = {};
+    var isAP = hasAP && kuaCfg[code] === true;
+    Object.keys(rd[code]).forEach(function(item) {
+      if (!byKUA[kua][code][item]) byKUA[kua][code][item] = 0;
+      var val = 0;
+      if (isAP) { if (apMode==='include') val = parseFloat(nomM[code]||0) / Math.max(1, Object.keys(rd[code]).length); }
+      else { val = parseFloat(rd[code][item])||0; }
+      byKUA[kua][code][item] += val;
+    });
+  });
+}
+
+// ── HELPER: agregat detail items 1 row RPD ke byKUA[kua][code][item] ──────────
+function _agregateRPDRowDetail(rpdRow, byKUA) {
+  var kua = rpdRow[1];
+  if (!byKUA[kua]) byKUA[kua] = {};
+  var rpdData = {}; try { rpdData = JSON.parse(rpdRow[5]||'{}'); } catch(e) {}
+  Object.keys(rpdData).forEach(function(code) {
+    if (!byKUA[kua][code]) byKUA[kua][code] = {};
+    Object.keys(rpdData[code]).forEach(function(item) {
+      if (!byKUA[kua][code][item]) byKUA[kua][code][item] = 0;
+      byKUA[kua][code][item] += parseFloat(rpdData[code][item])||0;
+    });
+  });
+}
+
+// ── EXPORT FALLBACK PER TAHUN (mirip Realisasi per Tahun) ─────────────────────
+function exportFallbackPerYear(data) {
+  Logger.log('[FALLBACK_PER_YEAR] year='+data.year+' kua='+(data.kua||'all')+' format='+data.format+' apMode='+(data.apMode||'exclude'));
+  try {
+    var bRows   = getSheet(SHEETS.BUDGET).getDataRange().getValues();
+    var rRows   = getSheet(SHEETS.REALISASI).getDataRange().getValues();
+    var rpdRows = getSheet(SHEETS.RPD).getDataRange().getValues();
+    var apMode  = data.apMode || 'exclude';
+    var ap = _loadAPData(data.year);
+
+    // Budget per KUA
+    var budgetByKUA = {};
+    for (var bi=1; bi<bRows.length; bi++) {
+      if (bRows[bi][2] == data.year && (!data.kua || bRows[bi][1]===data.kua)) {
+        budgetByKUA[bRows[bi][1]] = parseFloat(bRows[bi][3])||0;
+      }
+    }
+
+    // Realisasi total per (kua, month)
+    var realMap = {}; // "kua|month" → total
+    for (var ri=1; ri<rRows.length; ri++) {
+      if (rRows[ri][4] != data.year) continue;
+      var norm = normalizeStatus(rRows[ri][8]);
+      if (norm!=='Approved'&&norm!=='Paid') continue;
+      var key = rRows[ri][1]+'|'+rRows[ri][2];
+      realMap[key] = (realMap[key]||0) + _calcRealisasiRowTotal(rRows[ri], ap.apCfg, ap.apNom, apMode);
+    }
+
+    // RPD total per (kua, month)
+    var rpdMap = {}; // "kua|month" → total
+    for (var rpi=1; rpi<rpdRows.length; rpi++) {
+      if (rpdRows[rpi][3] != data.year) continue;
+      var rpKey = rpdRows[rpi][1]+'|'+rpdRows[rpi][2];
+      rpdMap[rpKey] = (rpdMap[rpKey]||0) + (parseFloat(rpdRows[rpi][4])||0);
+    }
+
+    var kuaList = Object.keys(budgetByKUA).sort();
+    var apLabel = apMode==='include' ? 'INCLUDE AUTO PAYMENT' : 'EXCLUDE AUTO PAYMENT';
+    var title   = 'LAPORAN REALISASI + RPD FALLBACK - '+apLabel+' - TAHUN '+data.year;
+    var kuaNote = data.kua ? ' | KUA: '+data.kua : '';
+    var noteRow = 'Keterangan: R = Data Realisasi (Approved/Paid)  |  P = Dari RPD (tidak ada realisasi di bulan tersebut)';
+
+    if (data.format === 'pdf') {
+      var sty = 'body{font-family:Arial,sans-serif;font-size:7.5px;}h2{font-size:12px;text-align:center;margin:4px 0;}p.sub{text-align:center;font-size:9px;color:#444;margin:2px 0;}'
+              + 'table{width:100%;border-collapse:collapse;margin-top:8px;}th,td{border:1px solid #666;padding:2px 3px;text-align:center;}'
+              + 'th{background:#0e7490;color:#fff;font-size:7px;}.r{color:#065f46;font-weight:bold;}.p{color:#92400e;}.tot{background:#f0f4ff;font-weight:bold;}';
+      var html = '<html><head><style>'+sty+'</style></head><body>'
+               + '<h2>'+title+'</h2><p class="sub">'+kuaNote+noteRow+'</p>'
+               + '<table><tr><th>No</th><th>KUA</th><th>Budget</th>';
+      MONTHS.forEach(function(m){html+='<th>'+m+'</th>';});
+      html += '<th>Total</th><th>Sisa</th></tr>';
+      var grandBudget=0, grandTotal=0;
+      kuaList.forEach(function(kua, idx) {
+        var budget = budgetByKUA[kua]||0; grandBudget+=budget;
+        var rowTotal=0;
+        html += '<tr><td>'+(idx+1)+'</td><td style="text-align:left">'+kua+'</td><td>'+formatCurrency(budget)+'</td>';
+        MONTHS.forEach(function(m) {
+          var rKey=kua+'|'+m, val=0, src='';
+          if (realMap[rKey]!==undefined) { val=realMap[rKey]; src='R'; }
+          else if (rpdMap[rKey]) { val=rpdMap[rKey]; src='P'; }
+          rowTotal+=val;
+          var cls=src==='R'?' class="r"':src==='P'?' class="p"':'';
+          html+='<td'+cls+'>'+(val>0?formatCurrency(val)+' <sup>'+src+'</sup>':'-')+'</td>';
+        });
+        grandTotal+=rowTotal;
+        html+='<td class="tot">'+formatCurrency(rowTotal)+'</td><td class="tot">'+formatCurrency(budget-rowTotal)+'</td></tr>';
+      });
+      html+='<tr style="background:#dbeafe;font-weight:bold"><td colspan="2">GRAND TOTAL</td><td>'+formatCurrency(grandBudget)+'</td>';
+      MONTHS.forEach(function(){html+='<td></td>';});
+      html+='<td>'+formatCurrency(grandTotal)+'</td><td>'+formatCurrency(grandBudget-grandTotal)+'</td></tr>';
+      html+='</table></body></html>';
+      var blob = Utilities.newBlob(html,'text/html').getAs('application/pdf');
+      return successResponse({fileData:Utilities.base64Encode(blob.getBytes()),fileName:'Fallback_PerTahun_'+data.year+'.pdf',mimeType:'application/pdf'});
+    } else {
+      var tsv = title+'\n'+kuaNote+'\n'+noteRow+'\n\nNo\tKUA\tBudget\t'+MONTHS.join('\t')+'\tTotal\tSisa\n';
+      var gBudget=0, gTotal=0;
+      kuaList.forEach(function(kua, idx) {
+        var budget=budgetByKUA[kua]||0; gBudget+=budget;
+        var rowTotal=0, cols=[];
+        MONTHS.forEach(function(m) {
+          var rKey=kua+'|'+m, val=0, src='';
+          if (realMap[rKey]!==undefined){val=realMap[rKey];src='R';}
+          else if(rpdMap[rKey]){val=rpdMap[rKey];src='P';}
+          rowTotal+=val;
+          cols.push(val+(src?' ('+src+')':''));
+        });
+        gTotal+=rowTotal;
+        tsv+=(idx+1)+'\t'+kua+'\t'+budget+'\t'+cols.join('\t')+'\t'+rowTotal+'\t'+(budget-rowTotal)+'\n';
+      });
+      tsv+='GRAND TOTAL\t\t'+gBudget+'\t'+MONTHS.map(function(){return '';}).join('\t')+'\t'+gTotal+'\t'+(gBudget-gTotal)+'\n';
+      var xBlob = Utilities.newBlob(tsv,'text/tab-separated-values');
+      return successResponse({fileData:Utilities.base64Encode(xBlob.getBytes()),fileName:'Fallback_PerTahun_'+data.year+'.xls',mimeType:'application/vnd.ms-excel'});
+    }
+  } catch(err) {
+    Logger.log('[FALLBACK_PER_YEAR ERR] '+err.toString());
+    return errorResponse('Gagal export: '+err.toString());
+  }
+}
+
+// ── EXPORT FALLBACK DETAIL YEAR (mirip Realisasi Detail Semua KUA) ─────────────
+function exportFallbackDetailYear(data) {
+  Logger.log('[FALLBACK_DETAIL_YEAR] year='+data.year+' format='+data.format+' apMode='+(data.apMode||'exclude'));
+  try {
+    var rRows   = getSheet(SHEETS.REALISASI).getDataRange().getValues();
+    var rpdRows = getSheet(SHEETS.RPD).getDataRange().getValues();
+    var apMode  = data.apMode || 'exclude';
+    var ap      = _loadAPData(data.year);
+
+    // Set: "kua|month" yang punya Realisasi (Approved/Paid)
+    var hasReal = {};
+    for (var ri=1; ri<rRows.length; ri++) {
+      if (rRows[ri][4] != data.year) continue;
+      var norm = normalizeStatus(rRows[ri][8]);
+      if (norm!=='Approved'&&norm!=='Paid') continue;
+      hasReal[rRows[ri][1]+'|'+rRows[ri][2]] = true;
+    }
+
+    var byKUA = {}, kuaSet = new Set();
+    // Pass 1: Realisasi
+    for (var ri2=1; ri2<rRows.length; ri2++) {
+      if (rRows[ri2][4]!=data.year) continue;
+      var n2 = normalizeStatus(rRows[ri2][8]);
+      if (n2!=='Approved'&&n2!=='Paid') continue;
+      kuaSet.add(rRows[ri2][1]);
+      _agregateRealisasiRowDetail(rRows[ri2], byKUA, ap.apCfg, ap.apNom, apMode);
+    }
+    // Pass 2: RPD fallback untuk (kua, month) tanpa Realisasi
+    for (var rpi=1; rpi<rpdRows.length; rpi++) {
+      if (rpdRows[rpi][3]!=data.year) continue;
+      var rpKey = rpdRows[rpi][1]+'|'+rpdRows[rpi][2];
+      if (hasReal[rpKey]) continue;
+      kuaSet.add(rpdRows[rpi][1]);
+      _agregateRPDRowDetail(rpdRows[rpi], byKUA);
+    }
+
+    var sortedKUAs = Array.from(kuaSet).sort();
+    if (!sortedKUAs.length) return errorResponse('Tidak ada data untuk tahun '+data.year);
+    var apLabel = apMode==='include'?'INCLUDE AP':'EXCLUDE AP';
+    var title   = 'REALISASI+RPD FALLBACK DETAIL - '+apLabel+' - TAHUN '+data.year;
+    var slug    = 'Fallback_Detail_'+data.year+'_'+apMode;
+    if (data.format==='pdf') return _exportRPDDetailPDF(byKUA, sortedKUAs, title, slug);
+    return _exportRPDDetailExcel(byKUA, sortedKUAs, title, slug);
+  } catch(err) {
+    Logger.log('[FALLBACK_DETAIL_YEAR ERR] '+err.toString());
+    return errorResponse('Gagal export: '+err.toString());
+  }
+}
+
+// ── EXPORT FALLBACK DETAIL MONTH (mode Bulanan) ────────────────────────────────
+function exportFallbackDetailMonth(data) {
+  Logger.log('[FALLBACK_DETAIL_MONTH] year='+data.year+' month='+data.month+' format='+data.format+' apMode='+(data.apMode||'exclude'));
+  try {
+    var rRows   = getSheet(SHEETS.REALISASI).getDataRange().getValues();
+    var rpdRows = getSheet(SHEETS.RPD).getDataRange().getValues();
+    var apMode  = data.apMode || 'exclude';
+    var ap      = _loadAPData(data.year);
+
+    // Cek kua mana yang punya Realisasi di bulan ini
+    var hasReal = {};
+    for (var ri=1; ri<rRows.length; ri++) {
+      if (rRows[ri][4]!=data.year || rRows[ri][2]!=data.month) continue;
+      var norm = normalizeStatus(rRows[ri][8]);
+      if (norm!=='Approved'&&norm!=='Paid') continue;
+      hasReal[rRows[ri][1]] = true;
+    }
+
+    var byKUA = {}, kuaSet = new Set();
+    // Pass 1: Realisasi bulan ini
+    for (var ri2=1; ri2<rRows.length; ri2++) {
+      if (rRows[ri2][4]!=data.year || rRows[ri2][2]!=data.month) continue;
+      var n2 = normalizeStatus(rRows[ri2][8]);
+      if (n2!=='Approved'&&n2!=='Paid') continue;
+      kuaSet.add(rRows[ri2][1]);
+      _agregateRealisasiRowDetail(rRows[ri2], byKUA, ap.apCfg, ap.apNom, apMode);
+    }
+    // Pass 2: RPD fallback untuk KUA tanpa Realisasi bulan ini
+    for (var rpi=1; rpi<rpdRows.length; rpi++) {
+      if (rpdRows[rpi][3]!=data.year || rpdRows[rpi][2]!=data.month) continue;
+      if (hasReal[rpdRows[rpi][1]]) continue;
+      kuaSet.add(rpdRows[rpi][1]);
+      _agregateRPDRowDetail(rpdRows[rpi], byKUA);
+    }
+
+    var sortedKUAs = Array.from(kuaSet).sort();
+    if (!sortedKUAs.length) return errorResponse('Tidak ada data untuk '+data.month+' '+data.year);
+    var apLabel = apMode==='include'?'INCLUDE AP':'EXCLUDE AP';
+    var title   = 'REALISASI+RPD FALLBACK DETAIL - '+apLabel+' - '+data.month+' '+data.year;
+    var slug    = 'Fallback_Detail_'+data.year+'_'+data.month+'_'+apMode;
+    if (data.format==='pdf') return _exportRPDDetailPDF(byKUA, sortedKUAs, title, slug);
+    return _exportRPDDetailExcel(byKUA, sortedKUAs, title, slug);
+  } catch(err) {
+    Logger.log('[FALLBACK_DETAIL_MONTH ERR] '+err.toString());
+    return errorResponse('Gagal export: '+err.toString());
+  }
 }

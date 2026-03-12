@@ -427,7 +427,9 @@ function populateYearFilters() {
         'exportRPDPerYearYear',
         'exportRPDDetailYear',
         'exportRealisasiPerYearYear',
-        'exportRealisasiDetailYear'
+        'exportRealisasiDetailYear',
+        'fallbackPerYearYear',
+        'fallbackDetailYear'
     ];
 
     yearSelectIds.forEach(id => {
@@ -445,6 +447,12 @@ function populateYearFilters() {
     const verifikasiKUAFilter = document.getElementById('verifikasiKUAFilter');
     if (verifikasiKUAFilter) {
         verifikasiKUAFilter.innerHTML = '<option value="">Semua KUA</option>' +
+            APP_CONFIG.KUA_LIST.map(kua => `<option value="${kua}">${kua}</option>`).join('');
+    }
+
+    const fallbackKua = document.getElementById('fallbackPerYearKua');
+    if (fallbackKua) {
+        fallbackKua.innerHTML = '<option value="">Semua KUA</option>' +
             APP_CONFIG.KUA_LIST.map(kua => `<option value="${kua}">${kua}</option>`).join('');
     }
 }
@@ -7243,6 +7251,54 @@ window.downloadRPDPerYear = downloadRPDPerYear;
 window.downloadRPDDetailYear = downloadRPDDetailYear;
 window.toggleRPDDetailMonthFilter = toggleRPDDetailMonthFilter;
 window.toggleRealisasiDetailMonthFilter = toggleRealisasiDetailMonthFilter;
+
+// ── FALLBACK: Realisasi + RPD Fallback per Tahun ──────────────────────────────
+async function downloadFallbackPerYear(format) {
+    const kua    = (document.getElementById('fallbackPerYearKua') || {}).value || '';
+    const year   = document.getElementById('fallbackPerYearYear').value;
+    const apMode = (document.getElementById('fallbackPerYearAPMode') || {}).value || 'exclude';
+    if (!year) { showNotification('Pilih tahun terlebih dahulu', 'warning'); return; }
+    try {
+        showLoading();
+        const result = await apiCall('exportFallbackPerYear', { year: parseInt(year), kua, format, apMode });
+        window.downloadFile(result.fileData, result.fileName, result.mimeType);
+        showNotification('File berhasil diunduh', 'success');
+    } catch (error) {
+        showNotification('Gagal mengunduh file: ' + error.message, 'error');
+    } finally { hideLoading(); }
+}
+
+// ── FALLBACK: Realisasi + RPD Fallback Detail (Tahunan/Bulanan) ───────────────
+async function downloadFallbackDetail(format) {
+    const mode   = (document.getElementById('fallbackDetailMode') || {}).value || 'tahunan';
+    const year   = document.getElementById('fallbackDetailYear').value;
+    const month  = (document.getElementById('fallbackDetailMonth') || {}).value || '';
+    const apMode = (document.getElementById('fallbackDetailAPMode') || {}).value || 'exclude';
+    if (!year) { showNotification('Pilih tahun terlebih dahulu', 'warning'); return; }
+    if (mode === 'bulanan' && !month) { showNotification('Pilih bulan terlebih dahulu', 'warning'); return; }
+    try {
+        showLoading();
+        const action  = mode === 'bulanan' ? 'exportFallbackDetailMonth' : 'exportFallbackDetailYear';
+        const payload = { year: parseInt(year), format, apMode };
+        if (mode === 'bulanan') payload.month = month;
+        const result = await apiCall(action, payload);
+        window.downloadFile(result.fileData, result.fileName, result.mimeType);
+        showNotification('File berhasil diunduh', 'success');
+    } catch (error) {
+        showNotification('Gagal mengunduh file: ' + error.message, 'error');
+    } finally { hideLoading(); }
+}
+
+function toggleFallbackDetailMonthFilter() {
+    const mode  = (document.getElementById('fallbackDetailMode') || {}).value;
+    const group = document.getElementById('fallbackDetailMonthGroup');
+    if (group) group.style.display = mode === 'bulanan' ? 'block' : 'none';
+}
+
+window.downloadRealisasiDetailYear = downloadRealisasiDetailYear;
+window.downloadFallbackPerYear       = downloadFallbackPerYear;
+window.downloadFallbackDetail        = downloadFallbackDetail;
+window.toggleFallbackDetailMonthFilter = toggleFallbackDetailMonthFilter;
 window.downloadRealisasiPerYear = downloadRealisasiPerYear;
 window.downloadRealisasiDetailYear = downloadRealisasiDetailYear;
 window.loadRPDDataFromSelect = loadRPDDataFromSelect;

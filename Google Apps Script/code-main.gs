@@ -82,6 +82,9 @@ function doPost(e) {
       case 'exportRealisasiDetailAllYear':
       case 'exportRPDDetailMonth':
       case 'exportRealisasiDetailMonth':
+      case 'exportFallbackPerYear':
+      case 'exportFallbackDetailYear':
+      case 'exportFallbackDetailMonth':
       case 'getAutoPaymentConfig':
       case 'saveAutoPaymentConfig':
       case 'getAutoPaymentNominal':
