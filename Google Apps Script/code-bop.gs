@@ -2845,7 +2845,15 @@ function uploadFile(data) {
     file.setDescription('Uploaded: ' + now.toISOString() + '\nOriginal: ' + data.filename);
     
     // Set sharing to anyone with link can view
-    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    // Wrapped in try/catch — sharing permission may be restricted by org policy,
+    // but the file is already uploaded so we should NOT fail the whole request.
+    try {
+      file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+      Logger.log('[UPLOAD_FILE] Sharing set to ANYONE_WITH_LINK');
+    } catch (sharingError) {
+      Logger.log('[UPLOAD_FILE] WARNING: Could not set sharing: ' + sharingError.toString());
+      Logger.log('[UPLOAD_FILE] File is uploaded but sharing could not be set. Continuing...');
+    }
     
     const fileId = file.getId();
     const fileUrl = file.getUrl();
