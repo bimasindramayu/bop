@@ -2478,10 +2478,26 @@ function displayRealisasis(realisasis) {
     const tbody = document.querySelector('#realisasiTable tbody');
     let totalNominal = 0;
     
+    // ✅ Operator KUA: kolom Total menggunakan nilai Include AutoPayment
+    const isOperator = currentUser && currentUser.role !== 'Admin';
+    
     console.log('[DISPLAY_REALISASIS] Displaying', realisasis.length, 'records');
     
     const rows = realisasis.map((real, index) => {
-        totalNominal += parseFloat(real.total || 0);
+        // ✅ Hitung nilai yang ditampilkan di kolom Total
+        let displayTotal;
+        if (isOperator && _apConfig) {
+            // Ambil nominal AP untuk bulan & tahun ini dari cache _apNominals
+            const nomKey  = `${real.month}_${real.year}`;
+            const nomData = _apNominals[nomKey] || {};
+            // _apNominals[key] bisa berstruktur { KUA: { code: n } } atau flat { code: n }
+            const kuaNom  = (nomData && nomData[real.kua]) ? nomData[real.kua] : {};
+            const { include } = apCalcTotals([real], _apConfig, { [real.kua]: kuaNom });
+            displayTotal = include;
+        } else {
+            displayTotal = parseFloat(real.total || 0);
+        }
+        totalNominal += displayTotal;
         
         let statusClass = getStatusBadgeClass(real.status);
         let statusText = getStatusLabel(real.status);
@@ -2492,6 +2508,7 @@ function displayRealisasis(realisasis) {
             month: real.month,
             year: real.year,
             total: real.total,
+            displayTotal: displayTotal,
             status: real.status,
             files: real.files ? real.files.length : 0
         });
@@ -2501,7 +2518,7 @@ function displayRealisasis(realisasis) {
             <td>${index + 1}</td>
             <td>${real.month || '-'}</td>
             <td>${real.year || '-'}</td>
-            <td>${formatCurrency(real.total || 0)}</td>
+            <td>${formatCurrency(displayTotal)}</td>
             <td><span class="badge badge-${statusClass}">${statusText}</span></td>
             <td>${real.createdAt ? formatDate(real.createdAt) : '-'}</td>
             <td>
@@ -4673,6 +4690,31 @@ async function _injectViewRealisasiExtras(realisasi) {
         </div>`
     ).join('');
 
+    // ✅ Operator KUA: hanya tampilkan Include AutoPayment
+    // ✅ Admin (halaman Verifikasi): tampilkan keduanya (include & exclude)
+    const isOperatorView = currentUser && currentUser.role !== 'Admin';
+
+    const totalBoxesHTML = isOperatorView
+        // Operator KUA — satu kotak: Include AutoPayment saja
+        ? `<div style="background:white;border-radius:8px;padding:14px;text-align:center;box-shadow:0 2px 6px rgba(0,0,0,.06);">
+                <div style="font-size:11px;color:#28a745;font-weight:700;margin-bottom:4px;">✅ Total Termasuk Tagihan Otomatis</div>
+                <div style="font-size:20px;font-weight:800;color:#28a745;">${formatCurrency(totals.include)}</div>
+                <div style="font-size:10px;color:#999;margin-top:4px;">Angka pengeluaran sesungguhnya</div>
+            </div>`
+        // Admin — dua kotak: Include & Exclude
+        : `<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+                <div style="background:white;border-radius:8px;padding:14px;text-align:center;box-shadow:0 2px 6px rgba(0,0,0,.06);">
+                    <div style="font-size:11px;color:#28a745;font-weight:700;margin-bottom:4px;">✅ Total Termasuk Tagihan Otomatis</div>
+                    <div style="font-size:20px;font-weight:800;color:#28a745;">${formatCurrency(totals.include)}</div>
+                    <div style="font-size:10px;color:#999;margin-top:4px;">Angka pengeluaran sesungguhnya</div>
+                </div>
+                <div style="background:white;border-radius:8px;padding:14px;text-align:center;box-shadow:0 2px 6px rgba(0,0,0,.06);">
+                    <div style="font-size:11px;color:#dc3545;font-weight:700;margin-bottom:4px;">⬜ Total Tanpa Tagihan Otomatis</div>
+                    <div style="font-size:20px;font-weight:800;color:#dc3545;">${formatCurrency(totals.exclude)}</div>
+                    <div style="font-size:10px;color:#999;margin-top:4px;">Hanya pos yang diinput manual</div>
+                </div>
+            </div>`;
+
     container.innerHTML = `
     <div style="background:linear-gradient(135deg,#f0f4ff,#e8f4fd);border:2px solid #667eea;
                 border-radius:12px;padding:16px;margin-top:16px;">
@@ -4681,17 +4723,8 @@ async function _injectViewRealisasiExtras(realisasi) {
             Beberapa pos dibayar otomatis oleh Admin, bukan diinput manual oleh KUA.
         </p>
         ${apItems}
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px;">
-            <div style="background:white;border-radius:8px;padding:14px;text-align:center;box-shadow:0 2px 6px rgba(0,0,0,.06);">
-                <div style="font-size:11px;color:#28a745;font-weight:700;margin-bottom:4px;">✅ Total Termasuk Tagihan Otomatis</div>
-                <div style="font-size:20px;font-weight:800;color:#28a745;">${formatCurrency(totals.include)}</div>
-                <div style="font-size:10px;color:#999;margin-top:4px;">Angka pengeluaran sesungguhnya</div>
-            </div>
-            <div style="background:white;border-radius:8px;padding:14px;text-align:center;box-shadow:0 2px 6px rgba(0,0,0,.06);">
-                <div style="font-size:11px;color:#dc3545;font-weight:700;margin-bottom:4px;">⬜ Total Tanpa Tagihan Otomatis</div>
-                <div style="font-size:20px;font-weight:800;color:#dc3545;">${formatCurrency(totals.exclude)}</div>
-                <div style="font-size:10px;color:#999;margin-top:4px;">Hanya pos yang diinput manual</div>
-            </div>
+        <div style="margin-top:12px;">
+            ${totalBoxesHTML}
         </div>
     </div>`;
 }
