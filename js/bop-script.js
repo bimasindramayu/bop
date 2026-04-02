@@ -725,6 +725,46 @@ function showPage(pageId) {
     }
 }
 
+// ✅ Helper: sesuaikan totalRealisasi di objek stats dengan nilai include-AP
+// untuk Operator KUA. Admin tidak diubah.
+function _adjustStatsWithAP(stats) {
+    if (!currentUser || currentUser.role === 'Admin' || !_apConfig) return stats;
+
+    const cachedRealisasis = getLocalCache('realisasis') || [];
+    const yearFilter = document.getElementById('dashboardYearFilter');
+    const year = yearFilter ? parseInt(yearFilter.value) : new Date().getFullYear();
+
+    const approvedPaid = cachedRealisasis.filter(r => {
+        const s = normalizeStatus(r.status);
+        return r.year == year && (s === STATUS.APPROVED || s === STATUS.PAID);
+    });
+
+    if (approvedPaid.length === 0) return stats; // tidak ada data → jangan ubah
+
+    const includeTotal = _calcIncludeApTotal(approvedPaid);
+    console.log('[DASHBOARD] totalRealisasi adjusted (include AP):', includeTotal);
+
+    // Kembalikan objek baru agar cache asli tidak termodifikasi
+    return Object.assign({}, stats, {
+        totalRealisasi: includeTotal,
+        realisasi: includeTotal
+    });
+}
+
+// ✅ Helper: hitung include-AP total dari list realisasi (sync, pakai cache _apNominals)
+function _calcIncludeApTotal(realisasiList) {
+    if (!realisasiList || realisasiList.length === 0) return 0;
+    let total = 0;
+    realisasiList.forEach(r => {
+        const nomKey  = `${r.month}_${r.year}`;
+        const nomData = _apNominals[nomKey] || {};
+        const kuaNom  = (nomData && nomData[r.kua]) ? nomData[r.kua] : {};
+        const { include } = apCalcTotals([r], _apConfig, { [r.kua]: kuaNom });
+        total += include;
+    });
+    return total;
+}
+
 async function loadDashboardStats(forceRefresh = false) {
     console.log('[DASHBOARD] Loading stats', { forceRefresh });
     
@@ -732,7 +772,7 @@ async function loadDashboardStats(forceRefresh = false) {
     const cachedData = getLocalCache('dashboardStats');
     if (cachedData && !forceRefresh) {
         console.log('[DASHBOARD] Using cached stats - NO SERVER CALL');
-        displayDashboardStats(cachedData);
+        displayDashboardStats(_adjustStatsWithAP(cachedData));
         return;
     }
     
@@ -753,9 +793,23 @@ async function loadDashboardStats(forceRefresh = false) {
             
             console.log('[DASHBOARD] Stats received from server:', stats);
             
+            // ✅ FIX #2: Enrich stats dengan rejectedCount & totalRealisasiCount dari cache
+            // (server lama mungkin belum mengembalikan field ini)
+            const _cachedVerif = getLocalCache('realisasis') || getLocalCache('verifikasi') || [];
+            if (_cachedVerif.length > 0) {
+                const _yearFilter2 = document.getElementById('dashboardYearFilter');
+                const _year2 = _yearFilter2 ? parseInt(_yearFilter2.value) : new Date().getFullYear();
+                const _yearData = _cachedVerif.filter(r => r.year == _year2);
+                if (_yearData.length > 0) {
+                    stats.realisasiRejected  = _yearData.filter(r => normalizeStatus(r.status) === STATUS.REJECTED).length;
+                    stats.totalRealisasiCount = _yearData.length;
+                    stats.totalRealisasiAllNominal = _yearData.reduce((s, r) => s + (parseFloat(r.total) || 0), 0);
+                }
+            }
+            
             // ✅ Update local cache
             updateLocalCache('dashboardStats', stats);
-            displayDashboardStats(stats);
+            displayDashboardStats(_adjustStatsWithAP(stats));
         } catch (error) {
             console.error('[DASHBOARD ERROR]', error);
             showNotification('Gagal memuat statistik dashboard', 'error');
@@ -769,13 +823,18 @@ function displayDashboardStats(stats) {
     // ✅ FIX: Normalisasi semua numeric values dengan fallback
     const budget = parseFloat(stats.budget) || parseFloat(stats.totalBudget) || 0;
     const totalRPD = parseFloat(stats.totalRPD) || parseFloat(stats.pagu) || 0;
+    // totalRealisasi sudah di-adjust include AP oleh caller (loadDashboardStats / updateDashboardFromCache)
     const totalRealisasi = parseFloat(stats.totalRealisasi) || parseFloat(stats.realisasi) || 0;
     const sisaBudget = budget - totalRealisasi;
     
     // ✅ FIX: Handle pending/waiting count — terima semua field yang mungkin
-    const waitingCount = parseInt(stats.realisasiWaiting) || parseInt(stats.pendingVerifikasi) || parseInt(stats.menungguVerifikasi) || 0;
-    const approvedCount = parseInt(stats.realisasiApproved) || 0;
-    const paidCount = parseInt(stats.realisasiPaid) || 0;
+    const waitingCount   = parseInt(stats.realisasiWaiting) || parseInt(stats.pendingVerifikasi) || parseInt(stats.menungguVerifikasi) || 0;
+    const approvedCount  = parseInt(stats.realisasiApproved) || 0;
+    const rejectedCount  = parseInt(stats.realisasiRejected) || 0;
+    const paidCount      = parseInt(stats.realisasiPaid) || 0;
+    // Total semua realisasi (semua status)
+    const totalRealisasiCount      = parseInt(stats.totalRealisasiCount) || (waitingCount + approvedCount + rejectedCount + paidCount);
+    const totalRealisasiAllNominal = parseFloat(stats.totalRealisasiAllNominal) || 0;
     
     console.log('[DASHBOARD] Normalized values:', { 
         budget, 
@@ -825,6 +884,16 @@ function displayDashboardStats(stats) {
                 <div class="stat-info">
                     <div class="stat-label">Total Paid</div>
                     <div class="stat-value">${paidCount} Realisasi</div>
+                </div>
+            </div>
+            <div class="stat-card" style="background: linear-gradient(135deg, #6f42c1 0%, #e83e8c 100%);">
+                <div class="stat-icon">📋</div>
+                <div class="stat-info">
+                    <div class="stat-label">Semua Realisasi</div>
+                    <div class="stat-value">${totalRealisasiCount} Realisasi</div>
+                    <div style="font-size:11px; opacity:0.85; margin-top:4px;">
+                        ⏳${waitingCount} &nbsp;✅${approvedCount} &nbsp;❌${rejectedCount} &nbsp;💰${paidCount}
+                    </div>
                 </div>
             </div>
         `;
@@ -917,14 +986,26 @@ function updateDashboardFromCache() {
             return yearMatch && kuaMatch;
         }) : [];
         
-        const totalRealisasi = filteredRealisasi
-            .filter(r => normalizeStatus(r.status) === STATUS.APPROVED || normalizeStatus(r.status) === STATUS.PAID)
-            .reduce((sum, r) => sum + (parseFloat(r.total) || 0), 0);
+        const totalRealisasi = (() => {
+            const approvedPaid = filteredRealisasi.filter(r =>
+                normalizeStatus(r.status) === STATUS.APPROVED || normalizeStatus(r.status) === STATUS.PAID
+            );
+            // ✅ Operator KUA: gunakan Include AutoPayment via helper
+            if (currentUser && currentUser.role !== 'Admin' && _apConfig && approvedPaid.length > 0) {
+                return _calcIncludeApTotal(approvedPaid);
+            }
+            return approvedPaid.reduce((sum, r) => sum + (parseFloat(r.total) || 0), 0);
+        })();
         
         // Count status breakdown
-        const waitingCount = filteredRealisasi.filter(r => normalizeStatus(r.status) === STATUS.WAITING).length;
+        const waitingCount  = filteredRealisasi.filter(r => normalizeStatus(r.status) === STATUS.WAITING).length;
         const approvedCount = filteredRealisasi.filter(r => normalizeStatus(r.status) === STATUS.APPROVED).length;
-        const paidCount = filteredRealisasi.filter(r => normalizeStatus(r.status) === STATUS.PAID).length;
+        const rejectedCount = filteredRealisasi.filter(r => normalizeStatus(r.status) === STATUS.REJECTED).length;
+        const paidCount     = filteredRealisasi.filter(r => normalizeStatus(r.status) === STATUS.PAID).length;
+        const totalRealisasiCount = filteredRealisasi.length;
+
+        // Total nominal semua realisasi (semua status)
+        const totalRealisasiAllNominal = filteredRealisasi.reduce((sum, r) => sum + (parseFloat(r.total) || 0), 0);
         
         const calculatedStats = {
             budget: budgetTotal,
@@ -937,7 +1018,10 @@ function updateDashboardFromCache() {
             pendingVerifikasi: waitingCount,
             menungguVerifikasi: waitingCount,
             realisasiApproved: approvedCount,
-            realisasiPaid: paidCount
+            realisasiRejected: rejectedCount,
+            realisasiPaid: paidCount,
+            totalRealisasiCount: totalRealisasiCount,
+            totalRealisasiAllNominal: totalRealisasiAllNominal
         };
         
         console.log('[DASHBOARD] Calculated stats from cache:', calculatedStats);
@@ -4182,9 +4266,27 @@ async function handleFileUpload(e) {
             const base64Data = await readFileAsBase64(file);
             console.log(`[FILE] Successfully read file: ${file.name}`);
             console.log(`[FILE] Base64 length: ${base64Data.length} characters`);
-            
+
+            // ✅ Rename file: File Realisasi_{Nama KUA}_{bulan}_{urut}.{ext}
+            const ext = file.name.includes('.')
+                ? file.name.substring(file.name.lastIndexOf('.'))
+                : '';
+            const kuaName = (currentUser && currentUser.kua)
+                ? currentUser.kua.replace(/\s+/g, '_')
+                : 'KUA';
+            const bulan = (() => {
+                const el = document.getElementById('realisasiMonth');
+                return (el && el.value) ? el.value.replace(/\s+/g, '_') : 'Unknown';
+            })();
+            // Nomor urut = jumlah file yang sudah ada + jumlah yang sudah diproses di batch ini + 1
+            const urut = uploadedFiles.length + processedCount + 1;
+            const renamedFileName = `File_Realisasi_${kuaName}_${bulan}_${urut}${ext}`;
+
+            console.log(`[FILE] Renamed: ${file.name} → ${renamedFileName}`);
+
             const fileObject = {
-                fileName: file.name,
+                fileName: renamedFileName,
+                originalName: file.name,
                 fileData: base64Data,
                 mimeType: file.type,
                 size: file.size
@@ -4810,7 +4912,19 @@ function displayVerifikasi(realisasis) {
     let totalNominal = 0;
     
     const rows = filteredData.map((real, index) => {
-        totalNominal += parseFloat(real.total || 0);
+        // ✅ Hitung include-AP total per baris (sync, _apNominals sudah preloaded)
+        // sehingga kolom Total dan baris TOTAL konsisten dengan summary "Include AP"
+        let rowTotal;
+        if (_apConfig) {
+            const nomKey  = `${real.month}_${real.year}`;
+            const nomData = _apNominals[nomKey] || {};
+            const kuaNom  = (nomData && nomData[real.kua]) ? nomData[real.kua] : {};
+            const { include } = apCalcTotals([real], _apConfig, { [real.kua]: kuaNom });
+            rowTotal = include;
+        } else {
+            rowTotal = parseFloat(real.total || 0);
+        }
+        totalNominal += rowTotal;
         
         let statusClass = getStatusBadgeClass(real.status);
         let statusText = getStatusLabel(real.status);
@@ -4825,6 +4939,7 @@ function displayVerifikasi(realisasis) {
             month: real.month,
             year: real.year,
             total: real.total,
+            rowTotal: rowTotal,
             status: real.status,
             files: real.files ? real.files.length : 0
         });
@@ -4835,7 +4950,7 @@ function displayVerifikasi(realisasis) {
             <td>${real.kua || '-'}</td>
             <td>${real.month || '-'}</td>
             <td>${real.year || '-'}</td>
-            <td>${formatCurrency(real.total || 0)}</td>
+            <td>${formatCurrency(rowTotal)}</td>
             <td>${real.createdAt ? formatDate(real.createdAt) : '-'}</td>
             <td><span class="badge badge-${statusClass}">${statusText}</span></td>
             <td>
@@ -7756,17 +7871,18 @@ function displayVerifikasiFiltered() {
         `;
     }).join('');
     
+    // ✅ FIX #1: Beri ID pada sel total agar dapat diupdate oleh apRenderVerifikasiSummary
     const totalRow = `
-        <tr style="background: #f8f9fa; font-weight: bold;">
-            <td colspan="4" style="text-align: right;">TOTAL:</td>
-            <td>${formatCurrency(totalNominal)}</td>
+        <tr style="background: #f8f9fa; font-weight: bold;" id="verifikasiTotalRow">
+            <td colspan="4" style="text-align: right;" id="verifikasiTotalLabel">TOTAL:</td>
+            <td id="verifikasiTotalValue">${formatCurrency(totalNominal)}</td>
             <td colspan="3"></td>
         </tr>
     `;
     
     tbody.innerHTML = rows + totalRow;
     console.log("[VERIFIKASI] Displayed", filteredData.length, "records, Total:", formatCurrency(totalNominal));
-    // ✅ Auto Payment: tampilkan summary Include/Exclude
+    // ✅ Auto Payment: tampilkan summary Include/Exclude, lalu sinkronkan total row
     apRenderVerifikasiSummary(filteredData).catch(() => {});
 }
 
@@ -8274,6 +8390,18 @@ async function apRenderVerifikasiSummary(filteredData) {
     }
 
     const { include, exclude } = apCalcTotals(filteredData, _apConfig, allNom);
+
+    // ✅ FIX #1: Sinkronkan TOTAL row di tabel dengan nilai Include AP
+    // Agar kolom TOTAL di verifikasiTable konsisten dengan apVerifikasiSummary Include AP
+    const totalValueEl = document.getElementById('verifikasiTotalValue');
+    const totalLabelEl = document.getElementById('verifikasiTotalLabel');
+    if (totalValueEl) {
+        totalValueEl.textContent = formatCurrency(include);
+        totalValueEl.style.color = '#28a745';
+    }
+    if (totalLabelEl) {
+        totalLabelEl.innerHTML = 'TOTAL <small style="font-weight:normal; font-size:11px; color:#667eea;">(Include AP)</small>:';
+    }
 
     // Render / update summary block
     let summaryEl = document.getElementById('apVerifikasiSummary');
