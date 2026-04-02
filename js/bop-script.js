@@ -872,18 +872,11 @@ function displayDashboardStats(stats) {
                     <div class="stat-value">${formatCurrency(totalRealisasi)}</div>
                 </div>
             </div>
-            <div class="stat-card warning">
-                <div class="stat-icon">⏳</div>
-                <div class="stat-info">
-                    <div class="stat-label">Menunggu Verifikasi</div>
-                    <div class="stat-value">${waitingCount} Realisasi</div>
-                </div>
-            </div>
             <div class="stat-card" style="background: linear-gradient(135deg, #17a2b8 0%, #138496 100%);">
                 <div class="stat-icon">💵</div>
                 <div class="stat-info">
-                    <div class="stat-label">Total Paid</div>
-                    <div class="stat-value">${paidCount} Realisasi</div>
+                    <div class="stat-label">Total Realisasi All Status</div>
+                    <div class="stat-value">${formatCurrency(totalRealisasiAllNominal)}</div>
                 </div>
             </div>
             <div class="stat-card" style="background: linear-gradient(135deg, #6f42c1 0%, #e83e8c 100%);">
@@ -891,7 +884,7 @@ function displayDashboardStats(stats) {
                 <div class="stat-info">
                     <div class="stat-label">Semua Realisasi</div>
                     <div class="stat-value">${totalRealisasiCount} Realisasi</div>
-                    <div style="font-size:11px; opacity:0.85; margin-top:4px;">
+                    <div style="font-size:15px; opacity:0.85; margin-top:4px;">
                         ⏳${waitingCount} &nbsp;✅${approvedCount} &nbsp;❌${rejectedCount} &nbsp;💰${paidCount}
                     </div>
                 </div>
