@@ -7310,7 +7310,7 @@ const _LAP = {
 const _LAP_DESC = {
     rpd:       'Data RPD yang telah diinput KUA',
     realisasi: 'Data Realisasi yang sudah Approved atau Paid',
-    fallback:  'Realisasi jika ada, RPD jika bulan tersebut belum ada realisasi'
+    fallback:  'Menggunakan Realisasi jika ada, RPD jika bulan tersebut belum ada realisasi'
 };
 
 function _lapSyncHiddenSelects() {
