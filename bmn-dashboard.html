@@ -108,45 +108,9 @@
                     <div id="konfigurasiContent"></div>
                 </div>
 
-                <!-- Laporan Page -->
+                <!-- Laporan Page (dirender oleh JS sesuai role) -->
                 <div class="page" id="laporanBMNPage">
-                    <h2 style="margin-bottom: 20px;">Laporan BMN</h2>
-                    
-                    <div class="summary-box">
-                        <h3 style="margin-bottom: 15px; color: #28a745;">📊 Laporan Per KUA</h3>
-                        <select id="exportKUA" style="margin-bottom: 10px;">
-                            <option value="">— Pilih KUA —</option>
-                            <option value="ALL">📋 Semua KUA</option>
-                        </select>
-                        <div style="display: flex; gap: 10px;">
-                            <button class="btn btn-sm btn-success" onclick="exportLaporan('perKUA', 'excel')">📥 Excel</button>
-                            <button class="btn btn-sm btn-success" onclick="exportLaporan('perKUA', 'pdf')">📄 PDF</button>
-                        </div>
-                    </div>
-
-                    <div class="summary-box" style="margin-top: 20px;">
-                        <h3 style="margin-bottom: 15px; color: #28a745;">📋 Laporan Per Jenis</h3>
-                        <select id="exportJenis" style="margin-bottom: 10px;">
-                            <option value="">Pilih Jenis</option>
-                            <option value="Tanah">Tanah</option>
-                            <option value="Gedung/Bangunan">Gedung/Bangunan</option>
-                            <option value="Kendaraan">Kendaraan</option>
-                            <option value="Peralatan & Mesin">Peralatan & Mesin</option>
-                            <option value="Aset Lainnya">Aset Lainnya</option>
-                        </select>
-                        <div style="display: flex; gap: 10px;">
-                            <button class="btn btn-sm btn-success" onclick="exportLaporan('perJenis', 'excel')">📥 Excel</button>
-                            <button class="btn btn-sm btn-success" onclick="exportLaporan('perJenis', 'pdf')">📄 PDF</button>
-                        </div>
-                    </div>
-
-                    <div class="summary-box" style="margin-top: 20px;">
-                        <h3 style="margin-bottom: 15px; color: #28a745;">⚠️ Laporan Barang Rusak</h3>
-                        <div style="display: flex; gap: 10px;">
-                            <button class="btn btn-sm btn-success" onclick="exportLaporan('rusak', 'excel')">📥 Excel</button>
-                            <button class="btn btn-sm btn-success" onclick="exportLaporan('rusak', 'pdf')">📄 PDF</button>
-                        </div>
-                    </div>
+                    <!-- Konten dirender oleh _renderLaporanAdmin() atau _renderLaporanKUA() -->
                 </div>
             </div>
         </div>
