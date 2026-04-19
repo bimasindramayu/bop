@@ -4,6 +4,7 @@
 
 // ===== KONFIGURASI SPREADSHEET =====
 const SS_ID = '1yz9IeOW9WSDRM9JHwBHYtwi5xmA9hIxJVFPX9G10pNw';
+const SUPERVISI_FOLDER_ID = '10eZ1c5L8h0-pMuzz1DRAv2kEDyhRj_7a';
 
 // ✅ FIX: Add doGet for CORS preflight
 function doGet(e) {
@@ -119,6 +120,17 @@ function doPost(e) {
         // Delegate ke NIKAH module
         result = handleNikahAction(action, data);
         break;
+
+      //SUPERVISI
+      case 'getSupervisiFiles':
+        return ContentService
+          .createTextOutput(JSON.stringify(handleGetSupervisiFiles(data))) // ✅ FIX: was 'payload' (undefined), should be 'data'))
+          .setMimeType(ContentService.MimeType.JSON);
+
+      case 'getSupervisiData':
+        return ContentService
+          .createTextOutput(JSON.stringify(handleGetSupervisiData(data))) // ✅ FIX: was 'payload' (undefined), should be 'data'))
+          .setMimeType(ContentService.MimeType.JSON);
       
       default:
         Logger.log(`[ERROR] Unknown action: ${action}`);
