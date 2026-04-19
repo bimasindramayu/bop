@@ -319,23 +319,37 @@ function uploadBMNPhoto(data) {
 function exportLaporanBMN(data) {
   Logger.log('[EXPORT_BMN] type=' + data.type + ' format=' + data.format + ' kua=' + (data.kua||'ALL'));
   try {
-    var sheet  = getSheet(BMN_SHEETS.BMN_DATA);
-    var values = sheet.getDataRange().getValues();
-    var rows   = [];
-    for (var i = 1; i < values.length; i++) {
-      var row = values[i]; var ok = true;
-      // perKUA: jika data.kua kosong → semua KUA; jika ada value → filter
-      if (data.type === 'perKUA'   && data.kua   && row[1] !== data.kua)   ok = false;
-      if (data.type === 'perJenis' && data.jenis  && row[4] !== data.jenis) ok = false;
-      if (data.type === 'rusak' && row[8] !== 'Rusak Ringan' && row[8] !== 'Rusak Berat') ok = false;
-      if (!ok) continue;
-      rows.push({ kua:row[1],kodeBarang:row[2],namaBarang:row[3],jenis:row[4],
-                  tahunPerolehan:row[5],kondisi:row[8],status:row[9],lokasiBarang:row[10] });
+    var rows  = [];
+    var label = '';
+
+    // ── customData: data sudah dikirim dari frontend (hasil filter tabel)
+    if (data.type === 'customData') {
+      rows  = (data.customData || []).map(function(item) {
+        return { kua:item.kua, kodeBarang:item.kodeBarang, namaBarang:item.namaBarang,
+                 jenis:item.jenis, tahunPerolehan:item.tahunPerolehan,
+                 kondisi:item.kondisi, status:item.status, lokasiBarang:item.lokasiBarang };
+      });
+      label = data.label || 'Data BMN';
+
+    } else {
+      // ── Ambil dari sheet lalu filter
+      var sheet  = getSheet(BMN_SHEETS.BMN_DATA);
+      var values = sheet.getDataRange().getValues();
+      for (var i = 1; i < values.length; i++) {
+        var row = values[i]; var ok = true;
+        // perKUA: jika data.kua kosong → semua KUA; jika ada value → filter
+        if (data.type === 'perKUA'   && data.kua   && row[1] !== data.kua)   ok = false;
+        if (data.type === 'perJenis' && data.jenis  && row[4] !== data.jenis) ok = false;
+        if (data.type === 'rusak' && row[8] !== 'Rusak Ringan' && row[8] !== 'Rusak Berat') ok = false;
+        if (!ok) continue;
+        rows.push({ kua:row[1],kodeBarang:row[2],namaBarang:row[3],jenis:row[4],
+                    tahunPerolehan:row[5],kondisi:row[8],status:row[9],lokasiBarang:row[10] });
+      }
+      label = data.kuaLabel || (data.kua ? data.kua : 'Semua KUA');
+      if (data.type === 'perJenis') label = data.jenis || 'Semua Jenis';
+      if (data.type === 'rusak')    label = 'Barang Rusak';
     }
-    // Tentukan label untuk judul & nama file
-    var label = data.kuaLabel || (data.kua ? data.kua : 'Semua KUA');
-    if (data.type === 'perJenis') label = data.jenis || 'Semua Jenis';
-    if (data.type === 'rusak')    label = 'Barang Rusak';
+
     return data.format === 'pdf' ? exportBMNPDF(rows, data, label) : exportBMNExcel(rows, data, label);
   } catch (e) { return errorResponse(e.toString()); }
 }

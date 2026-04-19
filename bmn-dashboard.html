@@ -81,6 +81,20 @@
                             <option value="Diusulkan Penghapusan">Diusulkan Penghapusan</option>
                         </select>
                         <input type="text" id="searchBMN" placeholder="🔍 Cari kode/nama barang..." onkeyup="searchBMN()" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px;">
+                        <div style="display:flex; gap:6px; margin-left:auto;">
+                            <button class="btn btn-sm" id="btnExportExcel"
+                                onclick="exportCurrentData('excel')"
+                                style="background:#217346;color:#fff;display:none;"
+                                title="Download data yang sedang ditampilkan sebagai Excel">
+                                📥 Excel
+                            </button>
+                            <button class="btn btn-sm" id="btnExportPDF"
+                                onclick="exportCurrentData('pdf')"
+                                style="background:#c0392b;color:#fff;display:none;"
+                                title="Download data yang sedang ditampilkan sebagai PDF">
+                                📄 PDF
+                            </button>
+                        </div>
                     </div>
                     <div class="table-container">
                         <table id="bmnTable">
@@ -108,10 +122,6 @@
                     <div id="konfigurasiContent"></div>
                 </div>
 
-                <!-- Laporan Page (dirender oleh JS sesuai role) -->
-                <div class="page" id="laporanBMNPage">
-                    <!-- Konten dirender oleh _renderLaporanAdmin() atau _renderLaporanKUA() -->
-                </div>
             </div>
         </div>
     </div>
