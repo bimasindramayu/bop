@@ -18,8 +18,58 @@ var COL = {
     WN_ISTRI:       29,  // AD – Warganegara Istri
     TGL_AKAD:       36,  // AK – Tanggal Akad
     NTPN:           51,  // AZ – NTPN
+    TGL_BAYAR:      -1,  // BA – Tanggal Bayar (dicari dinamis dari header)
     TEMPAT_NIKAH:   81   // CD – Tempat Nikah
 };
+
+// Urutan prioritas kolom untuk semua data-tab
+// Kolom yg tidak ada di sini tetap tampil, diappend setelah prioritas
+var PRIORITY_COLS = [
+    4,   // KUA
+    10,  // No Pendaftaran
+    11,  // Tgl Daftar
+    36,  // Tgl Akad
+    13,  // Nama Suami
+    17,  // WN Suami
+    25,  // Nama Istri
+    29,  // WN Istri
+    51,  // NTPN
+    -1,  // TGL_BAYAR – resolved saat buildTabColumns dipanggil
+    81   // Tempat Nikah / Nikah di
+];
+
+// =====================================================================
+// STOK GLOBAL STATE
+// =====================================================================
+var stokData        = [];
+var stokHeaders     = [];
+var stokFilters     = {};
+var stokSort        = { col: 6, dir: 'asc' }; // default: No. Porforasi ASC
+var stokVersion     = 0;
+var stokRendered    = false;
+
+// Kolom Sheet "Stok" (0-based): No|Provinsi|Kab|Kec|KUA|No.Seri|No.Porforasi|TahunBuku|TglAlokasi|TglDigunakan|Keterangan|Status
+var STOK_COL = {
+    NO:           0,
+    PROVINSI:     1,
+    KAB:          2,
+    KEC:          3,
+    KUA:          4,
+    NO_SERI:      5,
+    NO_PERFORASI: 6,
+    TAHUN_BUKU:   7,
+    TGL_ALOKASI:  8,
+    TGL_DIGUNAKAN:9,
+    KETERANGAN:   10,
+    STATUS:       11
+};
+
+// Kolom yang ditampilkan di tabel Stok (skip No, Provinsi, Kab, Kec)
+var DISPLAY_STOK_COLS = [
+    STOK_COL.KUA, STOK_COL.NO_SERI, STOK_COL.NO_PERFORASI,
+    STOK_COL.TAHUN_BUKU, STOK_COL.TGL_ALOKASI, STOK_COL.TGL_DIGUNAKAN,
+    STOK_COL.KETERANGAN, STOK_COL.STATUS
+];
 
 // =====================================================================
 // GLOBAL STATE
@@ -45,7 +95,10 @@ var tabFilterVersion = {};                  // { tabId: versi filter+sort tab }
 // TAB DEFINITIONS
 // (fungsi auto-filter dideklarasikan setelah const ini, tapi hoist aman)
 // =====================================================================
-var TAB_IDS = ['kantor', 'wna', 'kurang12', 'ntpn'];
+var TAB_IDS = ['semua', 'kantor', 'wna', 'kurang12', 'ntpn'];
+
+// Sentinel untuk kolom virtual "Selisih" di tab kurang12
+var VIRTUAL_SELISIH = -99;
 
 // =====================================================================
 // BULAN INDONESIA
@@ -68,6 +121,15 @@ function parseDate(val) {
 function daysBetween(d1, d2) {
     if (!d1 || !d2) return null;
     return Math.floor((d2 - d1) / 86400000);
+}
+
+// ✅ FIX Selisih: timezone-safe, strip time component → hanya hitung hari kalender
+// Contoh: 31/12/2025 → 01/01/2026 = 1 hari (bukan 0 akibat komponen waktu)
+function daysBetweenDates(d1, d2) {
+    if (!d1 || !d2) return null;
+    var t1 = Date.UTC(d1.getFullYear(), d1.getMonth(), d1.getDate());
+    var t2 = Date.UTC(d2.getFullYear(), d2.getMonth(), d2.getDate());
+    return Math.round((t2 - t1) / 86400000);
 }
 
 function formatDate(val) {
@@ -95,7 +157,7 @@ function formatISODate(d) {
 function filterKantorKUA(rows) {
     return rows.filter(function(row) {
         var val = String(row[COL.TEMPAT_NIKAH] || '').toUpperCase();
-        return val.indexOf('KUA / KANTOR') !== -1;
+        return val.indexOf('KUA') !== -1 || val.indexOf('KANTOR') !== -1;
     });
 }
 
@@ -109,15 +171,16 @@ function filterWNA(rows) {
 
 function filterKurang12(rows) {
     return rows.filter(function(row) {
-        var tglAkad  = parseDate(row[COL.TGL_AKAD]);
+        var tglAkad   = parseDate(row[COL.TGL_AKAD]);
         var tglDaftar = parseDate(row[COL.TGL_DAFTAR]);
-        var diff = daysBetween(tglDaftar, tglAkad);
+        var diff = daysBetweenDates(tglDaftar, tglAkad); // ✅ timezone-safe
         return diff !== null && diff < 12;
     });
 }
 
 function getAutoFilter(tabId) {
     var map = {
+        semua:    null,
         kantor:   filterKantorKUA,
         wna:      filterWNA,
         kurang12: filterKurang12,
@@ -139,23 +202,11 @@ function applyUserFilters(rows, filters) {
             var m = getMonthNumber(row[COL.TGL_AKAD]);
             if (filters.bulan.indexOf(m) === -1) return false;
         }
-        if (filters.tglAkadFrom) {
-            var d = parseDate(row[COL.TGL_AKAD]);
-            if (!d || d < new Date(filters.tglAkadFrom)) return false;
-        }
-        if (filters.tglAkadTo) {
-            var d2 = parseDate(row[COL.TGL_AKAD]);
-            if (!d2 || d2 > new Date(filters.tglAkadTo + 'T23:59:59')) return false;
-        }
         if (filters.noPerforasi) {
             if (String(row[COL.NO_PERFORASI] || '').toLowerCase().indexOf(filters.noPerforasi.toLowerCase()) === -1) return false;
         }
         if (filters.noPendaftaran) {
             if (String(row[COL.NO_PENDAFTARAN] || '').toLowerCase().indexOf(filters.noPendaftaran.toLowerCase()) === -1) return false;
-        }
-        if (filters.tglDaftar) {
-            var rowDate = String(row[COL.TGL_DAFTAR] || '').substring(0, 10);
-            if (rowDate !== filters.tglDaftar) return false;
         }
         if (filters.namaSuami) {
             if (String(row[COL.NAMA_SUAMI] || '').toLowerCase().indexOf(filters.namaSuami.toLowerCase()) === -1) return false;
@@ -164,7 +215,8 @@ function applyUserFilters(rows, filters) {
             if (String(row[COL.NAMA_ISTRI] || '').toLowerCase().indexOf(filters.namaIstri.toLowerCase()) === -1) return false;
         }
         if (filters.tempatNikah) {
-            if (String(row[COL.TEMPAT_NIKAH] || '').toLowerCase().indexOf(filters.tempatNikah.toLowerCase()) === -1) return false;
+            // Exact match karena combobox
+            if (String(row[COL.TEMPAT_NIKAH] || '').trim() !== filters.tempatNikah) return false;
         }
         if (filters.ntpn) {
             if (String(row[COL.NTPN] || '').toLowerCase().indexOf(filters.ntpn.toLowerCase()) === -1) return false;
@@ -198,30 +250,70 @@ function getTabData(tabId) {
 
 // =====================================================================
 // BUILD COLUMN LAYOUT FOR A TAB
-// NTPN tab: pindah kolom AZ ke posisi setelah G (NO_PERFORASI)
+// Urutan: PRIORITY_COLS (yang ada di data) lalu sisa kolom
+// Tab kurang12: VIRTUAL_SELISIH disisipkan setelah KUA
 // =====================================================================
 function buildTabColumns(tabId) {
     if (allHeaders.length === 0) return { headers: [], indices: [] };
-    if (tabId !== 'ntpn') {
+
+    // Resolve TGL_BAYAR dinamis dari nama header
+    var tglBayarIdx = -1;
+    for (var bi = 0; bi < allHeaders.length; bi++) {
+        if (/bayar/i.test(allHeaders[bi])) { tglBayarIdx = bi; break; }
+    }
+
+    // Bangun daftar prioritas yang valid (ada di allHeaders)
+    var priority = PRIORITY_COLS.map(function(c) {
+        return c === -1 ? tglBayarIdx : c; // -1 = TGL_BAYAR placeholder
+    }).filter(function(c) {
+        return c >= 0 && c < allHeaders.length;
+    });
+
+    // Kolom sisa (tidak ada di priority)
+    var prioritySet = {};
+    priority.forEach(function(c) { prioritySet[c] = true; });
+    var rest = [];
+    for (var ri = 0; ri < allHeaders.length; ri++) {
+        if (!prioritySet[ri]) rest.push(ri);
+    }
+
+    var ordered = priority.concat(rest);
+
+    // Tab kurang12: sisipkan VIRTUAL_SELISIH antara TglDaftar (L) dan TglAkad (AK)
+    if (tabId === 'kurang12') {
+        var withSelisih = ordered.slice();
+        var tglDaftarPos = withSelisih.indexOf(COL.TGL_DAFTAR);
+        if (tglDaftarPos !== -1) {
+            withSelisih.splice(tglDaftarPos + 1, 0, VIRTUAL_SELISIH);
+        } else {
+            var tglAkadPos = withSelisih.indexOf(COL.TGL_AKAD);
+            if (tglAkadPos !== -1) {
+                withSelisih.splice(tglAkadPos, 0, VIRTUAL_SELISIH);
+            } else {
+                withSelisih.unshift(VIRTUAL_SELISIH);
+            }
+        }
         return {
-            headers: allHeaders.slice(),
-            indices: allHeaders.map(function(_, i) { return i; })
+            headers: withSelisih.map(function(i) {
+                return i === VIRTUAL_SELISIH ? 'Selisih (Hari)' : allHeaders[i];
+            }),
+            indices: withSelisih
         };
     }
-    // NTPN: reorder
-    var indices = [];
-    for (var i = 0; i < allHeaders.length; i++) {
-        if (i === COL.NO_PERFORASI) {
-            indices.push(i);
-            if (COL.NTPN < allHeaders.length) indices.push(COL.NTPN);
-        } else if (i !== COL.NTPN) {
-            indices.push(i);
-        }
-    }
+
     return {
-        headers: indices.map(function(i) { return allHeaders[i]; }),
-        indices: indices
+        headers: ordered.map(function(i) { return allHeaders[i]; }),
+        indices: ordered
     };
+}
+
+// Kolom yang diberi warna oranye per tab
+function getHighlightCols(tabId) {
+    if (tabId === 'kantor')   return [COL.TEMPAT_NIKAH];
+    if (tabId === 'wna')      return [COL.WN_SUAMI, COL.WN_ISTRI];
+    if (tabId === 'kurang12') return [COL.TGL_AKAD, COL.TGL_DAFTAR, VIRTUAL_SELISIH];
+    if (tabId === 'ntpn')     return [COL.NTPN];
+    return [];
 }
 
 // =====================================================================
@@ -255,8 +347,9 @@ function renderTable(tabId) {
 
     updateBadge(tabId, rows.length);
 
-    var sort = sortState[tabId] || {};
-    var displayRows = rows.slice(0, RENDER_LIMIT);
+    var sort         = sortState[tabId] || {};
+    var displayRows  = rows.slice(0, RENDER_LIMIT);
+    var hlSet        = getHighlightCols(tabId);
 
     // Build HTML as string array (lebih cepat dari string concat)
     var parts = [];
@@ -279,14 +372,18 @@ function renderTable(tabId) {
     parts.push('<th class="col-no">#</th>');
 
     cols.headers.forEach(function(h, idx) {
-        var colI = cols.indices[idx];
+        var colI   = cols.indices[idx];
         var sortCls = '';
-        if (sort.col === colI) sortCls = sort.dir === 'asc' ? 'sort-asc' : 'sort-desc';
-        var hlCls = (tabId === 'ntpn' && colI === COL.NTPN) ? ' highlight' : '';
+        if (sort.col === colI && colI !== VIRTUAL_SELISIH) {
+            sortCls = sort.dir === 'asc' ? 'sort-asc' : 'sort-desc';
+        }
+        var hlCls = (hlSet.indexOf(colI) !== -1) ? ' col-orange-th' : '';
+        // Virtual kolom tidak sortable
+        var clickAttr = (colI === VIRTUAL_SELISIH)
+            ? ''
+            : 'onclick="toggleSort(\'' + tabId + '\',' + colI + ')" title="Klik untuk urutkan"';
         parts.push(
-            '<th class="' + sortCls + hlCls + '" ' +
-            'onclick="toggleSort(\'' + tabId + '\',' + colI + ')" ' +
-            'title="Klik untuk urutkan">' +
+            '<th class="' + sortCls + hlCls + '" ' + clickAttr + '>' +
             escHtml(String(h)) + '</th>'
         );
     });
@@ -294,12 +391,25 @@ function renderTable(tabId) {
 
     displayRows.forEach(function(row, idx) {
         parts.push('<tr><td class="col-no">' + (idx + 1) + '</td>');
-        cols.indices.forEach(function(colI) {
-            var val = row[colI] != null ? row[colI] : '';
+        cols.indices.forEach(function(colI, ci) {
+            var isOrange = hlSet.indexOf(colI) !== -1;
+            var tdCls    = isOrange ? ' class="col-orange-td"' : '';
+
+            if (colI === VIRTUAL_SELISIH) {
+                // ✅ FIX: timezone-safe date-only difference
+                var tglA  = parseDate(row[COL.TGL_AKAD]);
+                var tglD  = parseDate(row[COL.TGL_DAFTAR]);
+                var diff  = daysBetweenDates(tglD, tglA);
+                var disp  = diff !== null ? diff + ' hari' : '-';
+                parts.push('<td class="col-orange-td" title="' + disp + '">' + disp + '</td>');
+                return;
+            }
+
+            var val     = row[colI] != null ? row[colI] : '';
             var display = (typeof val === 'string' && /^\d{4}-\d{2}-\d{2}/.test(val))
                 ? formatDate(val)
                 : escHtml(String(val));
-            parts.push('<td title="' + escHtml(String(val)) + '">' + display + '</td>');
+            parts.push('<td' + tdCls + ' title="' + escHtml(String(val)) + '">' + display + '</td>');
         });
         parts.push('</tr>');
     });
@@ -417,6 +527,8 @@ function updateDashboardStats() {
     setEl('stat-wna',      wna);
     setEl('stat-kurang12', kurang12);
     setEl('stat-ntpn',     ntpn);
+    // Badge tab Semua Data = total
+    updateBadge('semua', total);
 }
 
 // =====================================================================
@@ -445,6 +557,10 @@ function copyTable(tabId) {
     lines.push(['#'].concat(cols.headers).join('\t'));
     rows.forEach(function(row, idx) {
         lines.push([idx + 1].concat(cols.indices.map(function(i) {
+            if (i === VIRTUAL_SELISIH) {
+                var diff = daysBetween(parseDate(row[COL.TGL_DAFTAR]), parseDate(row[COL.TGL_AKAD]));
+                return diff !== null ? diff : '';
+            }
             return row[i] != null ? row[i] : '';
         })).join('\t'));
     });
@@ -485,11 +601,8 @@ function getFilterValues(tabId) {
     return {
         kua:           val('f-' + tabId + '-kua'),
         bulan:         getSelectedMonths(tabId),
-        tglAkadFrom:   val('f-' + tabId + '-tglAkadFrom'),
-        tglAkadTo:     val('f-' + tabId + '-tglAkadTo'),
         noPerforasi:   val('f-' + tabId + '-noPerforasi'),
         noPendaftaran: val('f-' + tabId + '-noPendaftaran'),
-        tglDaftar:     val('f-' + tabId + '-tglDaftar'),
         namaSuami:     val('f-' + tabId + '-namaSuami'),
         namaIstri:     val('f-' + tabId + '-namaIstri'),
         tempatNikah:   val('f-' + tabId + '-tempatNikah'),
@@ -617,7 +730,243 @@ function buildKUAOptions(tabId) {
 }
 
 // =====================================================================
-// TAB SWITCHING — hanya re-render jika state stale
+// TEMPAT NIKAH DROPDOWN OPTIONS (Combobox)
+// =====================================================================
+function buildTempatNikahOptions(tabId) {
+    var sel = document.getElementById('f-' + tabId + '-tempatNikah');
+    if (!sel) return;
+    var rows = allData.slice();
+    var autoFn = getAutoFilter(tabId);
+    if (autoFn) rows = autoFn(rows);
+    var vals = {};
+    rows.forEach(function(row) {
+        var v = String(row[COL.TEMPAT_NIKAH] || '').trim();
+        if (v) vals[v] = true;
+    });
+    var current = sel.value; // preserve current selection
+    sel.innerHTML = '<option value="">-- Semua Tempat --</option>';
+    Object.keys(vals).sort().forEach(function(k) {
+        var opt = document.createElement('option');
+        opt.value = k;
+        opt.textContent = k;
+        sel.appendChild(opt);
+    });
+    if (current) sel.value = current;
+}
+
+// =====================================================================
+// STOK BUKU NIKAH — RENDER & FILTER
+// =====================================================================
+
+var STATUS_COLORS = {
+    'tersedia': { bg: '#d4edda', color: '#155724', border: '#c3e6cb' },
+    'terpakai': { bg: '#f8d7da', color: '#721c24', border: '#f5c6cb' },
+    'rusak':    { bg: '#fff3cd', color: '#856404', border: '#ffeeba' },
+    'hilang':   { bg: '#fde2e4', color: '#842029', border: '#f5c6cb' },
+    'default':  { bg: '#e2e3e5', color: '#383d41', border: '#d6d8db' }
+};
+function getStatusStyle(val) {
+    return STATUS_COLORS[String(val || '').toLowerCase().trim()] || STATUS_COLORS['default'];
+}
+function buildStatusBadge(val) {
+    var s = getStatusStyle(val);
+    return '<span class="status-badge" style="background:' + s.bg + ';color:' + s.color +
+           ';border:1px solid ' + s.border + '">' + escHtml(String(val)) + '</span>';
+}
+
+function getStokFilteredData() {
+    var rows = stokData.slice();
+    var f    = stokFilters;
+    if (f.kua)         rows = rows.filter(function(r) { return String(r[STOK_COL.KUA]||'').trim() === f.kua; });
+    if (f.bulan && f.bulan.length > 0) rows = rows.filter(function(r) {
+        var d = parseDate(r[STOK_COL.TGL_DIGUNAKAN]);
+        return d && f.bulan.indexOf(d.getMonth()+1) !== -1;
+    });
+    if (f.noPerforasi) rows = rows.filter(function(r) {
+        return String(r[STOK_COL.NO_PERFORASI]||'').toLowerCase().indexOf(f.noPerforasi.toLowerCase()) !== -1;
+    });
+    if (f.status)      rows = rows.filter(function(r) {
+        return String(r[STOK_COL.STATUS]||'').toLowerCase().trim() === f.status.toLowerCase();
+    });
+    var s   = stokSort;
+    var dir = s.dir === 'asc' ? 1 : -1;
+    rows.sort(function(a, b) {
+        var va = a[s.col] != null ? a[s.col] : '';
+        var vb = b[s.col] != null ? b[s.col] : '';
+        var na = parseFloat(va), nb = parseFloat(vb);
+        if (!isNaN(na) && !isNaN(nb)) return (na - nb) * dir;
+        return String(va).localeCompare(String(vb), 'id') * dir;
+    });
+    return rows;
+}
+
+function renderStokTable() {
+    var container = document.getElementById('table-stok');
+    if (!container) return;
+    if (stokData.length === 0) {
+        container.innerHTML = buildEmptyState('Belum ada data Stok', 'Muat data terlebih dahulu dari tab Dashboard Utama.');
+        updateBadge('stok', 0);
+        return;
+    }
+    var rows = getStokFilteredData();
+    updateBadge('stok', rows.length);
+    if (rows.length === 0) {
+        container.innerHTML = buildEmptyState('Tidak ada data', 'Tidak ada data yang cocok dengan filter.');
+        return;
+    }
+    var s        = stokSort;
+    var display  = rows.slice(0, RENDER_LIMIT);
+    var colNames = ['KUA','No. Seri','No. Porforasi','Tahun Buku','Tgl. Alokasi','Tgl. Digunakan','Keterangan','Status'];
+    var parts    = [];
+    parts.push('<div class="data-info-bar"><div class="count-display">Menampilkan <span>' +
+        rows.length.toLocaleString('id-ID') + '</span> data' +
+        (rows.length !== stokData.length ? ' dari ' + stokData.length.toLocaleString('id-ID') + ' total' : '') +
+        '</div><button class="btn btn-warning btn-sm" onclick="copyStokTable()">📋 Salin Tabel</button></div>');
+    parts.push('<div class="table-container"><table id="dataTable-stok"><thead><tr><th class="col-no">#</th>');
+    DISPLAY_STOK_COLS.forEach(function(colI, idx) {
+        var sc = (s.col === colI) ? (s.dir === 'asc' ? 'sort-asc' : 'sort-desc') : '';
+        parts.push('<th class="' + sc + '" onclick="toggleStokSort(' + colI + ')" title="Klik untuk urutkan">' + escHtml(colNames[idx]) + '</th>');
+    });
+    parts.push('</tr></thead><tbody>');
+    display.forEach(function(row, idx) {
+        parts.push('<tr><td class="col-no">' + (idx + 1) + '</td>');
+        DISPLAY_STOK_COLS.forEach(function(colI) {
+            var val = row[colI] != null ? row[colI] : '';
+            if (colI === STOK_COL.STATUS) {
+                parts.push('<td>' + buildStatusBadge(val) + '</td>');
+            } else {
+                var disp = (typeof val === 'string' && /^\d{4}-\d{2}-\d{2}/.test(val)) ? formatDate(val) : escHtml(String(val));
+                parts.push('<td title="' + escHtml(String(val)) + '">' + disp + '</td>');
+            }
+        });
+        parts.push('</tr>');
+    });
+    if (rows.length > RENDER_LIMIT) {
+        parts.push('<tr><td colspan="' + (DISPLAY_STOK_COLS.length + 1) +
+            '" style="text-align:center;padding:16px;color:#667eea;font-weight:600;background:#f0f2ff;">' +
+            '⚠️ Menampilkan ' + RENDER_LIMIT.toLocaleString() + ' dari ' + rows.length.toLocaleString() + ' data.</td></tr>');
+    }
+    parts.push('</tbody></table></div>');
+    container.innerHTML = parts.join('');
+    stokRendered = true;
+}
+
+function toggleStokSort(colI) {
+    stokSort = (stokSort.col === colI)
+        ? { col: colI, dir: stokSort.dir === 'asc' ? 'desc' : 'asc' }
+        : { col: colI, dir: 'asc' };
+    renderStokTable();
+}
+
+function applyStokFilter() {
+    var val = function(id) { var el = document.getElementById(id); return el ? el.value.trim() : ''; };
+    var cbs = Array.from(document.querySelectorAll('.month-cb-stok'));
+    var chk = cbs.filter(function(c) { return c.checked; });
+    stokFilters = {
+        kua:         val('f-stok-kua'),
+        bulan:       (cbs.length === 0 || chk.length === cbs.length) ? [] : chk.map(function(c){ return parseInt(c.value); }),
+        noPerforasi: val('f-stok-noPerforasi'),
+        status:      val('f-stok-status')
+    };
+    renderStokTable();
+}
+
+function resetStokFilter() {
+    stokFilters = {};
+    stokSort    = { col: STOK_COL.NO_PERFORASI, dir: 'asc' };
+    var sec = document.getElementById('filterSection-stok');
+    if (sec) {
+        sec.querySelectorAll('input[type="text"]').forEach(function(el) { el.value = ''; });
+        sec.querySelectorAll('select').forEach(function(el) { el.selectedIndex = 0; });
+    }
+    document.querySelectorAll('.month-cb-stok').forEach(function(c) { c.checked = true; });
+    updateMonthLabel('stok');
+    renderStokTable();
+}
+
+function buildStokKUAOptions() {
+    var sel = document.getElementById('f-stok-kua');
+    if (!sel) return;
+    var kuas = {};
+    stokData.forEach(function(r) { var v = String(r[STOK_COL.KUA]||'').trim(); if (v) kuas[v] = true; });
+    var cur = sel.value;
+    sel.innerHTML = '<option value="">-- Semua KUA --</option>';
+    Object.keys(kuas).sort().forEach(function(k) {
+        var o = document.createElement('option'); o.value = k; o.textContent = k; sel.appendChild(o);
+    });
+    if (cur) sel.value = cur;
+}
+
+function buildStokStatusOptions() {
+    var sel = document.getElementById('f-stok-status');
+    if (!sel) return;
+    var vals = {};
+    stokData.forEach(function(r) { var v = String(r[STOK_COL.STATUS]||'').trim(); if (v) vals[v] = true; });
+    var cur = sel.value;
+    sel.innerHTML = '<option value="">-- Semua Status --</option>';
+    Object.keys(vals).sort().forEach(function(k) {
+        var o = document.createElement('option'); var s = getStatusStyle(k);
+        o.value = k; o.textContent = k; o.style.background = s.bg; o.style.color = s.color;
+        sel.appendChild(o);
+    });
+    if (cur) sel.value = cur;
+}
+
+function buildStokMonthOptions() {
+    var dropdown = document.getElementById('monthDropdown-stok');
+    if (!dropdown) return;
+    dropdown.querySelectorAll('.month-item').forEach(function(e) { e.remove(); });
+    var months = {};
+    stokData.forEach(function(r) { var d = parseDate(r[STOK_COL.TGL_DIGUNAKAN]); if (d) months[d.getMonth()+1] = true; });
+    Object.keys(months).map(Number).sort(function(a,b){return a-b;}).forEach(function(m) {
+        var item = document.createElement('div'); item.className = 'multiselect-item month-item';
+        item.innerHTML = '<input type="checkbox" class="month-cb-stok" value="' + m +
+                         '" checked onchange="updateMonthLabel(\'stok\')"> ' + BULAN_ID[m];
+        dropdown.appendChild(item);
+    });
+    updateMonthLabel('stok');
+}
+
+function setupStokFilter() {
+    var div = document.getElementById('filter-stok');
+    if (!div) return;
+    div.innerHTML =
+        '<div class="filter-section" id="filterSection-stok">' +
+        '<div class="filter-title"><span>🔎 Filter Data</span>' +
+        '<button class="btn btn-secondary btn-sm" onclick="toggleFilterSection(\'stok\')">Sembunyikan</button></div>' +
+        '<div class="filter-grid">' +
+        '<div class="filter-group"><label>KUA</label><select id="f-stok-kua"><option value="">-- Semua KUA --</option></select></div>' +
+        '<div class="filter-group"><label>Bulan Digunakan</label><div class="multiselect-wrapper">' +
+        '<button type="button" class="multiselect-trigger" onclick="toggleMonthDropdown(\'stok\')" id="monthTrigger-stok">' +
+        '<span id="monthLabel-stok">-- Semua Bulan --</span><span class="arrow">▼</span></button>' +
+        '<div class="multiselect-dropdown" id="monthDropdown-stok">' +
+        '<div class="multiselect-select-all" onclick="toggleAllMonths(\'stok\')">' +
+        '<input type="checkbox" id="monthAll-stok" checked> Pilih Semua</div></div></div></div>' +
+        '<div class="filter-group"><label>No. Porforasi</label>' +
+        '<input type="text" id="f-stok-noPerforasi" placeholder="Cari no porforasi..."></div>' +
+        '<div class="filter-group"><label>Status</label>' +
+        '<select id="f-stok-status"><option value="">-- Semua Status --</option></select></div>' +
+        '</div><div class="filter-buttons">' +
+        '<button class="btn btn-primary btn-sm" onclick="applyStokFilter()">✅ Terapkan Filter</button>' +
+        '<button class="btn btn-secondary btn-sm" onclick="resetStokFilter()">🔄 Reset Filter</button>' +
+        '</div></div>';
+}
+
+function copyStokTable() {
+    var rows     = getStokFilteredData();
+    var colNames = ['KUA','No. Seri','No. Porforasi','Tahun Buku','Tgl. Alokasi','Tgl. Digunakan','Keterangan','Status'];
+    var lines    = [['#'].concat(colNames).join('\t')];
+    rows.forEach(function(row, idx) {
+        lines.push([idx+1].concat(DISPLAY_STOK_COLS.map(function(c){ return row[c]!=null?row[c]:''; })).join('\t'));
+    });
+    var text = lines.join('\n');
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(function(){ showNotification('Tabel Stok berhasil disalin','success'); }).catch(function(){ fallbackCopy(text); });
+    } else { fallbackCopy(text); }
+}
+
+// =====================================================================
+// TAB SWITCHING — smooth defer
 // =====================================================================
 function switchTab(tabId) {
     document.querySelectorAll('.tab-content').forEach(function(el) {
@@ -639,11 +988,35 @@ function switchTab(tabId) {
         t.classList.remove('open');
     });
 
-    // Re-render tab tujuan HANYA jika state berubah sejak terakhir render
-    var realTabId = tabId.replace('tab-', ''); // 'tab-kantor' → 'kantor'
-    if (TAB_IDS.indexOf(realTabId) !== -1) {
-        refreshTabIfStale(realTabId);
+    var realTabId = tabId.replace('tab-', '');
+
+    // Tab Stok ditangani terpisah
+    if (realTabId === 'stok') {
+        if (!stokRendered) {
+            var tableDiv = document.getElementById('table-stok');
+            if (tableDiv) tableDiv.innerHTML = '<div class="rendering-state">⏳ Mempersiapkan data...</div>';
+            requestAnimationFrame(function() {
+                requestAnimationFrame(function() { renderStokTable(); });
+            });
+        }
+        return;
     }
+
+    if (TAB_IDS.indexOf(realTabId) === -1) return;
+    if (!isTabStale(realTabId)) return; // sudah fresh
+
+    // Tampilkan placeholder agar browser bisa paint dulu sebelum render berat
+    var tableDiv = document.getElementById('table-' + realTabId);
+    if (tableDiv) {
+        tableDiv.innerHTML = '<div class="rendering-state">⏳ Mempersiapkan data...</div>';
+    }
+
+    // Double-rAF: pastikan browser paint placeholder sebelum render tabel
+    requestAnimationFrame(function() {
+        requestAnimationFrame(function() {
+            refreshTabIfStale(realTabId);
+        });
+    });
 }
 
 // =====================================================================
@@ -668,6 +1041,12 @@ function setupTabFilters() {
         var filterDiv = document.getElementById('filter-' + tabId);
         if (!filterDiv) return;
 
+        // Filter NTPN hanya tampil di tab ntpn
+        var ntpnFilter = (tabId === 'ntpn')
+            ? '<div class="filter-group"><label>NTPN (Kolom AZ)</label>' +
+              '<input type="text" id="f-' + tabId + '-ntpn" placeholder="Cari NTPN..."></div>'
+            : '';
+
         filterDiv.innerHTML =
             '<div class="filter-section" id="filterSection-' + tabId + '">' +
             '<div class="filter-title">' +
@@ -689,20 +1068,11 @@ function setupTabFilters() {
             '<input type="checkbox" id="monthAll-' + tabId + '" checked> Pilih Semua</div>' +
             '</div></div></div>' +
 
-            '<div class="filter-group"><label>Tanggal Akad Dari</label>' +
-            '<input type="date" id="f-' + tabId + '-tglAkadFrom"></div>' +
-
-            '<div class="filter-group"><label>Tanggal Akad Sampai</label>' +
-            '<input type="date" id="f-' + tabId + '-tglAkadTo"></div>' +
-
             '<div class="filter-group"><label>No Perforasi (Kolom G)</label>' +
             '<input type="text" id="f-' + tabId + '-noPerforasi" placeholder="Cari no perforasi..."></div>' +
 
             '<div class="filter-group"><label>No Pendaftaran (Kolom K)</label>' +
             '<input type="text" id="f-' + tabId + '-noPendaftaran" placeholder="Cari no pendaftaran..."></div>' +
-
-            '<div class="filter-group"><label>Tanggal Daftar (Kolom L)</label>' +
-            '<input type="date" id="f-' + tabId + '-tglDaftar"></div>' +
 
             '<div class="filter-group"><label>Nama Suami (Kolom N)</label>' +
             '<input type="text" id="f-' + tabId + '-namaSuami" placeholder="Cari nama suami..."></div>' +
@@ -711,10 +1081,9 @@ function setupTabFilters() {
             '<input type="text" id="f-' + tabId + '-namaIstri" placeholder="Cari nama istri..."></div>' +
 
             '<div class="filter-group"><label>Tempat Nikah (Kolom CD)</label>' +
-            '<input type="text" id="f-' + tabId + '-tempatNikah" placeholder="Cari tempat nikah..."></div>' +
+            '<select id="f-' + tabId + '-tempatNikah"><option value="">-- Semua Tempat --</option></select></div>' +
 
-            '<div class="filter-group"><label>NTPN (Kolom AZ)</label>' +
-            '<input type="text" id="f-' + tabId + '-ntpn" placeholder="Cari NTPN..."></div>' +
+            ntpnFilter +
 
             '</div>' + // .filter-grid
             '<div class="filter-buttons">' +
@@ -870,13 +1239,33 @@ async function loadData() {
         TAB_IDS.forEach(function(tabId) {
             buildKUAOptions(tabId);
             buildMonthOptions(tabId);
+            buildTempatNikahOptions(tabId);
         });
 
-        // Invalidate semua tab, lalu render semua
+        // Invalidate semua tab, lalu render dengan defer agar tidak freeze
         invalidateAllTabs();
-        renderAllTabs();
+
+        // Render tab aktif langsung, sisanya di-defer
+        var activeTabEl = document.querySelector('.tab-content.active');
+        var activeId    = activeTabEl ? activeTabEl.id.replace('tab-', '') : '';
+        if (TAB_IDS.indexOf(activeId) !== -1) {
+            renderTable(activeId);
+            markTabFresh(activeId);
+        }
+        // Render tab lain secara bertahap
+        var remaining = TAB_IDS.filter(function(t) { return t !== activeId; });
+        remaining.forEach(function(tabId, i) {
+            setTimeout(function() {
+                renderTable(tabId);
+                markTabFresh(tabId);
+            }, (i + 1) * 80);
+        });
+
         updateDashboardStats();
         updateLoadedInfo();
+
+        // ── Muat data Stok dari Sheet "Stok" di file yang sama ──────────
+        loadStokData(fileId);
 
         showProgress(100);
         hideLoading();
@@ -901,6 +1290,77 @@ async function loadData() {
 }
 
 // =====================================================================
+// LOAD DATA STOK (Sheet "Stok" dari file yang sama)
+// =====================================================================
+async function loadStokData(fileId) {
+    try {
+        stokData     = [];
+        stokFilters  = {};
+        stokSort     = { col: STOK_COL.NO_PERFORASI, dir: 'asc' };
+        stokRendered = false;
+        updateBadge('stok', 0);
+
+        // Tampilkan loading di tabel stok
+        var tableDiv = document.getElementById('table-stok');
+        if (tableDiv) tableDiv.innerHTML = '<div class="rendering-state">⏳ Memuat data Stok...</div>';
+
+        var result = await apiCall('getStokData', { fileId: fileId });
+
+        var rows = [];
+        if (result && result.type === 'base64') {
+            if (typeof XLSX === 'undefined') throw new Error('SheetJS belum termuat.');
+            var wb   = XLSX.read(result.content, { type: 'base64', cellDates: true });
+            // Cari sheet bernama "Stok" (case-insensitive)
+            var sheetName = wb.SheetNames.find(function(n) {
+                return n.toLowerCase().trim() === 'stok';
+            }) || wb.SheetNames[0];
+            var ws  = wb.Sheets[sheetName];
+            var raw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+            if (raw.length > 1) {
+                rows = raw.slice(1)
+                    .filter(function(r) { return r.some(function(c) { return c !== '' && c != null; }); })
+                    .map(function(r) {
+                        return r.map(function(c) {
+                            return c instanceof Date ? formatISODate(c) : (c != null ? c : '');
+                        });
+                    });
+            }
+        } else if (result && result.rows) {
+            rows = result.rows || [];
+        }
+
+        stokData = rows;
+
+        // Rebuild filter options lalu render
+        buildStokKUAOptions();
+        buildStokStatusOptions();
+        buildStokMonthOptions();
+
+        // Render jika tab stok sedang aktif, kalau tidak lazy
+        var activeTabEl = document.querySelector('.tab-content.active');
+        var activeId    = activeTabEl ? activeTabEl.id : '';
+        if (activeId === 'tab-stok') {
+            renderStokTable();
+        } else {
+            stokRendered = false; // akan di-render saat user klik tab
+            if (tableDiv) tableDiv.innerHTML = buildEmptyState(
+                'Data Stok siap',
+                'Klik tab ini untuk menampilkan ' + rows.length.toLocaleString('id-ID') + ' baris data stok.'
+            );
+        }
+
+        updateBadge('stok', rows.length);
+        console.log('[STOK] Loaded', rows.length, 'rows');
+
+    } catch (err) {
+        console.error('[STOK] Error:', err);
+        var td = document.getElementById('table-stok');
+        if (td) td.innerHTML = buildEmptyState('Gagal memuat data Stok', err.message || 'Periksa koneksi atau konfigurasi server.');
+        showNotification('Gagal memuat data Stok: ' + (err.message || ''), 'warning');
+    }
+}
+
+// =====================================================================
 // CLEAR DATA
 // =====================================================================
 function clearData() {
@@ -913,6 +1373,12 @@ function clearData() {
     activeFilters  = {};
     sortState      = {};
 
+    // Reset stok
+    stokData     = [];
+    stokFilters  = {};
+    stokSort     = { col: STOK_COL.NO_PERFORASI, dir: 'asc' };
+    stokRendered = false;
+
     invalidateAllTabs();
 
     // Reset stats
@@ -920,18 +1386,26 @@ function clearData() {
         var el = document.getElementById('stat-' + k);
         if (el) el.textContent = '0';
     });
-    TAB_IDS.forEach(function(tabId) { updateBadge(tabId, 0); });
+    TAB_IDS.forEach(function(tabId) {
+        updateBadge(tabId, 0);
+        var sel = document.getElementById('f-' + tabId + '-tempatNikah');
+        if (sel) sel.innerHTML = '<option value="">-- Semua Tempat --</option>';
+        var kuaSel = document.getElementById('f-' + tabId + '-kua');
+        if (kuaSel) kuaSel.innerHTML = '<option value="">-- Semua KUA --</option>';
+    });
+    updateBadge('stok', 0);
+    var stokSel = document.getElementById('f-stok-kua');
+    if (stokSel) stokSel.innerHTML = '<option value="">-- Semua KUA --</option>';
+    var stokStatus = document.getElementById('f-stok-status');
+    if (stokStatus) stokStatus.innerHTML = '<option value="">-- Semua Status --</option>';
 
-    // Tampilkan empty state di semua tab
+    // Tampilkan empty state di semua tab termasuk stok
     TAB_IDS.forEach(function(tabId) {
         var tableDiv = document.getElementById('table-' + tabId);
-        if (tableDiv) {
-            tableDiv.innerHTML = buildEmptyState(
-                'Belum ada data dimuat',
-                'Muat data terlebih dahulu dari tab Dashboard Utama.'
-            );
-        }
+        if (tableDiv) tableDiv.innerHTML = buildEmptyState('Belum ada data dimuat', 'Muat data terlebih dahulu dari tab Dashboard Utama.');
     });
+    var stokDiv = document.getElementById('table-stok');
+    if (stokDiv) stokDiv.innerHTML = buildEmptyState('Belum ada data dimuat', 'Muat data terlebih dahulu dari tab Dashboard Utama.');
 
     var infoEl   = document.getElementById('loadedInfo');
     var btnClear = document.getElementById('btnClearData');
@@ -1047,6 +1521,7 @@ window.addEventListener('DOMContentLoaded', function() {
 
     // Inject filter sections
     setupTabFilters();
+    setupStokFilter();
 
     // Load daftar file (pakai cache jika ada)
     refreshFileList(false);
@@ -1058,7 +1533,7 @@ window.addEventListener('DOMContentLoaded', function() {
 // GLOBAL EXPORTS
 // =====================================================================
 window.switchTab            = switchTab;
-var _refreshFileList        = refreshFileList; // ✅ FIX: capture original before overwriting window.refreshFileList
+var _refreshFileList        = refreshFileList; // ✅ capture sebelum overwrite
 window.refreshFileList      = function() { return _refreshFileList(true); }; // tombol refresh = force
 window.loadData             = loadData;
 window.clearData            = clearData;
@@ -1071,3 +1546,8 @@ window.logout               = logout;
 window.toggleMonthDropdown  = toggleMonthDropdown;
 window.toggleAllMonths      = toggleAllMonths;
 window.toggleFilterSection  = toggleFilterSection;
+// Stok exports
+window.applyStokFilter      = applyStokFilter;
+window.resetStokFilter      = resetStokFilter;
+window.toggleStokSort       = toggleStokSort;
+window.copyStokTable        = copyStokTable;

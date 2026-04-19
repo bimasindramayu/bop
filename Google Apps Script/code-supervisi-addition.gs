@@ -255,3 +255,66 @@ function readXlsxAsBase64(file) {
 //   }
 //   // lanjutkan...
 // }
+
+// =====================================================================
+// FUNGSI: BACA SHEET "Stok" DARI FILE YANG SAMA
+// =====================================================================
+function handleGetStokData(data) {
+  try {
+    var fileId = data.fileId;
+    if (!fileId) {
+      return { success: false, message: 'fileId tidak diberikan' };
+    }
+
+    var file     = DriveApp.getFileById(fileId);
+    var mimeType = file.getMimeType();
+
+    Logger.log('[STOK] Loading sheet Stok from file: ' + file.getName());
+
+    // ── CABANG 1: Google Sheets – baca sheet "Stok" langsung ─────────
+    if (mimeType === MimeType.GOOGLE_SHEETS) {
+      var ss = SpreadsheetApp.openById(fileId);
+      // Cari sheet bernama "Stok" (case-insensitive)
+      var stokSheet = null;
+      ss.getSheets().forEach(function(sh) {
+        if (sh.getName().toLowerCase().trim() === 'stok') stokSheet = sh;
+      });
+      if (!stokSheet) {
+        return { success: false, message: 'Sheet "Stok" tidak ditemukan dalam file ini.' };
+      }
+      var range = stokSheet.getDataRange();
+      var raw   = range.getValues();
+      if (raw.length === 0) {
+        return { success: true, data: { headers: [], rows: [], total: 0 } };
+      }
+      var headers = raw[0].map(function(h) { return String(h || ''); });
+      var rows = raw.slice(1)
+        .filter(function(row) {
+          return row.some(function(c) { return c !== null && c !== undefined && c !== ''; });
+        })
+        .map(function(row) {
+          return row.map(function(cell) {
+            if (cell instanceof Date) {
+              return Utilities.formatDate(cell, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+            }
+            return cell === null || cell === undefined ? '' : String(cell);
+          });
+        });
+      Logger.log('[STOK] Loaded ' + rows.length + ' rows from sheet Stok');
+      return { success: true, data: { type: 'json', headers: headers, rows: rows, total: rows.length } };
+    }
+
+    // ── CABANG 2: xlsx – kembalikan base64, SheetJS di frontend cari sheet "Stok" ──
+    if (mimeType === MimeType.MICROSOFT_EXCEL ||
+        mimeType === 'application/vnd.ms-excel' ||
+        mimeType === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet') {
+      return readXlsxAsBase64(file); // Frontend akan parse sheet "Stok"
+    }
+
+    return { success: false, message: 'Format file tidak didukung: ' + mimeType };
+
+  } catch (e) {
+    Logger.log('[STOK] getStokData error: ' + e.toString());
+    return { success: false, message: 'Error membaca sheet Stok: ' + e.toString() };
+  }
+}

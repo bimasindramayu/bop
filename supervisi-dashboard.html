@@ -114,7 +114,14 @@
         }
 
         .tab-content { display: none; padding: 24px; }
-        .tab-content.active { display: block; }
+        .tab-content.active {
+            display: block;
+            animation: tabFadeIn 0.18s ease-out;
+        }
+        @keyframes tabFadeIn {
+            from { opacity: 0; transform: translateY(4px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
 
         /* ===== DASHBOARD TAB ===== */
         .dashboard-grid {
@@ -374,6 +381,43 @@
         table thead th.sort-desc::after { content: ' ▼'; color: #667eea; font-size: 10px; }
         table thead th.highlight { background: #dbe4ff; border-bottom-color: #667eea; }
 
+        /* ===== ORANGE HIGHLIGHT (kolom spesifik per tab) ===== */
+        table thead th.col-orange-th {
+            background: #fff3e0;
+            border-bottom-color: #fd7e14;
+            color: #e65100;
+        }
+        table tbody td.col-orange-td {
+            background: #fff8f0;
+            color: #c45000;
+            font-weight: 600;
+        }
+        table tbody tr:hover td.col-orange-td { background: #ffe8cc; }
+
+        /* ===== RENDERING STATE (placeholder saat defer) ===== */
+        .rendering-state {
+            text-align: center;
+            padding: 40px;
+            font-size: 14px;
+            color: #667eea;
+            font-weight: 500;
+            animation: pulse 1s ease-in-out infinite alternate;
+        }
+        @keyframes pulse {
+            from { opacity: 0.6; }
+            to   { opacity: 1;   }
+        }
+
+        /* ===== STATUS BADGE (Stok Buku Nikah) ===== */
+        .status-badge {
+            display: inline-block;
+            padding: 3px 10px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 700;
+            white-space: nowrap;
+        }
+
         table tbody tr { transition: background 0.1s; }
         table tbody tr:nth-child(even) { background: #fafbff; }
         table tbody tr:hover { background: #f0f2ff; }
@@ -522,6 +566,10 @@
             <button class="tab-btn active" onclick="switchTab('tab-dashboard')" id="btn-tab-dashboard">
                 🏠 Dashboard Utama
             </button>
+            <button class="tab-btn" onclick="switchTab('tab-semua')" id="btn-tab-semua">
+                📋 Semua Data
+                <span class="tab-indicator" id="badge-semua">0</span>
+            </button>
             <button class="tab-btn" onclick="switchTab('tab-kantor')" id="btn-tab-kantor">
                 🏢 Nikah Kantor KUA
                 <span class="tab-indicator" id="badge-kantor">0</span>
@@ -537,6 +585,10 @@
             <button class="tab-btn" onclick="switchTab('tab-ntpn')" id="btn-tab-ntpn">
                 🧾 NTPN
                 <span class="tab-indicator" id="badge-ntpn">0</span>
+            </button>
+            <button class="tab-btn" onclick="switchTab('tab-stok')" id="btn-tab-stok">
+                📚 Stok Buku Nikah
+                <span class="tab-indicator" id="badge-stok">0</span>
             </button>
         </div>
 
@@ -611,7 +663,16 @@
 
         </div>
 
-        <!-- ==================== TAB 2: NIKAH KANTOR KUA ==================== -->
+        <!-- ==================== TAB 2: SEMUA DATA ==================== -->
+        <div class="tab-content" id="tab-semua">
+            <div class="auto-filter-badge">
+                📋 Menampilkan seluruh data tanpa filter otomatis
+            </div>
+            <div id="filter-semua"></div>
+            <div id="table-semua"></div>
+        </div>
+
+        <!-- ==================== TAB 3: NIKAH KANTOR KUA ==================== -->
         <div class="tab-content" id="tab-kantor">
             <div class="auto-filter-badge">
                 🏢 Filter Otomatis: Tempat Nikah = "KUA / KANTOR"
@@ -646,6 +707,15 @@
             </div>
             <div id="filter-ntpn"></div>
             <div id="table-ntpn"></div>
+        </div>
+
+        <!-- ==================== TAB 6: STOK BUKU NIKAH ==================== -->
+        <div class="tab-content" id="tab-stok">
+            <div class="auto-filter-badge">
+                📚 Data dari Sheet <strong>"Stok"</strong> – diurutkan default berdasarkan No. Porforasi
+            </div>
+            <div id="filter-stok"></div>
+            <div id="table-stok"></div>
         </div>
 
     </div><!-- /tabs-wrapper -->
