@@ -1,7 +1,7 @@
 // ===== SUPERVISI DASHBOARD SCRIPT =====
 // File: supervisi-script.js – OPTIMIZED v2
 // Perubahan:
-//   • Tab Nikah tunggal (combobox view: semua/kantor/wna/kurang12/ntpn)
+//   • Tab Nikah tunggal (combobox view: semua/kantor/wna/kurang10/ntpn)
 //   • Pagination ringan: 100 baris per halaman → aman di HP low-end
 //   • Download XLSX (Data Nikah & Stok)
 //   • Tidak render ulang kecuali diperlukan
@@ -43,7 +43,7 @@ var PRIORITY_COLS = [
     81   // Tempat Nikah
 ];
 
-// Virtual column sentinel (kolom "Selisih Hari" di view kurang12)
+// Virtual column sentinel (kolom "Selisih Hari" di view kurang10)
 var VIRTUAL_SELISIH = -99;
 
 // =====================================================================
@@ -103,14 +103,14 @@ var VIEW_DESC = {
     semua:    'Semua data tanpa filter otomatis',
     kantor:   'Filter: Tempat Nikah mengandung "KUA" atau "KANTOR"',
     wna:      'Filter: Warganegara Suami atau Istri = WNA',
-    kurang12: 'Filter: Selisih Akad – Daftar < 12 hari',
+    kurang10: 'Filter: Selisih Akad – Daftar < 10 hari',
     ntpn:     'Kolom NTPN ditampilkan di posisi depan'
 };
 var VIEW_LABELS = {
     semua:    'Semua Data',
     kantor:   'Nikah Kantor KUA',
     wna:      'Nikah WNA',
-    kurang12: 'Kurang 12 Hari',
+    kurang10: 'Kurang 10 Hari',
     ntpn:     'NTPN'
 };
 
@@ -197,19 +197,19 @@ function filterWNA(rows) {
     });
 }
 
-function filterKurang12(rows) {
+function filterKurang10(rows) {
     return rows.filter(function(row) {
         var a = parseDate(row[COL.TGL_AKAD]);
         var d = parseDate(row[COL.TGL_DAFTAR]);
         var diff = daysBetweenDates(d, a);
-        return diff !== null && diff < 12;
+        return diff !== null && diff < 10;
     });
 }
 
 function getAutoFilter(view) {
     if (view === 'kantor')   return filterKantorKUA;
     if (view === 'wna')      return filterWNA;
-    if (view === 'kurang12') return filterKurang12;
+    if (view === 'kurang10') return filterKurang10;
     return null;
 }
 
@@ -324,8 +324,8 @@ function buildNikahColumns() {
 
     var ordered = priority.concat(rest);
 
-    // kurang12 view: insert virtual Selisih column after TGL_DAFTAR
-    if (activeNikahView === 'kurang12') {
+    // kurang10 view: insert virtual Selisih column after TGL_DAFTAR
+    if (activeNikahView === 'kurang10') {
         var ws = ordered.slice();
         var pos = ws.indexOf(COL.TGL_DAFTAR);
         if (pos !== -1) {
@@ -348,7 +348,7 @@ function buildNikahColumns() {
 function getHighlightCols() {
     if (activeNikahView === 'kantor')   return [COL.TEMPAT_NIKAH];
     if (activeNikahView === 'wna')      return [COL.WN_SUAMI, COL.WN_ISTRI];
-    if (activeNikahView === 'kurang12') return [COL.TGL_AKAD, COL.TGL_DAFTAR, VIRTUAL_SELISIH];
+    if (activeNikahView === 'kurang10') return [COL.TGL_AKAD, COL.TGL_DAFTAR, VIRTUAL_SELISIH];
     if (activeNikahView === 'ntpn')     return [COL.NTPN];
     return [];
 }
@@ -1120,14 +1120,14 @@ function updateDashboardStats() {
     var total    = allData.length;
     var kantor   = filterKantorKUA(allData).length;
     var wna      = filterWNA(allData).length;
-    var kurang12 = filterKurang12(allData).length;
+    var kurang10 = filterKurang10(allData).length;
     var ntpn     = allData.filter(function(r) { return String(r[COL.NTPN]||'').trim() !== ''; }).length;
 
     function setEl(id, val) { var el = document.getElementById(id); if (el) el.textContent = val.toLocaleString('id-ID'); }
     setEl('stat-total',    total);
     setEl('stat-kantor',   kantor);
     setEl('stat-wna',      wna);
-    setEl('stat-kurang12', kurang12);
+    setEl('stat-kurang10', kurang10);
     setEl('stat-ntpn',     ntpn);
     updateBadge('nikah', total);
 }
@@ -1381,7 +1381,7 @@ function clearData() {
     stokPage    = 1;
     stokDirty   = true;
 
-    ['total','kantor','wna','kurang12','ntpn'].forEach(function(k) {
+    ['total','kantor','wna','kurang10','ntpn'].forEach(function(k) {
         var el = document.getElementById('stat-' + k);
         if (el) el.textContent = '0';
     });
