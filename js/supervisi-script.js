@@ -30,6 +30,7 @@ var PRIORITY_COLS = [
     4,   // KUA
     6,  // No Perforasi
     10,  // No Pendaftaran
+    8,  //No Akta Nikah
     11,  // Tgl Daftar
     36,  // Tgl Akad
     13,  // Nama Suami
