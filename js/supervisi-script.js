@@ -120,6 +120,15 @@ function parseDate(val) {
     if (val instanceof Date) return isNaN(val.getTime()) ? null : val;
     var s = String(val).trim();
     if (!s) return null;
+    // Parse ISO date-only strings (YYYY-MM-DD) as LOCAL time to prevent
+    // timezone offset from shifting the displayed date by 1 day.
+    // new Date("2026-04-01") is parsed as UTC midnight, which in UTC+7
+    // can render as March 31 — so we construct it explicitly as local.
+    var isoMatch = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (isoMatch) {
+        var d = new Date(parseInt(isoMatch[1]), parseInt(isoMatch[2]) - 1, parseInt(isoMatch[3]));
+        return isNaN(d.getTime()) ? null : d;
+    }
     var d = new Date(s);
     return isNaN(d.getTime()) ? null : d;
 }
@@ -137,6 +146,16 @@ function formatDate(val) {
     return d.toLocaleDateString('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric' });
 }
 
+// Khusus kolom tanggal tab Stok:
+// GAS mengirim tanggal 1 hari mundur akibat UTC midnight shift.
+// Tambah +1 hari sebelum ditampilkan.
+function formatStokDate(val) {
+    var d = parseDate(val);
+    if (!d) return val || '';
+    d.setDate(d.getDate() + 1);
+    return d.toLocaleDateString('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric' });
+}
+
 function getMonthNumber(val) {
     var d = parseDate(val);
     return d ? d.getMonth() + 1 : null;
@@ -144,9 +163,11 @@ function getMonthNumber(val) {
 
 function formatISODate(d) {
     if (!(d instanceof Date) || isNaN(d.getTime())) return String(d);
-    return d.getFullYear() + '-' +
-           String(d.getMonth() + 1).padStart(2, '0') + '-' +
-           String(d.getDate()).padStart(2, '0');
+    // Use UTC methods: SheetJS creates dates as UTC midnight, so getUTC* always
+    // returns the intended calendar date regardless of the browser's local timezone.
+    return d.getUTCFullYear() + '-' +
+           String(d.getUTCMonth() + 1).padStart(2, '0') + '-' +
+           String(d.getUTCDate()).padStart(2, '0');
 }
 
 function escHtml(s) {
@@ -159,9 +180,11 @@ function escHtml(s) {
 // AUTO-FILTER FUNCTIONS
 // =====================================================================
 function filterKantorKUA(rows) {
+    // Match exact value "KUA / KANTOR" in column CD (Nikah Di),
+    // normalising whitespace around the slash so minor spacing variants are handled.
     return rows.filter(function(row) {
-        var v = String(row[COL.TEMPAT_NIKAH] || '').toUpperCase();
-        return v.indexOf('KUA') !== -1 || v.indexOf('KANTOR') !== -1;
+        var v = String(row[COL.TEMPAT_NIKAH] || '').trim().toUpperCase().replace(/\s*\/\s*/g, ' / ');
+        return v === 'KUA / KANTOR';
     });
 }
 
@@ -252,7 +275,10 @@ function getStokFilteredData() {
     if (f.kua)   rows = rows.filter(function(r) { return String(r[STOK_COL.KUA]||'').trim() === f.kua; });
     if (f.bulan && f.bulan.length > 0) rows = rows.filter(function(r) {
         var d = parseDate(r[STOK_COL.TGL_DIGUNAKAN]);
-        return d && f.bulan.indexOf(d.getMonth()+1) !== -1;
+        if (!d) return false;
+        // +1 hari: koreksi UTC shift, sama seperti formatStokDate
+        var corrected = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1);
+        return f.bulan.indexOf(corrected.getMonth() + 1) !== -1;
     });
     if (f.noPerforasi) rows = rows.filter(function(r) {
         return String(r[STOK_COL.NO_PERFORASI]||'').toLowerCase().indexOf(f.noPerforasi.toLowerCase()) !== -1;
@@ -334,6 +360,23 @@ function buildEmptyState(title, msg) {
            '<div class="empty-icon">' + icon + '</div>' +
            '<h3>' + escHtml(title) + '</h3>' +
            '<p>' + escHtml(msg) + '</p>' +
+           '</div>';
+}
+
+/**
+ * Animated loading card shown inside a tab while data is still being
+ * fetched from the server (async loadStokData, deferred renderNikahTable, etc.)
+ */
+function buildTabLoadingState(message, subMessage) {
+    var msg = message    || 'Memuat data...';
+    var sub = subMessage || 'Mohon tunggu sebentar';
+    return '<div class="tab-loading-state">' +
+           '<div class="tab-spinner-wrap">' +
+           '<div class="tab-spinner-outer"></div>' +
+           '<div class="tab-spinner-inner"></div>' +
+           '</div>' +
+           '<p class="tab-loading-msg">' + escHtml(msg) + '</p>' +
+           '<p class="tab-loading-sub">' + escHtml(sub) + '</p>' +
            '</div>';
 }
 
@@ -547,7 +590,10 @@ function renderStokTable() {
             if (colI === STOK_COL.STATUS) {
                 parts.push('<td>' + buildStatusBadge(val) + '</td>');
             } else {
-                var disp = (typeof val === 'string' && /^\d{4}-\d{2}-\d{2}/.test(val)) ? formatDate(val) : escHtml(String(val));
+                var isDateCol = (colI === STOK_COL.TGL_ALOKASI || colI === STOK_COL.TGL_DIGUNAKAN);
+                var disp = (typeof val === 'string' && /^\d{4}-\d{2}-\d{2}/.test(val))
+                    ? (isDateCol ? formatStokDate(val) : formatDate(val))
+                    : escHtml(String(val));
                 parts.push('<td title="' + escHtml(String(val)) + '">' + disp + '</td>');
             }
         });
@@ -812,7 +858,10 @@ function buildNikahMonthOptions() {
 function buildStokMonthOptions() {
     buildMonthOptions('stok', stokData, function(row) {
         var d = parseDate(row[STOK_COL.TGL_DIGUNAKAN]);
-        return d ? d.getMonth() + 1 : null;
+        if (!d) return null;
+        // +1 hari: koreksi UTC shift, agar label bulan di dropdown sesuai tampilan
+        var corrected = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1);
+        return corrected.getMonth() + 1;
     });
 }
 
@@ -1047,7 +1096,7 @@ function switchTab(tabId) {
 
     if (tabId === 'tab-nikah' && nikahDirty) {
         var tableDiv = document.getElementById('table-nikah');
-        if (tableDiv) tableDiv.innerHTML = '<div class="rendering-state">⏳ Menyiapkan data...</div>';
+        if (tableDiv) tableDiv.innerHTML = buildTabLoadingState('Menyiapkan data Nikah...', 'Merender tabel, harap tunggu');
         requestAnimationFrame(function() {
             requestAnimationFrame(function() { renderNikahTable(); });
         });
@@ -1055,7 +1104,7 @@ function switchTab(tabId) {
 
     if (tabId === 'tab-stok' && stokDirty) {
         var stokDiv = document.getElementById('table-stok');
-        if (stokDiv) stokDiv.innerHTML = '<div class="rendering-state">⏳ Menyiapkan data...</div>';
+        if (stokDiv) stokDiv.innerHTML = buildTabLoadingState('Menyiapkan data Stok...', 'Merender tabel, harap tunggu');
         requestAnimationFrame(function() {
             requestAnimationFrame(function() { renderStokTable(); });
         });
@@ -1138,6 +1187,22 @@ async function loadData() {
     setLoadingText('Mengambil data dari Google Drive...');
     showProgress(10);
     showLoading();
+
+    // Immediately mark inactive tabs with an animated loading state so the
+    // user sees a spinner (not stale/empty content) if they navigate there
+    // while data is being fetched.
+    (function markTabsLoading() {
+        var activeTabEl = document.querySelector('.tab-content.active');
+        var activeId    = activeTabEl ? activeTabEl.id : '';
+        if (activeId !== 'tab-nikah') {
+            var nd = document.getElementById('table-nikah');
+            if (nd) nd.innerHTML = buildTabLoadingState('Memuat data Nikah...', 'Mengambil data dari Google Drive');
+        }
+        if (activeId !== 'tab-stok') {
+            var sd = document.getElementById('table-stok');
+            if (sd) sd.innerHTML = buildTabLoadingState('Memuat data Stok...', 'Menunggu selesai dimuat');
+        }
+    }());
 
     try {
         var result = await apiCall('getSupervisiData', { fileId: fileId });
@@ -1248,7 +1313,7 @@ async function loadStokData(fileId) {
         updateBadge('stok', 0);
 
         var stokDiv = document.getElementById('table-stok');
-        if (stokDiv) stokDiv.innerHTML = '<div class="rendering-state">⏳ Memuat data Stok...</div>';
+        if (stokDiv) stokDiv.innerHTML = buildTabLoadingState('Memuat data Stok...', 'Mengambil sheet Stok dari Google Drive');
 
         var result = await apiCall('getStokData', { fileId: fileId });
         var rows = [];
