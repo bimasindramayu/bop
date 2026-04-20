@@ -15,6 +15,7 @@ var COL = {
     KUA:            4,
     NO_PERFORASI:   6,
     NO_PENDAFTARAN: 10,
+    NO_AKTA_NIKAH:  8,
     TGL_DAFTAR:     11,
     NAMA_SUAMI:     13,
     WN_SUAMI:       17,
