@@ -18,8 +18,10 @@ var COL = {
     NO_AKTA_NIKAH:  8,
     TGL_DAFTAR:     11,
     NAMA_SUAMI:     13,
+    UMUR_SUAMI:     16,   // Kolom Q
     WN_SUAMI:       17,
     NAMA_ISTRI:     25,
+    UMUR_ISTRI:     28,   // Kolom AC
     WN_ISTRI:       29,
     TGL_AKAD:       36,
     NTPN:           51,
@@ -35,8 +37,10 @@ var PRIORITY_COLS = [
     11,  // Tgl Daftar
     36,  // Tgl Akad
     13,  // Nama Suami
+    16,  // Umur Suami
     17,  // WN Suami
     25,  // Nama Istri
+    28,  // Umur Istri
     29,  // WN Istri
     51,  // NTPN
     -1,  // TGL_BAYAR (placeholder, resolved saat build)
@@ -104,14 +108,16 @@ var VIEW_DESC = {
     kantor:   'Filter: Tempat Nikah mengandung "KUA" atau "KANTOR"',
     wna:      'Filter: Warganegara Suami atau Istri = WNA',
     kurang10: 'Filter: Selisih Akad – Daftar < 10 hari',
-    ntpn:     'Kolom NTPN ditampilkan di posisi depan'
+    ntpn:     'Kolom NTPN ditampilkan di posisi depan',
+    bawah19:  'Filter: Umur Suami atau Istri di bawah 19 tahun'
 };
 var VIEW_LABELS = {
     semua:    'Semua Data',
     kantor:   'Nikah Kantor KUA',
     wna:      'Nikah WNA',
     kurang10: 'Kurang 10 Hari',
-    ntpn:     'NTPN'
+    ntpn:     'NTPN',
+    bawah19:  'Usia < 19 Tahun'
 };
 
 // =====================================================================
@@ -206,10 +212,19 @@ function filterKurang10(rows) {
     });
 }
 
+function filterBawah19(rows) {
+    return rows.filter(function(row) {
+        var umurS = parseFloat(row[COL.UMUR_SUAMI]);
+        var umurI = parseFloat(row[COL.UMUR_ISTRI]);
+        return (!isNaN(umurS) && umurS < 19) || (!isNaN(umurI) && umurI < 19);
+    });
+}
+
 function getAutoFilter(view) {
     if (view === 'kantor')   return filterKantorKUA;
     if (view === 'wna')      return filterWNA;
     if (view === 'kurang10') return filterKurang10;
+    if (view === 'bawah19')  return filterBawah19;
     return null;
 }
 
@@ -350,6 +365,7 @@ function getHighlightCols() {
     if (activeNikahView === 'wna')      return [COL.WN_SUAMI, COL.WN_ISTRI];
     if (activeNikahView === 'kurang10') return [COL.TGL_AKAD, COL.TGL_DAFTAR, VIRTUAL_SELISIH];
     if (activeNikahView === 'ntpn')     return [COL.NTPN];
+    if (activeNikahView === 'bawah19')  return [COL.UMUR_SUAMI, COL.UMUR_ISTRI];
     return [];
 }
 
@@ -492,6 +508,13 @@ function renderNikahTable() {
         parts.push('<tr><td class="col-no">' + (start + idx + 1) + '</td>');
         cols.indices.forEach(function(colI) {
             var isOrange = hlSet.indexOf(colI) !== -1;
+
+            // View bawah19: warnai oranye hanya jika nilai < 19
+            if (isOrange && activeNikahView === 'bawah19') {
+                var umurVal = parseFloat(row[colI]);
+                isOrange = !isNaN(umurVal) && umurVal < 19;
+            }
+
             var tdCls = isOrange ? ' class="col-orange-td"' : '';
 
             if (colI === VIRTUAL_SELISIH) {
@@ -1122,6 +1145,7 @@ function updateDashboardStats() {
     var wna      = filterWNA(allData).length;
     var kurang10 = filterKurang10(allData).length;
     var ntpn     = allData.filter(function(r) { return String(r[COL.NTPN]||'').trim() !== ''; }).length;
+    var bawah19  = filterBawah19(allData).length;
 
     function setEl(id, val) { var el = document.getElementById(id); if (el) el.textContent = val.toLocaleString('id-ID'); }
     setEl('stat-total',    total);
@@ -1129,6 +1153,7 @@ function updateDashboardStats() {
     setEl('stat-wna',      wna);
     setEl('stat-kurang10', kurang10);
     setEl('stat-ntpn',     ntpn);
+    setEl('stat-bawah19',  bawah19);
     updateBadge('nikah', total);
 }
 
@@ -1381,7 +1406,7 @@ function clearData() {
     stokPage    = 1;
     stokDirty   = true;
 
-    ['total','kantor','wna','kurang10','ntpn'].forEach(function(k) {
+    ['total','kantor','wna','kurang10','ntpn','bawah19'].forEach(function(k) {
         var el = document.getElementById('stat-' + k);
         if (el) el.textContent = '0';
     });

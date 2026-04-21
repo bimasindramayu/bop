@@ -680,13 +680,17 @@
                             <div class="stat-value" id="stat-wna">0</div>
                             <div class="stat-label">Nikah WNA</div>
                         </div>
-                        <div class="stat-card red" onclick="jumpToView('kurang12')" title="Kurang 12 Hari">
-                            <div class="stat-value" id="stat-kurang12">0</div>
-                            <div class="stat-label">Kurang 12 Hari</div>
+                        <div class="stat-card red" onclick="jumpToView('kurang10')" title="Kurang 10 Hari">
+                            <div class="stat-value" id="stat-kurang10">0</div>
+                            <div class="stat-label">Kurang 10 Hari</div>
                         </div>
                         <div class="stat-card teal" onclick="jumpToView('ntpn')" title="Ada NTPN">
                             <div class="stat-value" id="stat-ntpn">0</div>
                             <div class="stat-label">Ada NTPN</div>
+                        </div>
+                        <div class="stat-card orange" onclick="jumpToView('bawah19')" title="Usia Suami atau Istri < 19 Tahun">
+                            <div class="stat-value" id="stat-bawah19">0</div>
+                            <div class="stat-label">Usia &lt; 19 Tahun</div>
                         </div>
                     </div>
                 </div>
@@ -712,6 +716,7 @@
                     <option value="wna">🌍 Nikah WNA</option>
                     <option value="kurang10">⏱️ Kurang 10 Hari</option>
                     <option value="ntpn">🧾 NTPN</option>
+                    <option value="bawah19">🔶 Usia &lt; 19 Tahun</option>
                 </select>
                 <span class="view-desc" id="nikahViewDesc">Semua data tanpa filter otomatis</span>
             </div>
