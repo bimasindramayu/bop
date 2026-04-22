@@ -126,10 +126,8 @@ function parseDate(val) {
     if (val instanceof Date) return isNaN(val.getTime()) ? null : val;
     var s = String(val).trim();
     if (!s) return null;
-    // Parse ISO date-only strings (YYYY-MM-DD) as LOCAL time to prevent
-    // timezone offset from shifting the displayed date by 1 day.
-    // new Date("2026-04-01") is parsed as UTC midnight, which in UTC+7
-    // can render as March 31 — so we construct it explicitly as local.
+
+    // ISO: YYYY-MM-DD (parse as local time to prevent UTC+7 shift)
     var isoMatch = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
     if (isoMatch) {
         var d = new Date(parseInt(isoMatch[1]), parseInt(isoMatch[2]) - 1, parseInt(isoMatch[3]));
@@ -184,39 +182,6 @@ function formatISODate(d) {
     return d.getUTCFullYear() + '-' +
            String(d.getUTCMonth() + 1).padStart(2, '0') + '-' +
            String(d.getUTCDate()).padStart(2, '0');
-}
-
-// =====================================================================
-// DATE NORMALIZATION
-// =====================================================================
-// Konversi tanggal ke ISO (YYYY-MM-DD) secara murni string — tanpa
-// objek Date sehingga tidak ada risiko timezone shift.
-// Mendukung format: YYYY-MM-DD, DD/MM/YYYY, DD-MM-YYYY.
-function normalizeDateToISO(val) {
-    var s = String(val || '').trim();
-    if (!s) return s;
-    // Sudah ISO
-    if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s;
-    // DD/MM/YYYY atau DD-MM-YYYY
-    var m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
-    if (m) {
-        return m[3] + '-' + String(m[2]).padStart(2, '0') + '-' + String(m[1]).padStart(2, '0');
-    }
-    return s;
-}
-
-// Normalisasi kolom tanggal di seluruh baris stokData.
-// Dipanggil sekali setelah data dimuat, sebelum render/filter.
-function normalizeStokDates(rows) {
-    var dateCols = [STOK_COL.TGL_ALOKASI, STOK_COL.TGL_DIGUNAKAN];
-    return rows.map(function(row) {
-        dateCols.forEach(function(col) {
-            if (row[col] != null && row[col] !== '') {
-                row[col] = normalizeDateToISO(String(row[col]));
-            }
-        });
-        return row;
-    });
 }
 
 function escHtml(s) {
@@ -1409,7 +1374,7 @@ async function loadStokData(fileId) {
             rows = result.rows || [];
         }
 
-        stokData = normalizeStokDates(rows);
+        stokData = rows;
         buildStokKUAOptions();
         buildStokStatusOptions();
         buildStokMonthOptions();
