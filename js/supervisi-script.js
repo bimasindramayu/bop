@@ -108,16 +108,14 @@ var VIEW_DESC = {
     kantor:   'Filter: Tempat Nikah mengandung "KUA" atau "KANTOR"',
     wna:      'Filter: Warganegara Suami atau Istri = WNA',
     kurang10: 'Filter: Selisih Akad – Daftar < 10 hari',
-    ntpn:     'Kolom NTPN ditampilkan di posisi depan',
-    bawah19:  'Filter: Umur Suami atau Istri di bawah 19 tahun'
+    ntpn:     'Kolom NTPN ditampilkan di posisi depan'
 };
 var VIEW_LABELS = {
     semua:    'Semua Data',
     kantor:   'Nikah Kantor KUA',
     wna:      'Nikah WNA',
     kurang10: 'Kurang 10 Hari',
-    ntpn:     'NTPN',
-    bawah19:  'Usia < 19 Tahun'
+    ntpn:     'NTPN'
 };
 
 // =====================================================================
@@ -128,15 +126,23 @@ function parseDate(val) {
     if (val instanceof Date) return isNaN(val.getTime()) ? null : val;
     var s = String(val).trim();
     if (!s) return null;
-    // Parse ISO date-only strings (YYYY-MM-DD) as LOCAL time to prevent
-    // timezone offset from shifting the displayed date by 1 day.
-    // new Date("2026-04-01") is parsed as UTC midnight, which in UTC+7
-    // can render as March 31 — so we construct it explicitly as local.
+
+    // ISO: YYYY-MM-DD (parse as local time to prevent UTC+7 shift)
     var isoMatch = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
     if (isoMatch) {
         var d = new Date(parseInt(isoMatch[1]), parseInt(isoMatch[2]) - 1, parseInt(isoMatch[3]));
         return isNaN(d.getTime()) ? null : d;
     }
+
+    // DD/MM/YYYY atau DD-MM-YYYY (format lokal Indonesia)
+    // Harus ditangani eksplisit: new Date("01/12/2026") dibaca JS
+    // sebagai bulan 1 (MM/DD/YYYY), bukan bulan 12.
+    var dmyMatch = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+    if (dmyMatch) {
+        var d = new Date(parseInt(dmyMatch[3]), parseInt(dmyMatch[2]) - 1, parseInt(dmyMatch[1]));
+        return isNaN(d.getTime()) ? null : d;
+    }
+
     var d = new Date(s);
     return isNaN(d.getTime()) ? null : d;
 }
@@ -508,6 +514,12 @@ function renderNikahTable() {
         parts.push('<tr><td class="col-no">' + (start + idx + 1) + '</td>');
         cols.indices.forEach(function(colI) {
             var isOrange = hlSet.indexOf(colI) !== -1;
+
+            // View bawah19: warnai oranye hanya jika nilai < 19
+            if (isOrange && activeNikahView === 'bawah19') {
+                var umurVal = parseFloat(row[colI]);
+                isOrange = !isNaN(umurVal) && umurVal < 19;
+            }
 
             // View bawah19: warnai oranye hanya jika nilai < 19
             if (isOrange && activeNikahView === 'bawah19') {
@@ -1406,7 +1418,7 @@ function clearData() {
     stokPage    = 1;
     stokDirty   = true;
 
-    ['total','kantor','wna','kurang10','ntpn','bawah19'].forEach(function(k) {
+    ['total','kantor','wna','kurang10','ntpn'].forEach(function(k) {
         var el = document.getElementById('stat-' + k);
         if (el) el.textContent = '0';
     });
