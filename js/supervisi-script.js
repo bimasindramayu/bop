@@ -12,21 +12,23 @@
 // Z=25 … AD=29 … AK=36 … AZ=51 … CD=81
 // =====================================================================
 var COL = {
-    KUA:            4,
-    NO_PERFORASI:   6,
-    NO_PENDAFTARAN: 10,
-    NO_AKTA_NIKAH:  8,
-    TGL_DAFTAR:     11,
-    NAMA_SUAMI:     13,
-    UMUR_SUAMI:     16,   // Kolom Q
-    WN_SUAMI:       17,
-    NAMA_ISTRI:     25,
-    UMUR_ISTRI:     28,   // Kolom AC
-    WN_ISTRI:       29,
-    TGL_AKAD:       36,
-    NTPN:           51,
-    TGL_BAYAR:      -1,   // resolved dinamis dari nama header
-    TEMPAT_NIKAH:   81
+    KUA:                   4,
+    NO_PERFORASI:          6,
+    NO_PENDAFTARAN:        10,
+    NO_AKTA_NIKAH:         8,
+    TGL_DAFTAR:            11,
+    NAMA_SUAMI:            13,
+    UMUR_SUAMI:            16,   // Kolom Q
+    WN_SUAMI:              17,
+    NAMA_ISTRI:            25,
+    UMUR_ISTRI:            28,   // Kolom AC
+    WN_ISTRI:              29,
+    TGL_AKAD:              36,   // Kolom AK
+    STATUS_ISTRI:          33,   // Kolom AH — "Cerai Hidup" / "Cerai Mati" / dll
+    TGL_PENGADILAN_ISTRI:  45,   // Kolom AT — Pencatatan Tanggal Pengadilan Istri
+    NTPN:                  51,
+    TGL_BAYAR:             -1,   // resolved dinamis dari nama header
+    TEMPAT_NIKAH:          81
 };
 
 var PRIORITY_COLS = [
@@ -48,7 +50,10 @@ var PRIORITY_COLS = [
 ];
 
 // Virtual column sentinel (kolom "Selisih Hari" di view kurang10)
-var VIRTUAL_SELISIH = -99;
+var VIRTUAL_SELISIH    = -99;
+// Virtual columns untuk view ceraihidup / ceraimati
+var VIRTUAL_BATAS_IDDAH = -98;  // Tanggal minimum akad setelah iddah (calculated)
+var VIRTUAL_SISA_IDDAH  = -97;  // Selisih hari: TGL_AKAD – batas (negatif = melanggar)
 
 // =====================================================================
 // STOK COLUMN MAP
@@ -104,18 +109,22 @@ var BULAN_ID = ['','Januari','Februari','Maret','April','Mei','Juni',
 // VIEW DESCRIPTIONS
 // =====================================================================
 var VIEW_DESC = {
-    semua:    'Semua data tanpa filter otomatis',
-    kantor:   'Filter: Tempat Nikah mengandung "KUA" atau "KANTOR"',
-    wna:      'Filter: Warganegara Suami atau Istri = WNA',
-    kurang10: 'Filter: Selisih Akad – Daftar < 10 hari',
-    ntpn:     'Kolom NTPN ditampilkan di posisi depan'
+    semua:      'Semua data tanpa filter otomatis',
+    kantor:     'Filter: Tempat Nikah mengandung "KUA" atau "KANTOR"',
+    wna:        'Filter: Warganegara Suami atau Istri = WNA',
+    kurang10:   'Filter: Selisih Akad – Daftar < 10 hari',
+    ntpn:       'Kolom NTPN ditampilkan di posisi depan',
+    ceraihidup: 'Filter: Status Istri = Cerai Hidup | Masa iddah 3 bulan 10 hari dari Tgl Pengadilan. Baris merah = melanggar masa iddah.',
+    ceraimati:  'Filter: Status Istri = Cerai Mati | Masa iddah 4 bulan 10 hari dari Tgl Pengadilan. Baris merah = melanggar masa iddah.'
 };
 var VIEW_LABELS = {
-    semua:    'Semua Data',
-    kantor:   'Nikah Kantor KUA',
-    wna:      'Nikah WNA',
-    kurang10: 'Kurang 10 Hari',
-    ntpn:     'NTPN'
+    semua:      'Semua Data',
+    kantor:     'Nikah Kantor KUA',
+    wna:        'Nikah WNA',
+    kurang10:   'Kurang 10 Hari',
+    ntpn:       'NTPN',
+    ceraihidup: 'Cerai Hidup (Iddah 3 Bln 10 Hr)',
+    ceraimati:  'Cerai Mati (Iddah 4 Bln 10 Hr)'
 };
 
 // =====================================================================
@@ -126,8 +135,21 @@ function parseDate(val) {
     if (val instanceof Date) return isNaN(val.getTime()) ? null : val;
     var s = String(val).trim();
     if (!s) return null;
+    // ⚠️ ROOT FIX: Tangani ISO datetime "YYYY-MM-DDTHH:mm:ss…" sebelum ISO date.
+    // String seperti "2025-12-31T17:00:00.000Z" (SheetJS UTC-serialized Date untuk
+    // 1 Jan 2026 00:00 WIB) harus di-parse sebagai Date object, lalu gunakan
+    // komponen LOCAL — bukan ekstrak "2025-12-31" dari regex (= salah 1 hari).
+    if (/^\d{4}-\d{2}-\d{2}T/.test(s)) {
+        var dt = new Date(s);
+        return isNaN(dt.getTime()) ? null : dt;
+        // Caller (formatStokDate/formatDate) menggunakan getDate/getMonth/getFullYear
+        // (LOCAL) sehingga hasilnya sudah benar.
+    }
 
-    // ISO: YYYY-MM-DD (parse as local time to prevent UTC+7 shift)
+    // Parse ISO date-only strings (YYYY-MM-DD) as LOCAL time to prevent
+    // timezone offset from shifting the displayed date by 1 day.
+    // new Date("2026-04-01") is parsed as UTC midnight, which in UTC+7
+    // can render as March 31 — so we construct it explicitly as local.
     var isoMatch = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
     if (isoMatch) {
         var d = new Date(parseInt(isoMatch[1]), parseInt(isoMatch[2]) - 1, parseInt(isoMatch[3]));
@@ -160,14 +182,20 @@ function formatDate(val) {
     return d.toLocaleDateString('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric' });
 }
 
-// Khusus kolom tanggal tab Stok:
-// GAS mengirim tanggal 1 hari mundur akibat UTC midnight shift.
-// Tambah +1 hari sebelum ditampilkan.
+// Tanggal Stok: normalisasi ke ISO dulu, baru format sebagai DD/MM/YYYY.
+// Dengan memanggil normalizeDateToISO() di sini, fungsi ini menangani
+// SEMUA format input (ISO, DD/MM/YYYY, DD-Mon-YY, tahun 2 digit, dsb.)
+// tanpa harus bergantung pada normalizeStokDates() sudah dijalankan.
 function formatStokDate(val) {
-    var d = parseDate(val);
-    if (!d) return val || '';
-    d.setDate(d.getDate() + 1);
-    return d.toLocaleDateString('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    if (val === null || val === undefined || val === '') return '';
+    // ✅ FIX: Normalisasi ke ISO terlebih dahulu (string-only, tanpa risiko timezone shift)
+    var iso = normalizeDateToISO(String(val));
+    // Parse ISO ke Date object (LOCAL time — tidak ada UTC shift)
+    var d = parseDate(iso);
+    if (!d) return escHtml(String(val));
+    return String(d.getDate()).padStart(2,'0') + '/' +
+           String(d.getMonth() + 1).padStart(2,'0') + '/' +
+           d.getFullYear();
 }
 
 function getMonthNumber(val) {
@@ -177,11 +205,127 @@ function getMonthNumber(val) {
 
 function formatISODate(d) {
     if (!(d instanceof Date) || isNaN(d.getTime())) return String(d);
-    // Use UTC methods: SheetJS creates dates as UTC midnight, so getUTC* always
-    // returns the intended calendar date regardless of the browser's local timezone.
-    return d.getUTCFullYear() + '-' +
-           String(d.getUTCMonth() + 1).padStart(2, '0') + '-' +
-           String(d.getUTCDate()).padStart(2, '0');
+    // ✅ ROOT FIX: SheetJS dengan cellDates:true membuat Date object dalam
+    // LOCAL time (bukan UTC). Menggunakan getUTC* di zona UTC+7 menyebabkan
+    // tanggal mundur 7 jam → hari sebelumnya.
+    //
+    // Contoh: 1 Jan 2026 00:00 WIB (UTC+7) = 31 Des 2025 17:00 UTC.
+    // getUTCDate() = 31 → "2025-12-31" (SALAH).
+    // getDate()    =  1 → "2026-01-01" (BENAR).
+    //
+    // Solusi: gunakan method LOCAL (getFullYear/getMonth/getDate).
+    return d.getFullYear() + '-' +
+           String(d.getMonth() + 1).padStart(2, '0') + '-' +
+           String(d.getDate()).padStart(2, '0');
+}
+
+// =====================================================================
+// DATE NORMALIZATION
+// =====================================================================
+// =====================================================================
+// ✅ FIX: Konversi tanggal ke ISO (YYYY-MM-DD) secara murni string —
+// tanpa objek Date sehingga tidak ada risiko timezone shift.
+//
+// Mendukung semua format yang muncul di spreadsheet:
+//   1. YYYY-MM-DD        → sudah ISO, dikembalikan apa adanya
+//   2. DD-Mon-YY/YYYY    → misal "13-Jan-26", "7-May-2025"
+//   3. DD/MM/YYYY        → Indonesia  → "13/01/2026"
+//   4. MM/DD/YYYY        → US format  → "01/13/2026"
+//   5. DD-MM-YYYY        → dengan tanda hubung → "13-01-2026"
+//
+// Disambiguasi format 3 vs 4:
+//   • Jika angka pertama > 12  → pasti DD/MM (hari tidak bisa > 12 jika bulan)
+//   • Jika angka kedua  > 12  → pasti MM/DD (bulan tidak bisa > 12)
+//   • Jika keduanya ≤ 12 → asumsikan DD/MM (konvensi Indonesia)
+// =====================================================================
+var _DATE_MON_MAP = {
+    jan:1, feb:2, mar:3, apr:4, may:5, mei:5, jun:6,
+    jul:7, aug:8, agu:8, sep:9, oct:10, okt:10, nov:11, dec:12, des:12
+};
+
+function normalizeDateToISO(val) {
+    var s = String(val || '').trim();
+    if (!s) return s;
+
+    // 1a. Pure ISO date string "YYYY-MM-DD" — return as-is (no time component)
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+
+    // 1b. ISO datetime string "YYYY-MM-DDTHH:mm:ss…" (e.g. from SheetJS .toISOString())
+    // ⚠️ ROOT FIX: SheetJS dengan cellDates:true membuat Date LOCAL midnight.
+    // Dalam UTC+7: new Date(2026,0,1) → toISOString() = "2025-12-31T17:00:00.000Z"
+    // Mengambil substring(0,10) saja → "2025-12-31" = SALAH 1 hari.
+    // Solusi: parse string sebagai Date lalu ambil komponen LOCAL (bukan UTC).
+    if (/^\d{4}-\d{2}-\d{2}T/.test(s)) {
+        var dt = new Date(s);
+        if (!isNaN(dt.getTime())) {
+            return dt.getFullYear() + '-' +
+                   String(dt.getMonth() + 1).padStart(2, '0') + '-' +
+                   String(dt.getDate()).padStart(2, '0');
+        }
+        // fallback: ambil bagian date saja (kurang akurat, tapi lebih baik dari error)
+        return s.substring(0, 10);
+    }
+
+    // 2. DD-Mon-YY atau DD-Mon-YYYY  →  "13-Jan-26", "7-May-2025"
+    var m0 = s.match(/^(\d{1,2})[-\/\s]([A-Za-z]{3,})[-\/\s](\d{2,4})$/);
+    if (m0) {
+        var d0  = parseInt(m0[1], 10);
+        var mon = _DATE_MON_MAP[m0[2].toLowerCase().substring(0, 3)];
+        var yr  = parseInt(m0[3], 10);
+        if (yr < 100) yr += 2000;
+        if (mon && d0) {
+            return yr + '-' + String(mon).padStart(2, '0') + '-' + String(d0).padStart(2, '0');
+        }
+    }
+
+    // 3 & 4 & 5. Dua angka dipisah / atau -  (bisa DD/MM, MM/DD, atau DD-MM) — tahun 4 digit
+    var m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+    if (m) {
+        var first  = parseInt(m[1], 10);
+        var second = parseInt(m[2], 10);
+        var year   = m[3];
+        var day, month;
+        if (first > 12) {
+            // angka pertama pasti hari (DD/MM/YYYY)
+            day = first;  month = second;
+        } else if (second > 12) {
+            // angka kedua pasti hari (MM/DD/YYYY — format US)
+            day = second; month = first;
+        } else {
+            // keduanya ≤ 12 → ambiguos, asumsikan DD/MM (Indonesia)
+            day = first;  month = second;
+        }
+        return year + '-' + String(month).padStart(2, '0') + '-' + String(day).padStart(2, '0');
+    }
+
+    // 6. DD/MM/YY atau DD-MM-YY — tahun 2 digit (misal "01-01-26", "01/01/26")
+    var m2 = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2})$/);
+    if (m2) {
+        var f2   = parseInt(m2[1], 10);
+        var s2   = parseInt(m2[2], 10);
+        var yr2  = parseInt(m2[3], 10) + 2000;
+        var day2, mon2;
+        if (f2 > 12) { day2 = f2;  mon2 = s2; }
+        else if (s2 > 12) { day2 = s2; mon2 = f2; }
+        else { day2 = f2; mon2 = s2; }    // asumsikan DD/MM (Indonesia)
+        return yr2 + '-' + String(mon2).padStart(2, '0') + '-' + String(day2).padStart(2, '0');
+    }
+
+    return s;
+}
+
+// Normalisasi kolom tanggal di seluruh baris stokData.
+// Dipanggil sekali setelah data dimuat, sebelum render/filter.
+function normalizeStokDates(rows) {
+    var dateCols = [STOK_COL.TGL_ALOKASI, STOK_COL.TGL_DIGUNAKAN];
+    return rows.map(function(row) {
+        dateCols.forEach(function(col) {
+            if (row[col] != null && row[col] !== '') {
+                row[col] = normalizeDateToISO(String(row[col]));
+            }
+        });
+        return row;
+    });
 }
 
 function escHtml(s) {
@@ -226,11 +370,60 @@ function filterBawah19(rows) {
     });
 }
 
+function filterCeraiHidup(rows) {
+    return rows.filter(function(row) {
+        return String(row[COL.STATUS_ISTRI] || '').trim().toUpperCase() === 'CERAI HIDUP';
+    });
+}
+
+function filterCeraiMati(rows) {
+    return rows.filter(function(row) {
+        return String(row[COL.STATUS_ISTRI] || '').trim().toUpperCase() === 'CERAI MATI';
+    });
+}
+
+// =====================================================================
+// MASA IDDAH HELPER
+// =====================================================================
+/**
+ * Hitung tanggal batas minimum akad setelah masa iddah.
+ * Cerai Hidup : 3 bulan + 10 hari dari tglPengadilan
+ * Cerai Mati  : 4 bulan + 10 hari dari tglPengadilan
+ * Return: Date object, atau null jika tglPengadilan tidak valid.
+ */
+function hitungBatasIddah(tglPengadilan, isCeraiMati) {
+    var d = (tglPengadilan instanceof Date) ? tglPengadilan : parseDate(tglPengadilan);
+    if (!d) return null;
+    var bulan = isCeraiMati ? 4 : 3;
+    // Tambah bulan dulu (perhatikan pelimpahan ke bulan berikutnya otomatis oleh Date)
+    var hasil = new Date(d.getFullYear(), d.getMonth() + bulan, d.getDate());
+    // Tambah 10 hari
+    hasil.setDate(hasil.getDate() + 10);
+    return hasil;
+}
+
+/**
+ * Cek apakah akad melanggar masa iddah.
+ * Return true jika TGL_AKAD < batas iddah (terlalu cepat).
+ */
+function isIddahViolation(row, isCeraiMati) {
+    var tgP = parseDate(row[COL.TGL_PENGADILAN_ISTRI]);
+    var tgA = parseDate(row[COL.TGL_AKAD]);
+    if (!tgP || !tgA) return false;
+    var batas = hitungBatasIddah(tgP, isCeraiMati);
+    // Bandingkan hanya tanggal (hilangkan komponen waktu)
+    var akadMs  = Date.UTC(tgA.getFullYear(),   tgA.getMonth(),   tgA.getDate());
+    var batasMs = Date.UTC(batas.getFullYear(),  batas.getMonth(), batas.getDate());
+    return akadMs < batasMs;
+}
+
 function getAutoFilter(view) {
-    if (view === 'kantor')   return filterKantorKUA;
-    if (view === 'wna')      return filterWNA;
-    if (view === 'kurang10') return filterKurang10;
-    if (view === 'bawah19')  return filterBawah19;
+    if (view === 'kantor')     return filterKantorKUA;
+    if (view === 'wna')        return filterWNA;
+    if (view === 'kurang10')   return filterKurang10;
+    if (view === 'bawah19')    return filterBawah19;
+    if (view === 'ceraihidup') return filterCeraiHidup;
+    if (view === 'ceraimati')  return filterCeraiMati;
     return null;
 }
 
@@ -299,9 +492,7 @@ function getStokFilteredData() {
     if (f.bulan && f.bulan.length > 0) rows = rows.filter(function(r) {
         var d = parseDate(r[STOK_COL.TGL_DIGUNAKAN]);
         if (!d) return false;
-        // +1 hari: koreksi UTC shift, sama seperti formatStokDate
-        var corrected = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1);
-        return f.bulan.indexOf(corrected.getMonth() + 1) !== -1;
+        return f.bulan.indexOf(d.getMonth() + 1) !== -1;
     });
     if (f.noPerforasi) rows = rows.filter(function(r) {
         return String(r[STOK_COL.NO_PERFORASI]||'').toLowerCase().indexOf(f.noPerforasi.toLowerCase()) !== -1;
@@ -310,11 +501,21 @@ function getStokFilteredData() {
         return String(r[STOK_COL.STATUS]||'').toLowerCase().trim() === f.status.toLowerCase();
     });
     var s = stokSort, dir = s.dir === 'asc' ? 1 : -1;
+    // ✅ FIX: Kolom tanggal sudah ber-format ISO (YYYY-MM-DD), sehingga
+    // perbandingan string sederhana (< / >) menghasilkan urutan kronologis
+    // yang benar — lebih andal dari parseFloat yang hanya membaca tahun.
+    var isDateSortCol = (s.col === STOK_COL.TGL_ALOKASI || s.col === STOK_COL.TGL_DIGUNAKAN);
     rows.sort(function(a, b) {
-        var va = a[s.col] != null ? a[s.col] : '', vb = b[s.col] != null ? b[s.col] : '';
+        var va = a[s.col] != null ? String(a[s.col]) : '';
+        var vb = b[s.col] != null ? String(b[s.col]) : '';
+        if (isDateSortCol) {
+            if (va < vb) return -1 * dir;
+            if (va > vb) return  1 * dir;
+            return 0;
+        }
         var na = parseFloat(va), nb = parseFloat(vb);
         if (!isNaN(na) && !isNaN(nb)) return (na - nb) * dir;
-        return String(va).localeCompare(String(vb), 'id') * dir;
+        return va.localeCompare(vb, 'id') * dir;
     });
     return rows;
 }
@@ -360,6 +561,42 @@ function buildNikahColumns() {
         };
     }
 
+    // ceraihidup / ceraimati view: custom priority dengan kolom iddah di depan
+    if (activeNikahView === 'ceraihidup' || activeNikahView === 'ceraimati') {
+        var iddahFront = [
+            COL.KUA,
+            COL.NO_PERFORASI,
+            COL.NO_PENDAFTARAN,
+            COL.NAMA_SUAMI,
+            COL.NAMA_ISTRI,
+            COL.STATUS_ISTRI,           // AH — Status Istri
+            COL.TGL_PENGADILAN_ISTRI,   // AT — Tgl Pengadilan
+            VIRTUAL_BATAS_IDDAH,        // virtual: batas minimum akad
+            COL.TGL_AKAD,               // AK — Tgl Akad
+            VIRTUAL_SISA_IDDAH          // virtual: selisih hari (+ aman / − melanggar)
+        ];
+        // Saring kolom nyata yang ada di data
+        var iddahFrontFiltered = iddahFront.filter(function(c) {
+            return c < 0 || (c >= 0 && c < allHeaders.length);
+        });
+        var iddahSet2 = {};
+        iddahFrontFiltered.forEach(function(c) { if (c >= 0) iddahSet2[c] = true; });
+        // Kolom sisa (semua yang tidak ada di iddahFront)
+        var restIddah = [];
+        for (var ri3 = 0; ri3 < allHeaders.length; ri3++) {
+            if (!iddahSet2[ri3]) restIddah.push(ri3);
+        }
+        var iddahOrdered = iddahFrontFiltered.concat(restIddah);
+        return {
+            headers: iddahOrdered.map(function(i) {
+                if (i === VIRTUAL_BATAS_IDDAH) return 'Batas Akad (Iddah)';
+                if (i === VIRTUAL_SISA_IDDAH)  return 'Selisih Iddah';
+                return allHeaders[i] || '';
+            }),
+            indices: iddahOrdered
+        };
+    }
+
     return {
         headers: ordered.map(function(i) { return allHeaders[i]; }),
         indices: ordered
@@ -367,11 +604,13 @@ function buildNikahColumns() {
 }
 
 function getHighlightCols() {
-    if (activeNikahView === 'kantor')   return [COL.TEMPAT_NIKAH];
-    if (activeNikahView === 'wna')      return [COL.WN_SUAMI, COL.WN_ISTRI];
-    if (activeNikahView === 'kurang10') return [COL.TGL_AKAD, COL.TGL_DAFTAR, VIRTUAL_SELISIH];
-    if (activeNikahView === 'ntpn')     return [COL.NTPN];
-    if (activeNikahView === 'bawah19')  return [COL.UMUR_SUAMI, COL.UMUR_ISTRI];
+    if (activeNikahView === 'kantor')     return [COL.TEMPAT_NIKAH];
+    if (activeNikahView === 'wna')        return [COL.WN_SUAMI, COL.WN_ISTRI];
+    if (activeNikahView === 'kurang10')   return [COL.TGL_AKAD, COL.TGL_DAFTAR, VIRTUAL_SELISIH];
+    if (activeNikahView === 'ntpn')       return [COL.NTPN];
+    if (activeNikahView === 'bawah19')    return [COL.UMUR_SUAMI, COL.UMUR_ISTRI];
+    if (activeNikahView === 'ceraihidup' || activeNikahView === 'ceraimati')
+        return [COL.STATUS_ISTRI, COL.TGL_PENGADILAN_ISTRI, VIRTUAL_BATAS_IDDAH, COL.TGL_AKAD, VIRTUAL_SISA_IDDAH];
     return [];
 }
 
@@ -500,18 +739,29 @@ function renderNikahTable() {
 
     cols.headers.forEach(function(h, idx) {
         var colI   = cols.indices[idx];
-        var sc     = (sort.col === colI && colI !== VIRTUAL_SELISIH)
+        var isVirtual = (colI === VIRTUAL_SELISIH || colI === VIRTUAL_BATAS_IDDAH || colI === VIRTUAL_SISA_IDDAH);
+        var sc     = (sort.col === colI && !isVirtual)
                      ? (sort.dir === 'asc' ? 'sort-asc' : 'sort-desc') : '';
         var hlCls  = (hlSet.indexOf(colI) !== -1) ? ' col-orange-th' : '';
-        var click  = (colI === VIRTUAL_SELISIH)
+        var click  = isVirtual
                      ? ''
                      : 'onclick="toggleNikahSort(' + colI + ')" title="Klik untuk urutkan"';
         parts.push('<th class="' + sc + hlCls + '" ' + click + '>' + escHtml(String(h)) + '</th>');
     });
     parts.push('</tr></thead><tbody>');
 
+    // Pre-compute iddah mode once per render
+    var isIddahView = (activeNikahView === 'ceraihidup' || activeNikahView === 'ceraimati');
+    var isCeraiMati = (activeNikahView === 'ceraimati');
+
     displayRows.forEach(function(row, idx) {
-        parts.push('<tr><td class="col-no">' + (start + idx + 1) + '</td>');
+        // ── Row-level iddah violation coloring ──
+        var rowAttr = '';
+        if (isIddahView && isIddahViolation(row, isCeraiMati)) {
+            rowAttr = ' class="row-iddah-violation"';
+        }
+        parts.push('<tr' + rowAttr + '><td class="col-no">' + (start + idx + 1) + '</td>');
+
         cols.indices.forEach(function(colI) {
             var isOrange = hlSet.indexOf(colI) !== -1;
 
@@ -521,20 +771,42 @@ function renderNikahTable() {
                 isOrange = !isNaN(umurVal) && umurVal < 19;
             }
 
-            // View bawah19: warnai oranye hanya jika nilai < 19
-            if (isOrange && activeNikahView === 'bawah19') {
-                var umurVal = parseFloat(row[colI]);
-                isOrange = !isNaN(umurVal) && umurVal < 19;
-            }
-
             var tdCls = isOrange ? ' class="col-orange-td"' : '';
 
+            // ── Virtual: Selisih Hari (view kurang10) ──
             if (colI === VIRTUAL_SELISIH) {
                 var tA = parseDate(row[COL.TGL_AKAD]);
                 var tD = parseDate(row[COL.TGL_DAFTAR]);
                 var diff = daysBetweenDates(tD, tA);
                 var disp = diff !== null ? diff + ' hari' : '-';
                 parts.push('<td class="col-orange-td">' + disp + '</td>');
+                return;
+            }
+
+            // ── Virtual: Batas Akad (iddah) ──
+            if (colI === VIRTUAL_BATAS_IDDAH) {
+                var tgP = parseDate(row[COL.TGL_PENGADILAN_ISTRI]);
+                var bts = tgP ? hitungBatasIddah(tgP, isCeraiMati) : null;
+                var dispB = bts ? formatDate(bts) : '-';
+                parts.push('<td class="col-orange-td">' + dispB + '</td>');
+                return;
+            }
+
+            // ── Virtual: Selisih Iddah ──
+            if (colI === VIRTUAL_SISA_IDDAH) {
+                var tgP2 = parseDate(row[COL.TGL_PENGADILAN_ISTRI]);
+                var tgA2 = parseDate(row[COL.TGL_AKAD]);
+                if (tgP2 && tgA2) {
+                    var bts2    = hitungBatasIddah(tgP2, isCeraiMati);
+                    var selisih = daysBetweenDates(bts2, tgA2);  // + aman, − melanggar
+                    var selLabel = (selisih >= 0 ? '+' : '') + selisih + ' hari';
+                    var selStyle = selisih < 0
+                        ? ' style="color:#c0392b;font-weight:700;"'
+                        : ' style="color:#1e8449;font-weight:700;"';
+                    parts.push('<td class="col-orange-td"' + selStyle + '>' + selLabel + '</td>');
+                } else {
+                    parts.push('<td class="col-orange-td">-</td>');
+                }
                 return;
             }
 
@@ -560,11 +832,16 @@ function renderNikahTable() {
 // RENDER STOK TABLE
 // =====================================================================
 var STATUS_COLORS = {
-    'tersedia': { bg: '#d4edda', color: '#155724', border: '#c3e6cb' },
-    'terpakai': { bg: '#f8d7da', color: '#721c24', border: '#f5c6cb' },
-    'rusak':    { bg: '#fff3cd', color: '#856404', border: '#ffeeba' },
-    'hilang':   { bg: '#fde2e4', color: '#842029', border: '#f5c6cb' },
-    'default':  { bg: '#e2e3e5', color: '#383d41', border: '#d6d8db' }
+    // Status umum
+    'tersedia':        { bg: '#cce5ff', color: '#004085', border: '#b8daff' },  // biru – tersedia
+    'terpakai':        { bg: '#d4edda', color: '#155724', border: '#c3e6cb' },  // hijau – terpakai
+    'rusak':           { bg: '#fff3cd', color: '#856404', border: '#ffeeba' },  // kuning – rusak
+    'hilang':          { bg: '#fde2e4', color: '#842029', border: '#f5c6cb' },  // merah – hilang
+    // ✅ Status buku nikah (nama persis dari spreadsheet, di-lowercase saat lookup)
+    'belum digunakan': { bg: '#cce5ff', color: '#004085', border: '#b8daff' },  // biru muda – belum dipakai
+    'sudah digunakan': { bg: '#d4edda', color: '#155724', border: '#c3e6cb' },  // hijau – sudah dipakai
+    // Fallback
+    'default':         { bg: '#e2e3e5', color: '#383d41', border: '#d6d8db' }
 };
 function getStatusStyle(val) {
     return STATUS_COLORS[String(val||'').toLowerCase().trim()] || STATUS_COLORS['default'];
@@ -626,10 +903,14 @@ function renderStokTable() {
             var val = row[colI] != null ? row[colI] : '';
             if (colI === STOK_COL.STATUS) {
                 parts.push('<td>' + buildStatusBadge(val) + '</td>');
+            } else if (colI === STOK_COL.TGL_ALOKASI || colI === STOK_COL.TGL_DIGUNAKAN) {
+                // ✅ FIX: Selalu gunakan formatStokDate (sudah handle semua format input
+                // termasuk ISO, DD/MM/YYYY, DD-Mon-YY, tahun 2 digit, dsb.)
+                // Tidak perlu cek ISO dulu — normalizeDateToISO dipanggil di dalam.
+                parts.push('<td title="' + escHtml(String(val)) + '">' + formatStokDate(val) + '</td>');
             } else {
-                var isDateCol = (colI === STOK_COL.TGL_ALOKASI || colI === STOK_COL.TGL_DIGUNAKAN);
                 var disp = (typeof val === 'string' && /^\d{4}-\d{2}-\d{2}/.test(val))
-                    ? (isDateCol ? formatStokDate(val) : formatDate(val))
+                    ? formatDate(val)
                     : escHtml(String(val));
                 parts.push('<td title="' + escHtml(String(val)) + '">' + disp + '</td>');
             }
@@ -895,10 +1176,7 @@ function buildNikahMonthOptions() {
 function buildStokMonthOptions() {
     buildMonthOptions('stok', stokData, function(row) {
         var d = parseDate(row[STOK_COL.TGL_DIGUNAKAN]);
-        if (!d) return null;
-        // +1 hari: koreksi UTC shift, agar label bulan di dropdown sesuai tampilan
-        var corrected = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1);
-        return corrected.getMonth() + 1;
+        return d ? d.getMonth() + 1 : null;
     });
 }
 
@@ -1006,6 +1284,8 @@ function updateBadge(tabId, count) {
 function copyNikahTable() {
     var rows = getNikahData();
     var cols = buildNikahColumns();
+    var isIddahV  = (activeNikahView === 'ceraihidup' || activeNikahView === 'ceraimati');
+    var isCeraiM  = (activeNikahView === 'ceraimati');
     var lines = [['#'].concat(cols.headers).join('\t')];
     rows.forEach(function(row, idx) {
         var line = [idx + 1];
@@ -1013,6 +1293,19 @@ function copyNikahTable() {
             if (colI === VIRTUAL_SELISIH) {
                 var diff = daysBetweenDates(parseDate(row[COL.TGL_DAFTAR]), parseDate(row[COL.TGL_AKAD]));
                 line.push(diff !== null ? diff : '');
+            } else if (colI === VIRTUAL_BATAS_IDDAH) {
+                var tgP = parseDate(row[COL.TGL_PENGADILAN_ISTRI]);
+                var bts = tgP ? hitungBatasIddah(tgP, isCeraiM) : null;
+                line.push(bts ? formatDate(bts) : '');
+            } else if (colI === VIRTUAL_SISA_IDDAH) {
+                var tgP2 = parseDate(row[COL.TGL_PENGADILAN_ISTRI]);
+                var tgA2 = parseDate(row[COL.TGL_AKAD]);
+                if (tgP2 && tgA2) {
+                    var bts2 = hitungBatasIddah(tgP2, isCeraiM);
+                    line.push(daysBetweenDates(bts2, tgA2));
+                } else {
+                    line.push('');
+                }
             } else {
                 line.push(row[colI] != null ? row[colI] : '');
             }
@@ -1058,11 +1351,12 @@ function downloadNikahAsXlsx() {
         showNotification('Library XLSX belum termuat', 'error');
         return;
     }
-    var rows   = getNikahData();
-    var cols   = buildNikahColumns();
-    var label  = VIEW_LABELS[activeNikahView] || 'Nikah';
-    var header = ['#'].concat(cols.headers);
-    var data   = [header];
+    var rows      = getNikahData();
+    var cols      = buildNikahColumns();
+    var label     = VIEW_LABELS[activeNikahView] || 'Nikah';
+    var isCeraiM  = (activeNikahView === 'ceraimati');
+    var header    = ['#'].concat(cols.headers);
+    var data      = [header];
 
     rows.forEach(function(row, idx) {
         var line = [idx + 1];
@@ -1070,9 +1364,21 @@ function downloadNikahAsXlsx() {
             if (colI === VIRTUAL_SELISIH) {
                 var diff = daysBetweenDates(parseDate(row[COL.TGL_DAFTAR]), parseDate(row[COL.TGL_AKAD]));
                 line.push(diff !== null ? diff : '');
+            } else if (colI === VIRTUAL_BATAS_IDDAH) {
+                var tgP = parseDate(row[COL.TGL_PENGADILAN_ISTRI]);
+                var bts = tgP ? hitungBatasIddah(tgP, isCeraiM) : null;
+                line.push(bts ? formatDate(bts) : '');
+            } else if (colI === VIRTUAL_SISA_IDDAH) {
+                var tgP2 = parseDate(row[COL.TGL_PENGADILAN_ISTRI]);
+                var tgA2 = parseDate(row[COL.TGL_AKAD]);
+                if (tgP2 && tgA2) {
+                    var bts2 = hitungBatasIddah(tgP2, isCeraiM);
+                    line.push(daysBetweenDates(bts2, tgA2));
+                } else {
+                    line.push('');
+                }
             } else {
                 var val = row[colI] != null ? row[colI] : '';
-                // Convert ISO date string to proper date string for Excel
                 if (typeof val === 'string' && /^\d{4}-\d{2}-\d{2}/.test(val)) {
                     val = formatDate(val);
                 }
@@ -1152,20 +1458,34 @@ function switchTab(tabId) {
 // DASHBOARD STATS
 // =====================================================================
 function updateDashboardStats() {
-    var total    = allData.length;
-    var kantor   = filterKantorKUA(allData).length;
-    var wna      = filterWNA(allData).length;
-    var kurang10 = filterKurang10(allData).length;
-    var ntpn     = allData.filter(function(r) { return String(r[COL.NTPN]||'').trim() !== ''; }).length;
-    var bawah19  = filterBawah19(allData).length;
+    var total      = allData.length;
+    var kantor     = filterKantorKUA(allData).length;
+    var wna        = filterWNA(allData).length;
+    var kurang10   = filterKurang10(allData).length;
+    var ntpn       = allData.filter(function(r) { return String(r[COL.NTPN]||'').trim() !== ''; }).length;
+    var bawah19    = filterBawah19(allData).length;
+
+    var ceraiHidupAll     = filterCeraiHidup(allData);
+    var ceraiMatiAll      = filterCeraiMati(allData);
+    var ceraiHidupLanggar = ceraiHidupAll.filter(function(r) { return isIddahViolation(r, false); }).length;
+    var ceraiMatiLanggar  = ceraiMatiAll.filter(function(r)  { return isIddahViolation(r, true);  }).length;
 
     function setEl(id, val) { var el = document.getElementById(id); if (el) el.textContent = val.toLocaleString('id-ID'); }
-    setEl('stat-total',    total);
-    setEl('stat-kantor',   kantor);
-    setEl('stat-wna',      wna);
-    setEl('stat-kurang10', kurang10);
-    setEl('stat-ntpn',     ntpn);
-    setEl('stat-bawah19',  bawah19);
+    function setLanggar(id, val) {
+        var el = document.getElementById(id);
+        if (el) el.textContent = val.toLocaleString('id-ID') + ' langgar';
+        if (el) el.style.display = val > 0 ? '' : 'none';
+    }
+    setEl('stat-total',            total);
+    setEl('stat-kantor',           kantor);
+    setEl('stat-wna',              wna);
+    setEl('stat-kurang10',         kurang10);
+    setEl('stat-ntpn',             ntpn);
+    setEl('stat-bawah19',          bawah19);
+    setEl('stat-ceraihidup',       ceraiHidupAll.length);
+    setLanggar('stat-ceraihidup-langgar', ceraiHidupLanggar);
+    setEl('stat-ceraimati',        ceraiMatiAll.length);
+    setLanggar('stat-ceraimati-langgar',  ceraiMatiLanggar);
     updateBadge('nikah', total);
 }
 
@@ -1256,7 +1576,9 @@ async function loadData() {
             if (typeof XLSX === 'undefined') throw new Error('Library SheetJS belum termuat.');
             var wb = XLSX.read(result.content, { type: 'base64', cellDates: true });
             var ws = wb.Sheets[wb.SheetNames[0]];
-            var raw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+            // ✅ FIX: cellDates:true agar sel tanggal dikembalikan sebagai Date object
+            // (bukan ISO string via .toISOString() yang bisa menyebabkan UTC-shift H-1).
+            var raw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', cellDates: true });
             if (raw.length > 0) {
                 headers = raw[0].map(function(h) { return String(h != null ? h : ''); });
                 rows = raw.slice(1)
@@ -1362,7 +1684,10 @@ async function loadStokData(fileId) {
             var wb = XLSX.read(result.content, { type: 'base64', cellDates: true });
             var sheetName = wb.SheetNames.find(function(n) { return n.toLowerCase().trim() === 'stok'; }) || wb.SheetNames[0];
             var ws  = wb.Sheets[sheetName];
-            var raw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+            // ✅ FIX: cellDates:true agar sel tanggal dikembalikan sebagai Date object
+            // (bukan ISO string via .toISOString() yang bisa menyebabkan UTC-shift H-1).
+            // formatISODate() menggunakan method LOCAL sehingga hasilnya selalu benar.
+            var raw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', cellDates: true });
             if (raw.length > 1) {
                 rows = raw.slice(1)
                     .filter(function(r) { return r.some(function(c) { return c !== '' && c != null; }); })
@@ -1374,7 +1699,7 @@ async function loadStokData(fileId) {
             rows = result.rows || [];
         }
 
-        stokData = rows;
+        stokData = normalizeStokDates(rows);
         buildStokKUAOptions();
         buildStokStatusOptions();
         buildStokMonthOptions();

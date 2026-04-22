@@ -135,26 +135,51 @@ function handleGetStokData(data) {
         jul:7, aug:8, agu:8, sep:9, oct:10, okt:10, nov:11, dec:12, des:12
       };
 
+      // ✅ FIX: Konversi display string ke ISO YYYY-MM-DD.
+      // Mendukung semua format yang mungkin muncul di spreadsheet:
+      //   1. "1-Apr-26"  / "7-May-2025"  (DD-Mon-YY/YYYY)
+      //   2. "13/01/2026"               (DD/MM/YYYY  — Indonesia)
+      //   3. "01/13/2026"               (MM/DD/YYYY  — US)
+      //   4. "13-01-2026"               (DD-MM-YYYY)
+      //   5. "2026-01-13"               (ISO, kembalikan apa adanya)
+      //
+      // Disambiguasi format 2 vs 3:
+      //   • first > 12  → DD/MM (hari tidak mungkin > 12 untuk "bulan")
+      //   • second > 12 → MM/DD (bulan tidak mungkin > 12)
+      //   • keduanya ≤ 12 → asumsikan DD/MM (konvensi Indonesia)
       function parseDisplayDate(s) {
         if (!s) return '';
         s = String(s).trim();
         if (!s) return '';
 
-        // "1-Apr-26" atau "7-May-2025"
+        // Format 1: "1-Apr-26" atau "7-May-2025"
         var m1 = s.match(/^(\d{1,2})[-\/\s]([A-Za-z]{3,})[-\/\s](\d{2,4})$/);
         if (m1) {
-          var d   = parseInt(m1[1]);
+          var d   = parseInt(m1[1], 10);
           var mon = MON[m1[2].toLowerCase().substring(0, 3)];
-          var yr  = parseInt(m1[3]);
+          var yr  = parseInt(m1[3], 10);
           if (yr < 100) yr += 2000;
           if (mon && d) return yr + '-' + String(mon).padStart(2,'0') + '-' + String(d).padStart(2,'0');
         }
 
-        // "31/03/2026"
-        var m2 = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-        if (m2) return m2[3] + '-' + m2[2].padStart(2,'0') + '-' + m2[1].padStart(2,'0');
+        // Format 2, 3, 4: dua angka dipisah / atau -  (DD/MM, MM/DD, DD-MM)
+        var m2 = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+        if (m2) {
+          var first  = parseInt(m2[1], 10);
+          var second = parseInt(m2[2], 10);
+          var year   = m2[3];
+          var day, month;
+          if (first > 12) {
+            day = first;  month = second;   // pasti DD/MM/YYYY
+          } else if (second > 12) {
+            day = second; month = first;    // pasti MM/DD/YYYY (format US)
+          } else {
+            day = first;  month = second;   // ambiguos → asumsikan DD/MM (Indonesia)
+          }
+          return year + '-' + String(month).padStart(2,'0') + '-' + String(day).padStart(2,'0');
+        }
 
-        // "2026-03-31" (sudah ISO)
+        // Format 5: sudah ISO
         if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
 
         return s;

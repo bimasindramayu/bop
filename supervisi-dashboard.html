@@ -432,6 +432,39 @@
             text-overflow: ellipsis;
         }
         table tbody tr:hover td.col-orange-td { background: #ffe8cc; }
+
+        /* ===== IDDAH VIOLATION ROW ===== */
+        table tbody tr.row-iddah-violation td {
+            background: #fff0f0 !important;
+            border-bottom-color: #f5c6cb;
+        }
+        table tbody tr.row-iddah-violation:hover td {
+            background: #ffe4e4 !important;
+        }
+        table tbody tr.row-iddah-violation td.col-orange-td {
+            background: #ffd6d6 !important;
+        }
+        table tbody tr.row-iddah-violation:hover td.col-orange-td {
+            background: #ffc5c5 !important;
+        }
+        /* Label kecil "⚠ Langgar Iddah" di kolom No pada baris violation */
+        table tbody tr.row-iddah-violation td.col-no::after {
+            content: '⚠';
+            display: block;
+            font-size: 9px;
+            color: #c0392b;
+            margin-top: 2px;
+        }
+
+        .stat-card.pink .stat-value { color: #e83e8c; }
+        .stat-card.pink-dark .stat-value { color: #c0392b; }
+        /* Stat card iddah: value utama + sub-label pelanggaran */
+        .stat-card .stat-sublabel {
+            font-size: 11px;
+            color: #c0392b;
+            font-weight: 700;
+            margin-top: 3px;
+        }
         .col-no { width: 40px; min-width: 40px; text-align: center; color: #999; font-size: 10px; }
 
         /* ===== STATUS BADGE ===== */
@@ -692,6 +725,16 @@
                             <div class="stat-value" id="stat-bawah19">0</div>
                             <div class="stat-label">Usia &lt; 19 Tahun</div>
                         </div>
+                        <div class="stat-card pink" onclick="jumpToView('ceraihidup')" title="Istri Cerai Hidup — klik untuk lihat data, merah = langgar iddah">
+                            <div class="stat-value" id="stat-ceraihidup">0</div>
+                            <div class="stat-label">Cerai Hidup</div>
+                            <div class="stat-sublabel" id="stat-ceraihidup-langgar" style="display:none" title="Melanggar masa iddah"></div>
+                        </div>
+                        <div class="stat-card pink-dark" onclick="jumpToView('ceraimati')" title="Istri Cerai Mati — klik untuk lihat data, merah = langgar iddah">
+                            <div class="stat-value" id="stat-ceraimati">0</div>
+                            <div class="stat-label">Cerai Mati</div>
+                            <div class="stat-sublabel" id="stat-ceraimati-langgar" style="display:none" title="Melanggar masa iddah"></div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -717,6 +760,8 @@
                     <option value="kurang10">⏱️ Kurang 10 Hari</option>
                     <option value="ntpn">🧾 NTPN</option>
                     <option value="bawah19">🔶 Usia &lt; 19 Tahun</option>
+                    <option value="ceraihidup">💔 Cerai Hidup (Iddah 3 Bln 10 Hr)</option>
+                    <option value="ceraimati">🖤 Cerai Mati (Iddah 4 Bln 10 Hr)</option>
                 </select>
                 <span class="view-desc" id="nikahViewDesc">Semua data tanpa filter otomatis</span>
             </div>
