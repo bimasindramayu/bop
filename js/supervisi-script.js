@@ -56,19 +56,79 @@ var VIRTUAL_BATAS_IDDAH = -98;  // Tanggal minimum akad setelah iddah (calculate
 var VIRTUAL_SISA_IDDAH  = -97;  // Selisih hari: TGL_AKAD – batas (negatif = melanggar)
 
 // =====================================================================
-// STOK COLUMN MAP
+// STOK COLUMN MAP — dynamic (resolved from actual header row)
 // =====================================================================
+// Semua nilai diinisialisasi -1 (belum diketahui).
+// resolveStokCols(headers) dipanggil setelah header dibaca dari sheet,
+// sehingga urutan kolom di spreadsheet tidak berpengaruh.
 var STOK_COL = {
-    NO: 0, PROVINSI: 1, KAB: 2, KEC: 3, KUA: 4,
-    NO_SERI: 5, NO_PERFORASI: 6, TAHUN_BUKU: 7,
-    TGL_ALOKASI: 8, TGL_DIGUNAKAN: 9, KETERANGAN: 10, STATUS: 11
+    NO: -1, PROVINSI: -1, KAB: -1, KEC: -1, KUA: -1,
+    NO_SERI: -1, NO_PERFORASI: -1, TAHUN_BUKU: -1,
+    TGL_ALOKASI: -1, TGL_DIGUNAKAN: -1, KETERANGAN: -1, STATUS: -1
 };
-var DISPLAY_STOK_COLS = [
-    STOK_COL.KUA, STOK_COL.NO_SERI, STOK_COL.NO_PERFORASI,
-    STOK_COL.TAHUN_BUKU, STOK_COL.TGL_ALOKASI, STOK_COL.TGL_DIGUNAKAN,
-    STOK_COL.KETERANGAN, STOK_COL.STATUS
-];
-var STOK_COL_NAMES = ['KUA','No. Seri','No. Porforasi','Tahun Buku','Tgl. Alokasi','Tgl. Digunakan','Keterangan','Status'];
+
+// DISPLAY_STOK_COLS & STOK_COL_NAMES diisi ulang oleh resolveStokCols.
+var DISPLAY_STOK_COLS = [];
+var STOK_COL_NAMES    = [];
+
+// Alias map: field key → array of lowercase header strings yang dikenali.
+// Tambahkan alias baru di sini jika nama kolom di spreadsheet berubah.
+var STOK_HEADER_ALIASES = {
+    NO:           ['no', 'no.', 'nomor'],
+    NO_SERI:      ['no. seri', 'no seri', 'nomor seri', 'seri'],
+    NO_PERFORASI: ['no. porforasi', 'no. perforasi', 'no porforasi', 'no perforasi',
+                   'nomor perforasi', 'nomor porforasi'],
+    TAHUN_BUKU:   ['tahun buku', 'tahun'],
+    TGL_ALOKASI:  ['tgl. alokasi', 'tgl alokasi', 'tanggal alokasi'],
+    TGL_DIGUNAKAN:['tgl. digunakan', 'tgl digunakan', 'tanggal digunakan'],
+    PROVINSI:     ['provinsi'],
+    KAB:          ['kabupaten/kota', 'kabupaten', 'kota', 'kab/kota', 'kab. / kota'],
+    KEC:          ['kecamatan', 'kec'],
+    KUA:          ['kua'],
+    KETERANGAN:   ['keterangan', 'ket'],
+    STATUS:       ['status']
+};
+
+/**
+ * Resolusi dinamis kolom Stok dari baris header aktual.
+ * Dipanggil sekali setelah sheet Stok dimuat.
+ * Setelah ini, STOK_COL, DISPLAY_STOK_COLS, dan STOK_COL_NAMES
+ * mencerminkan urutan kolom yang sesungguhnya di spreadsheet.
+ *
+ * @param {string[]} headers  — array nama kolom dari baris pertama sheet Stok
+ */
+function resolveStokCols(headers) {
+    // Reset semua ke -1
+    Object.keys(STOK_COL).forEach(function(k) { STOK_COL[k] = -1; });
+
+    // Bangun lookup: header (lowercase+trim) → index kolom
+    var lookup = {};
+    headers.forEach(function(h, i) { lookup[String(h).toLowerCase().trim()] = i; });
+
+    // Petakan setiap field ke kolom pertama yang cocok
+    Object.keys(STOK_HEADER_ALIASES).forEach(function(field) {
+        var aliases = STOK_HEADER_ALIASES[field];
+        for (var a = 0; a < aliases.length; a++) {
+            if (lookup[aliases[a]] !== undefined) {
+                STOK_COL[field] = lookup[aliases[a]];
+                break;
+            }
+        }
+    });
+
+    // Rebuild DISPLAY_STOK_COLS: semua kolom kecuali kolom NO,
+    // diurutkan sesuai posisi aktual di spreadsheet (ascending index).
+    var noIdx = STOK_COL.NO >= 0 ? STOK_COL.NO : 0;
+    DISPLAY_STOK_COLS = [];
+    STOK_COL_NAMES    = [];
+    headers.forEach(function(h, i) {
+        if (i === noIdx) return;   // skip kolom "No" (row-number, tidak perlu ditampilkan)
+        DISPLAY_STOK_COLS.push(i);
+        STOK_COL_NAMES.push(String(h));
+    });
+
+    console.log('[STOK] resolveStokCols →', JSON.stringify(STOK_COL));
+}
 
 // =====================================================================
 // PAGINATION CONFIG
@@ -95,7 +155,7 @@ var nikahDirty      = true;  // needs re-render
 var stokData        = [];
 var stokHeaders     = [];
 var stokFilters     = {};
-var stokSort        = { col: STOK_COL.NO_PERFORASI, dir: 'asc' };
+var stokSort        = { col: -1, dir: 'asc' };   // col resolved after headers load
 var stokPage        = 1;
 var stokDirty       = true;
 
@@ -317,7 +377,7 @@ function normalizeDateToISO(val) {
 // Normalisasi kolom tanggal di seluruh baris stokData.
 // Dipanggil sekali setelah data dimuat, sebelum render/filter.
 function normalizeStokDates(rows) {
-    var dateCols = [STOK_COL.TGL_ALOKASI, STOK_COL.TGL_DIGUNAKAN];
+    var dateCols = [STOK_COL.TGL_ALOKASI, STOK_COL.TGL_DIGUNAKAN].filter(function(c) { return c >= 0; });
     return rows.map(function(row) {
         dateCols.forEach(function(col) {
             if (row[col] != null && row[col] !== '') {
@@ -488,22 +548,26 @@ function getNikahData() {
 function getStokFilteredData() {
     var rows = stokData.slice();
     var f = stokFilters;
-    if (f.kua)   rows = rows.filter(function(r) { return String(r[STOK_COL.KUA]||'').trim() === f.kua; });
-    if (f.bulan && f.bulan.length > 0) rows = rows.filter(function(r) {
-        var d = parseDate(r[STOK_COL.TGL_DIGUNAKAN]);
-        if (!d) return false;
-        return f.bulan.indexOf(d.getMonth() + 1) !== -1;
-    });
-    if (f.noPerforasi) rows = rows.filter(function(r) {
-        return String(r[STOK_COL.NO_PERFORASI]||'').toLowerCase().indexOf(f.noPerforasi.toLowerCase()) !== -1;
-    });
-    if (f.status) rows = rows.filter(function(r) {
-        return String(r[STOK_COL.STATUS]||'').toLowerCase().trim() === f.status.toLowerCase();
-    });
-    var s = stokSort, dir = s.dir === 'asc' ? 1 : -1;
-    // ✅ FIX: Kolom tanggal sudah ber-format ISO (YYYY-MM-DD), sehingga
-    // perbandingan string sederhana (< / >) menghasilkan urutan kronologis
-    // yang benar — lebih andal dari parseFloat yang hanya membaca tahun.
+    if (f.kua && STOK_COL.KUA >= 0)
+        rows = rows.filter(function(r) { return String(r[STOK_COL.KUA]||'').trim() === f.kua; });
+    if (f.bulan && f.bulan.length > 0 && STOK_COL.TGL_DIGUNAKAN >= 0)
+        rows = rows.filter(function(r) {
+            var d = parseDate(r[STOK_COL.TGL_DIGUNAKAN]);
+            if (!d) return false;
+            return f.bulan.indexOf(d.getMonth() + 1) !== -1;
+        });
+    if (f.noPerforasi && STOK_COL.NO_PERFORASI >= 0)
+        rows = rows.filter(function(r) {
+            return String(r[STOK_COL.NO_PERFORASI]||'').toLowerCase().indexOf(f.noPerforasi.toLowerCase()) !== -1;
+        });
+    if (f.status && STOK_COL.STATUS >= 0)
+        rows = rows.filter(function(r) {
+            return String(r[STOK_COL.STATUS]||'').toLowerCase().trim() === f.status.toLowerCase();
+        });
+    var s   = stokSort;
+    var dir = s.dir === 'asc' ? 1 : -1;
+    // Jika sort col belum diketahui (-1) atau di luar batas, skip sort
+    if (s.col < 0) return rows;
     var isDateSortCol = (s.col === STOK_COL.TGL_ALOKASI || s.col === STOK_COL.TGL_DIGUNAKAN);
     rows.sort(function(a, b) {
         var va = a[s.col] != null ? String(a[s.col]) : '';
@@ -1135,7 +1199,11 @@ function applyStokFilter() {
 
 function resetStokFilter() {
     stokFilters = {};
-    stokSort    = { col: STOK_COL.NO_PERFORASI, dir: 'asc' };
+    // Gunakan kolom NO_PERFORASI yang sudah di-resolve; fallback ke kolom pertama yang tersedia
+    var defaultSortCol = STOK_COL.NO_PERFORASI >= 0
+        ? STOK_COL.NO_PERFORASI
+        : (DISPLAY_STOK_COLS.length > 0 ? DISPLAY_STOK_COLS[0] : 0);
+    stokSort    = { col: defaultSortCol, dir: 'asc' };
     stokPage    = 1;
     var sec = document.getElementById('filterSection-stok');
     if (sec) {
@@ -1668,7 +1736,7 @@ async function loadStokData(fileId) {
     try {
         stokData    = [];
         stokFilters = {};
-        stokSort    = { col: STOK_COL.NO_PERFORASI, dir: 'asc' };
+        stokSort    = { col: -1, dir: 'asc' };
         stokPage    = 1;
         stokDirty   = true;
         updateBadge('stok', 0);
@@ -1677,17 +1745,19 @@ async function loadStokData(fileId) {
         if (stokDiv) stokDiv.innerHTML = buildTabLoadingState('Memuat data Stok...', 'Mengambil sheet Stok dari Google Drive');
 
         var result = await apiCall('getStokData', { fileId: fileId });
-        var rows = [];
+        var rows    = [];
+        var headers = [];
 
         if (result && result.type === 'base64') {
             if (typeof XLSX === 'undefined') throw new Error('SheetJS belum termuat.');
             var wb = XLSX.read(result.content, { type: 'base64', cellDates: true });
             var sheetName = wb.SheetNames.find(function(n) { return n.toLowerCase().trim() === 'stok'; }) || wb.SheetNames[0];
             var ws  = wb.Sheets[sheetName];
-            // ✅ FIX: cellDates:true agar sel tanggal dikembalikan sebagai Date object
-            // (bukan ISO string via .toISOString() yang bisa menyebabkan UTC-shift H-1).
-            // formatISODate() menggunakan method LOCAL sehingga hasilnya selalu benar.
             var raw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', cellDates: true });
+            if (raw.length > 0) {
+                // ✅ Ambil baris header dari raw[0]
+                headers = raw[0].map(function(h) { return h != null ? String(h) : ''; });
+            }
             if (raw.length > 1) {
                 rows = raw.slice(1)
                     .filter(function(r) { return r.some(function(c) { return c !== '' && c != null; }); })
@@ -1696,8 +1766,18 @@ async function loadStokData(fileId) {
                     });
             }
         } else if (result && result.rows) {
-            rows = result.rows || [];
+            rows    = result.rows    || [];
+            headers = result.headers || [];
         }
+
+        // ✅ Resolusi kolom berdasarkan header aktual (tidak bergantung pada urutan)
+        stokHeaders = headers;
+        resolveStokCols(stokHeaders);
+
+        // Default sort: No. Perforasi jika ada, jika tidak pakai kolom pertama non-NO
+        stokSort.col = STOK_COL.NO_PERFORASI >= 0
+            ? STOK_COL.NO_PERFORASI
+            : (DISPLAY_STOK_COLS.length > 0 ? DISPLAY_STOK_COLS[0] : 0);
 
         stokData = normalizeStokDates(rows);
         buildStokKUAOptions();
@@ -1738,8 +1818,9 @@ function clearData() {
     nikahDirty   = true;
 
     stokData    = [];
+    stokHeaders = [];
     stokFilters = {};
-    stokSort    = { col: STOK_COL.NO_PERFORASI, dir: 'asc' };
+    stokSort    = { col: -1, dir: 'asc' };
     stokPage    = 1;
     stokDirty   = true;
 
