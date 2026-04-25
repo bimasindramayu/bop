@@ -1513,14 +1513,7 @@ function switchTab(tabId) {
             requestAnimationFrame(function() { renderNikahTable(); });
         });
     }
-
-    if (tabId === 'tab-stok' && stokDirty) {
-        var stokDiv = document.getElementById('table-stok');
-        if (stokDiv) stokDiv.innerHTML = buildTabLoadingState('Menyiapkan data Stok...', 'Merender tabel, harap tunggu');
-        requestAnimationFrame(function() {
-            requestAnimationFrame(function() { renderStokTable(); });
-        });
-    }
+    // tab-stok is now hidden; tab-matching rendering is handled by supervisi-matching.js hook
 }
 
 // =====================================================================
@@ -1626,10 +1619,7 @@ async function loadData() {
             var nd = document.getElementById('table-nikah');
             if (nd) nd.innerHTML = buildTabLoadingState('Memuat data Nikah...', 'Mengambil data dari Google Drive');
         }
-        if (activeId !== 'tab-stok') {
-            var sd = document.getElementById('table-stok');
-            if (sd) sd.innerHTML = buildTabLoadingState('Memuat data Stok...', 'Menunggu selesai dimuat');
-        }
+        // tab-stok is hidden; tab-matching loading is handled by supervisi-matching.js
     }());
 
     try {
@@ -1787,11 +1777,13 @@ async function loadStokData(fileId) {
 
         var activeTabEl = document.querySelector('.tab-content.active');
         var activeId    = activeTabEl ? activeTabEl.id : '';
-        if (activeId === 'tab-stok') {
-            renderStokTable();
-        } else {
-            stokDirty = true;
-            if (stokDiv) stokDiv.innerHTML = buildEmptyState('Data Stok siap', rows.length.toLocaleString('id-ID') + ' baris siap ditampilkan.');
+        // tab-stok is hidden; always mark dirty so matching can render on demand
+        stokDirty = true;
+        if (stokDiv) stokDiv.innerHTML = buildEmptyState('Data Stok siap', rows.length.toLocaleString('id-ID') + ' baris siap ditampilkan.');
+
+        // Signal matching module that stok is ready
+        if (typeof window.buildStokKUAOptions === 'function') {
+            window.buildStokKUAOptions();
         }
 
         updateBadge('stok', rows.length);
@@ -1830,7 +1822,7 @@ function clearData() {
         if (el) el.textContent = '0';
     });
     updateBadge('nikah', 0);
-    updateBadge('stok', 0);
+    // badge-stok and badge-matching are handled by supervisi-matching.js clearData hook
 
     var nikahDiv = document.getElementById('table-nikah');
     if (nikahDiv) nikahDiv.innerHTML = buildEmptyState('Belum ada data dimuat', 'Muat data terlebih dahulu dari tab Dashboard.');
@@ -1947,6 +1939,7 @@ window.addEventListener('DOMContentLoaded', function() {
 // GLOBAL EXPORTS
 // =====================================================================
 window.switchTab             = switchTab;
+window.updateBadge           = updateBadge;
 window.switchNikahView       = switchNikahView;
 window.jumpToView            = jumpToView;
 window.loadData              = loadData;

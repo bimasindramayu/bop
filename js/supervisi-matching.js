@@ -36,12 +36,20 @@ function normalizePerforasi(val) {
     return String(val || '').replace(/\s+/g, '').toLowerCase().trim();
 }
 
-/** Bangun lookup index: normalizedPerforasi → baris nikah pertama yang cocok. */
+/** Bangun lookup index: normalizedPerforasi → baris nikah pertama yang cocok.
+ *  Support format ganda:
+ *    "113696253"              → 1 nomor
+ *    "113696253 | 113696254"  → 2 nomor, keduanya di-index ke baris yang sama
+ */
 function buildNikahPerforasiIndex() {
     var map = {};
     allData.forEach(function(row) {
-        var key = normalizePerforasi(row[COL.NO_PERFORASI]);
-        if (key && !map[key]) map[key] = row;   // ambil baris pertama jika duplikat
+        var raw = String(row[COL.NO_PERFORASI] || '');
+        // Pisah berdasar "|" lalu index setiap nomor secara terpisah
+        raw.split('|').forEach(function(part) {
+            var key = normalizePerforasi(part);
+            if (key && !map[key]) map[key] = row;   // ambil baris pertama jika duplikat
+        });
     });
     return map;
 }
@@ -79,12 +87,6 @@ function getMatchingFilteredData() {
     if (f.kuaStok && STOK_COL.KUA >= 0)
         rows = rows.filter(function(r) {
             return String(r.stok[STOK_COL.KUA] || '').trim() === f.kuaStok;
-        });
-
-    // ── KUA (dari Data Nikah) ──
-    if (f.kuaNikah)
-        rows = rows.filter(function(r) {
-            return r.nikah && String(r.nikah[COL.KUA] || '').trim() === f.kuaNikah;
         });
 
     // ── No. Porforasi ──
@@ -205,12 +207,9 @@ function setupMatchingFilter() {
         '<div class="filter-group"><label>No. Porforasi</label>' +
         '<input type="text" id="f-matching-noPerforasi" placeholder="Cari..."></div>' +
 
-        // Baris 2 ─ KUA (Stok + Nikah)
+        // Baris 2 ─ KUA (Stok)
         '<div class="filter-group"><label>KUA (Stok Buku)</label>' +
         '<select id="f-matching-kuaStok"><option value="">-- Semua KUA --</option></select></div>' +
-
-        '<div class="filter-group"><label>KUA (Data Nikah)</label>' +
-        '<select id="f-matching-kuaNikah"><option value="">-- Semua KUA --</option></select></div>' +
 
         // Baris 3 ─ Status Buku & Bulan Digunakan
         '<div class="filter-group"><label>Status Buku</label>' +
@@ -273,7 +272,6 @@ function applyMatchingFilter() {
     matchingFilters = {
         matchStatus:    val('f-matching-matchStatus'),
         kuaStok:        val('f-matching-kuaStok'),
-        kuaNikah:       val('f-matching-kuaNikah'),
         noPerforasi:    val('f-matching-noPerforasi'),
         status:         val('f-matching-status'),
         bulanDigunakan: cbsDig.length === 0 || chkDig.length === cbsDig.length
@@ -314,13 +312,6 @@ function buildMatchingFilterOptions() {
         var m = {};
         if (STOK_COL.KUA >= 0)
             stokData.forEach(function(r) { var v = String(r[STOK_COL.KUA] || '').trim(); if (v) m[v] = true; });
-        return Object.keys(m).sort();
-    })());
-
-    // KUA Nikah
-    _buildSelectOptions('f-matching-kuaNikah', '-- Semua KUA --', (function() {
-        var m = {};
-        allData.forEach(function(r) { var v = String(r[COL.KUA] || '').trim(); if (v) m[v] = true; });
         return Object.keys(m).sort();
     })());
 
@@ -372,16 +363,22 @@ function _buildSelectOptions(id, placeholder, sortedKeys) {
 // 5. SUMMARY BAR (ringkasan statistik)
 // ═══════════════════════════════════════════════════════════════════
 
-function buildMatchingSummaryBar(allRows) {
-    var total     = allRows.length;
-    var matched   = allRows.filter(function(r) { return r.matched; }).length;
+function buildMatchingSummaryBar(filteredRows, totalRows) {
+    var total     = filteredRows.length;
+    var matched   = filteredRows.filter(function(r) { return r.matched; }).length;
     var unmatched = total - matched;
     var pct       = total > 0 ? Math.round(matched / total * 100) : 0;
+    var isFiltered = totalRows && totalRows.length !== total;
+
+    var totalNum = isFiltered
+        ? total.toLocaleString('id-ID') + '<small style="font-size:13px;color:#999;font-weight:500"> / ' + totalRows.length.toLocaleString('id-ID') + '</small>'
+        : total.toLocaleString('id-ID');
+    var totalLbl = isFiltered ? '🔎 Data Terfilter' : 'Total Porforasi';
 
     return '<div class="matching-summary-bar">' +
         '<div class="msb-item msb-total">' +
-            '<div class="msb-num">' + total.toLocaleString('id-ID') + '</div>' +
-            '<div class="msb-lbl">Total Porforasi</div>' +
+            '<div class="msb-num">' + totalNum + '</div>' +
+            '<div class="msb-lbl">' + totalLbl + '</div>' +
         '</div>' +
         '<div class="msb-item msb-matched">' +
             '<div class="msb-num">' + matched.toLocaleString('id-ID') + '</div>' +
@@ -389,7 +386,7 @@ function buildMatchingSummaryBar(allRows) {
         '</div>' +
         '<div class="msb-item msb-unmatched">' +
             '<div class="msb-num">' + unmatched.toLocaleString('id-ID') + '</div>' +
-            '<div class="msb-lbl">❌ Belum Ada</div>' +
+            '<div class="msb-lbl">❌ Duplikat/Rusak/Tidak Terpakai</div>' +
         '</div>' +
         '<div class="msb-item msb-pct">' +
             '<div class="msb-pct-track"><div class="msb-pct-fill" style="width:' + pct + '%"></div></div>' +
@@ -433,7 +430,7 @@ function renderMatchingTable() {
     }
 
     var allRows    = getMatchingFilteredData();
-    var allBasRows = buildMatchingRows();          // untuk summary (ignore filter)
+    var allBasRows = buildMatchingRows();          // untuk summary (total tanpa filter)
     var totalRows  = allRows.length;
     var totalPages = Math.max(1, Math.ceil(totalRows / PAGE_SIZE));
     matchingPage   = Math.max(1, Math.min(matchingPage, totalPages));
@@ -442,8 +439,8 @@ function renderMatchingTable() {
 
     var parts = [];
 
-    // ── Summary bar ──
-    parts.push(buildMatchingSummaryBar(allBasRows));
+    // ── Summary bar — selalu reflect data terfilter ──
+    parts.push(buildMatchingSummaryBar(allRows, allBasRows));
 
     if (totalRows === 0) {
         parts.push(buildEmptyState('Tidak ada data', 'Tidak ada data yang cocok dengan filter.'));
@@ -479,13 +476,15 @@ function renderMatchingTable() {
 
     // ── Baris subheader ──
     var stokColSpan = 1; // No. Porforasi
-    if (STOK_COL.KUA >= 0)          stokColSpan++;
-    if (STOK_COL.STATUS >= 0)       stokColSpan++;
-    if (STOK_COL.TGL_ALOKASI >= 0)  stokColSpan++;
+    if (STOK_COL.NO_SERI >= 0)       stokColSpan++;
+    if (STOK_COL.TAHUN_BUKU >= 0)    stokColSpan++;
+    if (STOK_COL.KUA >= 0)           stokColSpan++;
+    if (STOK_COL.STATUS >= 0)        stokColSpan++;
+    if (STOK_COL.TGL_ALOKASI >= 0)   stokColSpan++;
     if (STOK_COL.TGL_DIGUNAKAN >= 0) stokColSpan++;
-    if (STOK_COL.KETERANGAN >= 0)   stokColSpan++;
+    if (STOK_COL.KETERANGAN >= 0)    stokColSpan++;
 
-    var nikahColSpan = 9; // KUA, NoPendaftaran, NoAkta, TglDaftar, TglAkad, Suami, Istri, Tempat, NTPN
+    var nikahColSpan = 8; // No.Pendaftaran, No.Akta, TglDaftar, TglAkad, Suami, Istri, Tempat, NTPN
 
     parts.push('<tr class="matching-group-header">');
     parts.push('<th colspan="2" class="mgh-status">Status & No. Porforasi</th>');
@@ -500,6 +499,10 @@ function renderMatchingTable() {
     parts.push('<th' + _sortClass('noPerforasi')  + ' onclick="toggleMatchingSort(\'noPerforasi\')"  title="Urutkan">No. Porforasi</th>');
 
     // Kolom Stok
+    if (STOK_COL.NO_SERI >= 0)
+        parts.push('<th>No. Seri</th>');
+    if (STOK_COL.TAHUN_BUKU >= 0)
+        parts.push('<th>Tahun Buku</th>');
     if (STOK_COL.KUA >= 0)
         parts.push('<th>KUA (Stok)</th>');
     if (STOK_COL.STATUS >= 0)
@@ -511,9 +514,8 @@ function renderMatchingTable() {
     if (STOK_COL.KETERANGAN >= 0)
         parts.push('<th>Keterangan</th>');
 
-    // Kolom Nikah (dengan divider visual)
-    parts.push('<th class="matching-divider-col">KUA (Nikah)</th>');
-    parts.push('<th>No. Pendaftaran</th>');
+    // Kolom Nikah (dengan divider visual pada kolom pertama)
+    parts.push('<th class="matching-divider-col">No. Pendaftaran</th>');
     parts.push('<th>No. Akta Nikah</th>');
     parts.push('<th>Tgl. Daftar</th>');
     parts.push('<th' + _sortClass('tglAkad') + ' onclick="toggleMatchingSort(\'tglAkad\')" title="Urutkan">Tgl. Akad</th>');
@@ -537,7 +539,7 @@ function renderMatchingTable() {
         // Status badge
         var badge = matched
             ? '<span class="match-badge match-yes">✅ Ada</span>'
-            : '<span class="match-badge match-no">❌ Belum</span>';
+            : '<span class="match-badge match-no">❌ Tidak Ada</span>';
         parts.push('<td>' + badge + '</td>');
 
         // No. Porforasi
@@ -547,6 +549,10 @@ function renderMatchingTable() {
         parts.push('<td class="cell-perforasi">' + noPer + '</td>');
 
         // Stok columns
+        if (STOK_COL.NO_SERI >= 0)
+            parts.push('<td>' + escHtml(String(stok[STOK_COL.NO_SERI] || '')) + '</td>');
+        if (STOK_COL.TAHUN_BUKU >= 0)
+            parts.push('<td>' + escHtml(String(stok[STOK_COL.TAHUN_BUKU] || '')) + '</td>');
         if (STOK_COL.KUA >= 0)
             parts.push('<td>' + escHtml(String(stok[STOK_COL.KUA] || '')) + '</td>');
         if (STOK_COL.STATUS >= 0)
@@ -560,11 +566,10 @@ function renderMatchingTable() {
 
         // Nikah columns
         if (!matched) {
-            // 9 empty cells
-            for (var e = 0; e < 9; e++) parts.push(DASH);
+            // 8 empty cells (No.Pendaftaran, No.Akta, TglDaftar, TglAkad, Suami, Istri, Tempat, NTPN)
+            for (var e = 0; e < 8; e++) parts.push(DASH);
         } else {
-            parts.push('<td class="matching-divider-col">' + escHtml(String(nikah[COL.KUA] || '')) + '</td>');
-            parts.push('<td>' + escHtml(String(nikah[COL.NO_PENDAFTARAN] || '')) + '</td>');
+            parts.push('<td class="matching-divider-col">' + escHtml(String(nikah[COL.NO_PENDAFTARAN] || '')) + '</td>');
             parts.push('<td>' + escHtml(String(nikah[COL.NO_AKTA_NIKAH]  || '')) + '</td>');
             parts.push('<td>' + formatDate(nikah[COL.TGL_DAFTAR]) + '</td>');
             parts.push('<td>' + formatDate(nikah[COL.TGL_AKAD]) + '</td>');
@@ -595,12 +600,13 @@ function _matchingRowToArray(r, idx) {
         idx + 1,
         r.matched ? 'Ada' : 'Belum',
         STOK_COL.NO_PERFORASI  >= 0 ? (s[STOK_COL.NO_PERFORASI]  || '') : '',
+        STOK_COL.NO_SERI       >= 0 ? (s[STOK_COL.NO_SERI]       || '') : '',
+        STOK_COL.TAHUN_BUKU    >= 0 ? (s[STOK_COL.TAHUN_BUKU]    || '') : '',
         STOK_COL.KUA           >= 0 ? (s[STOK_COL.KUA]           || '') : '',
         STOK_COL.STATUS        >= 0 ? (s[STOK_COL.STATUS]        || '') : '',
         STOK_COL.TGL_ALOKASI   >= 0 ? formatStokDate(s[STOK_COL.TGL_ALOKASI])   : '',
         STOK_COL.TGL_DIGUNAKAN >= 0 ? formatStokDate(s[STOK_COL.TGL_DIGUNAKAN]) : '',
         STOK_COL.KETERANGAN    >= 0 ? (s[STOK_COL.KETERANGAN]    || '') : '',
-        n ? (n[COL.KUA]            || '') : '',
         n ? (n[COL.NO_PENDAFTARAN] || '') : '',
         n ? (n[COL.NO_AKTA_NIKAH]  || '') : '',
         n ? formatDate(n[COL.TGL_DAFTAR]) : '',
@@ -613,9 +619,9 @@ function _matchingRowToArray(r, idx) {
 }
 
 var _MATCHING_HEADERS = [
-    '#', 'Status', 'No. Porforasi',
+    '#', 'Status', 'No. Porforasi', 'No. Seri', 'Tahun Buku',
     'KUA (Stok)', 'Status Buku', 'Tgl. Alokasi', 'Tgl. Digunakan', 'Keterangan',
-    'KUA (Nikah)', 'No. Pendaftaran', 'No. Akta Nikah', 'Tgl. Daftar',
+    'No. Pendaftaran', 'No. Akta Nikah', 'Tgl. Daftar',
     'Tgl. Akad', 'Nama Suami', 'Nama Istri', 'Tempat Nikah', 'NTPN'
 ];
 
@@ -649,10 +655,50 @@ function downloadMatchingAsXlsx() {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// 9. FUNCTION HOOKS (override tanpa ubah supervisi-script.js)
+// 9. FUNCTION HOOKS
 // ═══════════════════════════════════════════════════════════════════
 
-// ── Hook switchTab ──
+// ── Restore filter UI values dari matchingFilters ke form controls ──
+function restoreMatchingFilterUI() {
+    var f = matchingFilters;
+    if (!f || Object.keys(f).length === 0) return;
+
+    function setVal(id, val) {
+        if (val === undefined || val === null || val === '') return;
+        var el = document.getElementById(id);
+        if (el) el.value = val;
+    }
+    function setInp(id, val) {
+        if (!val) return;
+        var el = document.getElementById(id);
+        if (el) el.value = val;
+    }
+
+    setVal('f-matching-matchStatus', f.matchStatus);
+    setVal('f-matching-kuaStok',     f.kuaStok);
+    setInp('f-matching-noPerforasi', f.noPerforasi);
+    setVal('f-matching-status',      f.status);
+    setInp('f-matching-namaSuami',   f.namaSuami);
+    setInp('f-matching-namaIstri',   f.namaIstri);
+    setVal('f-matching-tempatNikah', f.tempatNikah);
+
+    // Bulan Digunakan checkboxes
+    if (f.bulanDigunakan && f.bulanDigunakan.length > 0) {
+        document.querySelectorAll('.month-cb-mdig').forEach(function(cb) {
+            cb.checked = f.bulanDigunakan.indexOf(parseInt(cb.value)) !== -1;
+        });
+        updateMonthLabel('mdig');
+    }
+    // Bulan Akad checkboxes
+    if (f.bulanAkad && f.bulanAkad.length > 0) {
+        document.querySelectorAll('.month-cb-makad').forEach(function(cb) {
+            cb.checked = f.bulanAkad.indexOf(parseInt(cb.value)) !== -1;
+        });
+        updateMonthLabel('makad');
+    }
+}
+
+// ── Hook switchTab: tambahkan penanganan tab-matching ──
 (function() {
     var _orig = window.switchTab;
     window.switchTab = function(tabId) {
@@ -660,6 +706,7 @@ function downloadMatchingAsXlsx() {
         if (tabId === 'tab-matching') {
             if (stokData.length > 0 || allData.length > 0) {
                 buildMatchingFilterOptions();
+                restoreMatchingFilterUI();
             }
             if (matchingDirty) {
                 var div = document.getElementById('table-matching');
@@ -716,9 +763,10 @@ function downloadMatchingAsXlsx() {
         _orig();
         matchingDirty = true;
         // Jika tab matching sedang aktif, langsung refresh
-        var active = document.querySelector('.tab-content.active');
-        if (active && active.id === 'tab-matching') {
+        var activeTabEl = document.querySelector('.tab-content.active');
+        if (activeTabEl && activeTabEl.id === 'tab-matching') {
             buildMatchingFilterOptions();
+            restoreMatchingFilterUI();
             renderMatchingTable();
         }
     };
@@ -732,6 +780,11 @@ function downloadMatchingAsXlsx() {
         matchingDirty = true;
     };
 })();
+
+// ── switchStokView: kept as no-op for backward compatibility ──
+function switchStokView(view) {
+    console.log('[MATCHING] switchStokView(' + view + ') — deprecated, tab-matching is now a top-level tab');
+}
 
 // ═══════════════════════════════════════════════════════════════════
 // 10. INIT
@@ -766,5 +819,6 @@ window.toggleMatchingSort          = toggleMatchingSort;
 window.buildMatchingFilterOptions  = buildMatchingFilterOptions;
 window.copyMatchingTable           = copyMatchingTable;
 window.downloadMatchingAsXlsx      = downloadMatchingAsXlsx;
+window.switchStokView              = switchStokView;
 
 console.log('[MATCHING] ✓ supervisi-matching.js loaded');

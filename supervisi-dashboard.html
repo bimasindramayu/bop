@@ -713,9 +713,46 @@
         .mgh-stok   { background: #e8f4fd !important; color: #0066aa; border-left: 2px solid #b8daff !important; }
         .mgh-nikah  { background: #eceeff !important; color: #4455cc; border-left: 2px solid #667eea !important; }
 
+        /* ===== STOK VIEW TOGGLE ===== */
+        .stok-view-toggle {
+            display: flex;
+            gap: 0;
+            background: #f0f2ff;
+            border: 1px solid #c5cdf5;
+            border-radius: 10px;
+            padding: 4px;
+            margin-bottom: 14px;
+            width: fit-content;
+        }
+        .stok-toggle-btn {
+            padding: 8px 20px;
+            border: none;
+            border-radius: 7px;
+            font-size: 13px;
+            font-weight: 600;
+            color: #667eea;
+            background: transparent;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 7px;
+            touch-action: manipulation;
+        }
+        .stok-toggle-btn.active {
+            background: white;
+            color: #333;
+            box-shadow: 0 1px 5px rgba(0,0,0,0.12);
+        }
+        .stok-toggle-btn:hover:not(.active) {
+            background: rgba(255,255,255,0.55);
+        }
+
         @media (max-width: 600px) {
             .matching-summary-bar { grid-template-columns: 1fr 1fr; }
             .msb-num { font-size: 20px; }
+            .stok-view-toggle { width: 100%; }
+            .stok-toggle-btn { flex: 1; justify-content: center; }
         }
     </style>
 </head>
@@ -760,12 +797,8 @@
                 💍 Data Nikah
                 <span class="tab-indicator" id="badge-nikah">0</span>
             </button>
-            <button class="tab-btn" onclick="switchTab('tab-stok')" id="btn-tab-stok">
-                📚 Stok Buku
-                <span class="tab-indicator" id="badge-stok">0</span>
-            </button>
             <button class="tab-btn" onclick="switchTab('tab-matching')" id="btn-tab-matching">
-                🔗 Rekap Porforasi
+                📊 Rekap Porforasi
                 <span class="tab-indicator" id="badge-matching">0</span>
             </button>
         </div>
@@ -881,16 +914,16 @@
 
         </div>
 
-        <!-- ====== TAB STOK BUKU NIKAH ====== -->
-        <div class="tab-content" id="tab-stok">
-            <div id="filter-stok"></div>
-            <div id="table-stok"></div>
-        </div>
-
-        <!-- ====== TAB REKAP PORFORASI (VLOOKUP: Stok ⟕ Nikah) ====== -->
+        <!-- ====== TAB REKAP PORFORASI ====== -->
         <div class="tab-content" id="tab-matching">
             <div id="filter-matching"></div>
             <div id="table-matching"></div>
+        </div>
+
+        <!-- Hidden stok placeholders (needed by supervisi-script.js internals) -->
+        <div style="display:none" id="tab-stok">
+            <div id="filter-stok"></div>
+            <div id="table-stok"></div>
         </div>
 
     </div><!-- /tabs-wrapper -->
