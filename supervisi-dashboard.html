@@ -614,6 +614,109 @@
             table { font-size: 11px; }
             table td, table thead th { padding: 6px 8px; }
         }
+
+        /* ===== TAB REKAP PORFORASI — MATCHING STYLES ===== */
+
+        /* Summary bar (Total / Matched / Unmatched / %) */
+        .matching-summary-bar {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+            gap: 10px;
+            margin-bottom: 14px;
+        }
+        .msb-item {
+            background: white;
+            border: 1px solid #e9ecef;
+            border-radius: 10px;
+            padding: 14px 16px;
+            text-align: center;
+        }
+        .msb-num {
+            font-size: 26px;
+            font-weight: 700;
+            margin-bottom: 4px;
+            line-height: 1.1;
+        }
+        .msb-lbl { font-size: 12px; color: #666; font-weight: 600; }
+        .msb-total .msb-num    { color: #667eea; }
+        .msb-matched .msb-num  { color: #28a745; }
+        .msb-unmatched .msb-num { color: #dc3545; }
+
+        /* Progress bar inside summary */
+        .msb-pct-track {
+            height: 8px;
+            background: #e9ecef;
+            border-radius: 4px;
+            overflow: hidden;
+            margin-bottom: 6px;
+        }
+        .msb-pct-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #28a745, #20c997);
+            border-radius: 4px;
+            transition: width 0.4s;
+        }
+        .msb-pct .msb-lbl { color: #28a745; font-weight: 700; }
+
+        /* Status badges in rows */
+        .match-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 11px;
+            font-weight: 700;
+            white-space: nowrap;
+        }
+        .match-yes { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .match-no  { background: #fde2e4; color: #842029; border: 1px solid #f5c6cb; }
+
+        /* Row coloring */
+        table tbody tr.row-matched td    { background: #f6fff8; }
+        table tbody tr.row-unmatched td  { background: #fff8f8; }
+        table tbody tr.row-matched:hover td   { background: #e8f8eb !important; }
+        table tbody tr.row-unmatched:hover td { background: #ffe8e8 !important; }
+
+        /* No. Porforasi cell — monospace */
+        .cell-perforasi {
+            font-family: 'Consolas', 'Courier New', monospace;
+            font-size: 12px;
+            font-weight: 700;
+            color: #333;
+            letter-spacing: 0.3px;
+        }
+
+        /* Empty (unmatched) nikah cells */
+        .cell-empty { color: #bbb !important; font-style: italic; text-align: center; }
+
+        /* Column divider between Stok → Nikah sections */
+        .matching-divider-col {
+            border-left: 2px solid #667eea !important;
+            background: #f5f6ff !important;
+        }
+        table thead th.matching-divider-col {
+            background: #eceeff !important;
+            border-left: 2px solid #667eea !important;
+            color: #4455cc;
+        }
+
+        /* Group header row (Stok / Nikah label row) */
+        .matching-group-header th {
+            font-size: 11px;
+            font-weight: 700;
+            text-align: center;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+            padding: 5px 8px !important;
+            border-bottom: 1px solid #c5cdf5 !important;
+        }
+        .mgh-status { background: #f8f9fa !important; color: #555; }
+        .mgh-stok   { background: #e8f4fd !important; color: #0066aa; border-left: 2px solid #b8daff !important; }
+        .mgh-nikah  { background: #eceeff !important; color: #4455cc; border-left: 2px solid #667eea !important; }
+
+        @media (max-width: 600px) {
+            .matching-summary-bar { grid-template-columns: 1fr 1fr; }
+            .msb-num { font-size: 20px; }
+        }
     </style>
 </head>
 <body>
@@ -660,6 +763,10 @@
             <button class="tab-btn" onclick="switchTab('tab-stok')" id="btn-tab-stok">
                 📚 Stok Buku
                 <span class="tab-indicator" id="badge-stok">0</span>
+            </button>
+            <button class="tab-btn" onclick="switchTab('tab-matching')" id="btn-tab-matching">
+                🔗 Rekap Porforasi
+                <span class="tab-indicator" id="badge-matching">0</span>
             </button>
         </div>
 
@@ -780,6 +887,12 @@
             <div id="table-stok"></div>
         </div>
 
+        <!-- ====== TAB REKAP PORFORASI (VLOOKUP: Stok ⟕ Nikah) ====== -->
+        <div class="tab-content" id="tab-matching">
+            <div id="filter-matching"></div>
+            <div id="table-matching"></div>
+        </div>
+
     </div><!-- /tabs-wrapper -->
 </div><!-- /container -->
 
@@ -788,5 +901,6 @@
 <script src="js/config-enhanced.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="js/supervisi-script.js"></script>
+<script src="js/supervisi-matching.js"></script>
 </body>
 </html>

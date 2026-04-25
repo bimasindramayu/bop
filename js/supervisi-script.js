@@ -633,6 +633,7 @@ function buildNikahColumns() {
             COL.NO_PENDAFTARAN,
             COL.NAMA_SUAMI,
             COL.NAMA_ISTRI,
+            COL.NO_AKTA_NIKAH,
             COL.STATUS_ISTRI,           // AH — Status Istri
             COL.TGL_PENGADILAN_ISTRI,   // AT — Tgl Pengadilan
             VIRTUAL_BATAS_IDDAH,        // virtual: batas minimum akad
