@@ -386,7 +386,7 @@ function buildMatchingSummaryBar(filteredRows, totalRows) {
         '</div>' +
         '<div class="msb-item msb-unmatched">' +
             '<div class="msb-num">' + unmatched.toLocaleString('id-ID') + '</div>' +
-            '<div class="msb-lbl">❌ Duplikat/Rusak/Tidak Terpakai</div>' +
+            '<div class="msb-lbl">❌ Duplikat/Rusak/Belum Terpakai</div>' +
         '</div>' +
         '<div class="msb-item msb-pct">' +
             '<div class="msb-pct-track"><div class="msb-pct-fill" style="width:' + pct + '%"></div></div>' +
