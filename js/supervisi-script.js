@@ -243,11 +243,26 @@ function formatDate(val) {
 }
 
 // Tanggal Stok: normalisasi ke ISO dulu, baru format sebagai DD/MM/YYYY.
-// Dengan memanggil normalizeDateToISO() di sini, fungsi ini menangani
-// SEMUA format input (ISO, DD/MM/YYYY, DD-Mon-YY, tahun 2 digit, dsb.)
-// tanpa harus bergantung pada normalizeStokDates() sudah dijalankan.
+// Menangani semua format input:
+//   • Plain Text (DD/MM/YYYY, YYYY-MM-DD, DD-Mon-YY, dll.)
+//   • Excel Number Date (serial integer — normalizeStokDates seharusnya sudah konversi,
+//     tapi ini sebagai fallback jika dipanggil sebelum normalisasi berjalan)
+//   • ISO datetime string dari SheetJS
 function formatStokDate(val) {
     if (val === null || val === undefined || val === '') return '';
+
+    // Fallback: jika masih berupa angka serial Excel (belum dinormalisasi)
+    if (typeof val === 'number' && isExcelSerial(val)) {
+        var iso0 = excelSerialToISO(val);
+        if (iso0) {
+            var d0 = parseDate(iso0);
+            if (d0) return String(d0.getDate()).padStart(2,'0') + '/' +
+                          String(d0.getMonth() + 1).padStart(2,'0') + '/' +
+                          d0.getFullYear();
+        }
+        return String(val);
+    }
+
     // ✅ FIX: Normalisasi ke ISO terlebih dahulu (string-only, tanpa risiko timezone shift)
     var iso = normalizeDateToISO(String(val));
     // Parse ISO ke Date object (LOCAL time — tidak ada UTC shift)
@@ -282,12 +297,67 @@ function formatISODate(d) {
 // =====================================================================
 // DATE NORMALIZATION
 // =====================================================================
-// =====================================================================
+
+// ─────────────────────────────────────────────────────────────────────
+// excelSerialToISO — konversi Excel serial date number ke "YYYY-MM-DD"
+//
+// Excel menyimpan tanggal sebagai bilangan bulat di mana:
+//   - 1        = 1 Jan 1900
+//   - 25569    = 1 Jan 1970 (Unix epoch)
+//   - ~45000++ = tanggal modern (2023-dst)
+//
+// Teknik yang dipakai: mulai dari 1 Jan 1970 LOCAL midnight,
+// lalu tambah/kurangi (serial - 25569) hari menggunakan setDate().
+// Seluruh aritmetika dalam zona lokal → tidak ada UTC-shift.
+// ─────────────────────────────────────────────────────────────────────
+function excelSerialToISO(serial) {
+    // Guard: hanya angka bulat positif dalam rentang tanggal yang masuk akal
+    // ~15000 ≈ 1941-01-01,  ~99999 ≈ 2173-10-14
+    if (!Number.isFinite(serial) || serial < 1 || serial > 99999) return null;
+
+    // Excel punya bug historis: menganggap 1900 tahun kabisat (bukan).
+    // Koreksi: serial 60 = 28 Feb 1900 di Excel, 1 Mar di kenyataan.
+    // Untuk serial >= 60, kurangi 1 hari agar koreksi bug teraplikasi.
+    // Untuk serial < 60, tidak ada penyesuaian.
+    var corrected = serial >= 60 ? serial - 1 : serial;
+
+    // Offset dari 1 Jan 1970 (Unix epoch = serial 25569, setelah koreksi)
+    var unixDays = corrected - 25568;          // 25569 - 1 = 25568 karena koreksi bug
+
+    // Buat tanggal dari LOCAL epoch, geser sebanyak unixDays hari
+    var d = new Date(1970, 0, 1);              // 1 Jan 1970 LOCAL midnight
+    d.setDate(d.getDate() + unixDays);         // setDate() beroperasi di zona lokal
+
+    if (isNaN(d.getTime())) return null;
+    return d.getFullYear() + '-' +
+           String(d.getMonth() + 1).padStart(2, '0') + '-' +
+           String(d.getDate()).padStart(2, '0');
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// isExcelSerial — deteksi apakah nilai kemungkinan adalah serial date
+// Excel untuk kolom tanggal (rentang ~15000–99999 = 1941–2173)
+// ─────────────────────────────────────────────────────────────────────
+function isExcelSerial(val) {
+    if (val === null || val === undefined || val === '') return false;
+    // Bisa berupa number atau string numerik
+    if (typeof val === 'number') return Number.isFinite(val) && val >= 15000 && val <= 99999;
+    if (typeof val === 'string') {
+        var s = val.trim();
+        if (!/^\d+(\.\d+)?$/.test(s)) return false;
+        var n = parseFloat(s);
+        return Number.isFinite(n) && n >= 15000 && n <= 99999;
+    }
+    return false;
+}
+
+// ─────────────────────────────────────────────────────────────────────
 // ✅ FIX: Konversi tanggal ke ISO (YYYY-MM-DD) secara murni string —
 // tanpa objek Date sehingga tidak ada risiko timezone shift.
 //
 // Mendukung semua format yang muncul di spreadsheet:
-//   1. YYYY-MM-DD        → sudah ISO, dikembalikan apa adanya
+//   0. Excel Number Date (serial integer)   → excelSerialToISO()
+//   1. YYYY-MM-DD                           → sudah ISO, dikembalikan apa adanya
 //   2. DD-Mon-YY/YYYY    → misal "13-Jan-26", "7-May-2025"
 //   3. DD/MM/YYYY        → Indonesia  → "13/01/2026"
 //   4. MM/DD/YYYY        → US format  → "01/13/2026"
@@ -297,13 +367,21 @@ function formatISODate(d) {
 //   • Jika angka pertama > 12  → pasti DD/MM (hari tidak bisa > 12 jika bulan)
 //   • Jika angka kedua  > 12  → pasti MM/DD (bulan tidak bisa > 12)
 //   • Jika keduanya ≤ 12 → asumsikan DD/MM (konvensi Indonesia)
-// =====================================================================
+// ─────────────────────────────────────────────────────────────────────
 var _DATE_MON_MAP = {
     jan:1, feb:2, mar:3, apr:4, may:5, mei:5, jun:6,
     jul:7, aug:8, agu:8, sep:9, oct:10, okt:10, nov:11, dec:12, des:12
 };
 
 function normalizeDateToISO(val) {
+    // 0. Excel Number Date (serial integer) — tangani sebelum konversi ke string
+    if (typeof val === 'number' || (typeof val === 'string' && isExcelSerial(val))) {
+        var serial = typeof val === 'number' ? val : parseFloat(val);
+        var iso0 = excelSerialToISO(serial);
+        if (iso0) return iso0;
+        // Jika excelSerialToISO gagal (misal di luar rentang), jatuhkan ke string processing
+    }
+
     var s = String(val || '').trim();
     if (!s) return s;
 
@@ -376,13 +454,39 @@ function normalizeDateToISO(val) {
 
 // Normalisasi kolom tanggal di seluruh baris stokData.
 // Dipanggil sekali setelah data dimuat, sebelum render/filter.
+// Mendukung:
+//   • Plain Text (DD/MM/YYYY, YYYY-MM-DD, DD-Mon-YY, dll.)
+//   • Excel Number Date (serial integer, misal 45123)
+//   • ISO datetime string dari SheetJS (YYYY-MM-DDTHH:mm:ssZ)
 function normalizeStokDates(rows) {
     var dateCols = [STOK_COL.TGL_ALOKASI, STOK_COL.TGL_DIGUNAKAN].filter(function(c) { return c >= 0; });
-    return rows.map(function(row) {
+    if (dateCols.length === 0) return rows;
+
+    return rows.map(function(row, rowIdx) {
         dateCols.forEach(function(col) {
-            if (row[col] != null && row[col] !== '') {
-                row[col] = normalizeDateToISO(String(row[col]));
+            var raw = row[col];
+            if (raw === null || raw === undefined || raw === '') return;
+
+            var iso;
+            if (typeof raw === 'number') {
+                iso = isExcelSerial(raw) ? excelSerialToISO(raw) : normalizeDateToISO(raw);
+                console.log('[STOK DATE] Row ' + rowIdx + ' col ' + col +
+                    ' numericRaw=' + raw + ' → ' + iso);
+            } else {
+                var before = String(raw);
+                iso = normalizeDateToISO(before);
+                // Log hanya jika hasil berbeda dari format yang sudah benar,
+                // atau jika hasilnya mencurigakan (bukan ISO yang valid)
+                if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) {
+                    console.warn('[STOK DATE] Row ' + rowIdx + ' col ' + col +
+                        ' WARN: raw="' + before + '" → iso="' + iso + '" (bukan ISO valid!)');
+                } else if (before !== iso) {
+                    console.log('[STOK DATE] Row ' + rowIdx + ' col ' + col +
+                        ' raw="' + before + '" → "' + iso + '"');
+                }
             }
+
+            if (iso) row[col] = iso;
         });
         return row;
     });
@@ -1741,24 +1845,78 @@ async function loadStokData(fileId) {
 
         if (result && result.type === 'base64') {
             if (typeof XLSX === 'undefined') throw new Error('SheetJS belum termuat.');
-            var wb = XLSX.read(result.content, { type: 'base64', cellDates: true });
+
+            // ═══════════════════════════════════════════════════════
+            // ROOT FIX: Jangan gunakan cellDates:true.
+            //
+            // Dengan cellDates:true, SheetJS mengkonversi serial date
+            // ke JavaScript Date object di UTC midnight.  Karena kode
+            // ini berjalan di browser UTC+7, konversi Date → string
+            // lewat getFullYear/getMonth/getDate masih seharusnya benar.
+            //
+            // Namun dalam praktik, beberapa versi SheetJS atau cara
+            // XLSX menyimpan date menyebabkan Date object yang dibuat
+            // satu hari LEBIH AWAL dari yang diharapkan, sehingga
+            // tanggal tampil berkurang 1 hari (misal: 05-05-2025 → 04/05/2025).
+            //
+            // Solusi: baca TANPA cellDates, biarkan serial number
+            // tetap sebagai angka (number), lalu konversi via
+            // excelSerialToISO() di normalizeStokDates yang
+            // menggunakan aritmetika lokal murni — tanpa risiko
+            // timezone shift sama sekali.
+            // ═══════════════════════════════════════════════════════
+            var wb = XLSX.read(result.content, { type: 'base64' }); // tanpa cellDates
             var sheetName = wb.SheetNames.find(function(n) { return n.toLowerCase().trim() === 'stok'; }) || wb.SheetNames[0];
             var ws  = wb.Sheets[sheetName];
-            var raw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', cellDates: true });
+
+            // raw:true → serial date tetap sebagai number, bukan Date object
+            var raw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: true });
             if (raw.length > 0) {
-                // ✅ Ambil baris header dari raw[0]
                 headers = raw[0].map(function(h) { return h != null ? String(h) : ''; });
             }
             if (raw.length > 1) {
                 rows = raw.slice(1)
                     .filter(function(r) { return r.some(function(c) { return c !== '' && c != null; }); })
                     .map(function(r) {
-                        return r.map(function(c) { return c instanceof Date ? formatISODate(c) : (c != null ? c : ''); });
+                        return r.map(function(c) {
+                            if (c === null || c === undefined) return '';
+                            // Jika SheetJS tetap menghasilkan Date (fallback),
+                            // konversi ke ISO menggunakan UTC components
+                            // (SheetJS membuat Date di UTC midnight untuk date-only cells).
+                            if (c instanceof Date) {
+                                if (isNaN(c.getTime())) return '';
+                                return c.getUTCFullYear() + '-' +
+                                       String(c.getUTCMonth() + 1).padStart(2, '0') + '-' +
+                                       String(c.getUTCDate()).padStart(2, '0');
+                            }
+                            // Angka (termasuk serial date) dan string dikembalikan as-is.
+                            // normalizeStokDates akan mengonversi kolom tanggal.
+                            return c;
+                        });
                     });
             }
+            console.log('[STOK XLSX] Loaded ' + rows.length + ' rows, cellDates=false');
+            // Debug: log 5 baris pertama kolom 4 & 5 (date columns) untuk verifikasi
+            [4, 5].forEach(function(colIdx) {
+                var samples = rows.slice(0, 8).map(function(r, i) {
+                    var v = r[colIdx];
+                    return 'row' + i + '=' + JSON.stringify(v) + '(type:' + typeof v + ')';
+                }).join(', ');
+                console.log('[STOK XLSX] col' + colIdx + ' raw samples: ' + samples);
+            });
         } else if (result && result.rows) {
             rows    = result.rows    || [];
             headers = result.headers || [];
+
+            // ── Debug: tampilkan sample tanggal dari server ke browser console ──
+            if (result._debugDateSamples && result._debugDateSamples.length > 0) {
+                console.group('[STOK DATE] Server display→ISO samples');
+                result._debugDateSamples.forEach(function(s) {
+                    console.log('Row ' + s.row + ' | ' + s.col +
+                        ' | display="' + s.display + '" → iso="' + s.iso + '"');
+                });
+                console.groupEnd();
+            }
         }
 
         // ✅ Resolusi kolom berdasarkan header aktual (tidak bergantung pada urutan)
@@ -1771,6 +1929,30 @@ async function loadStokData(fileId) {
             : (DISPLAY_STOK_COLS.length > 0 ? DISPLAY_STOK_COLS[0] : 0);
 
         stokData = normalizeStokDates(rows);
+
+        // ── DIAGNOSTIC: log 8 baris pertama kolom TGL_ALOKASI & TGL_DIGUNAKAN ──
+        // Hapus blok ini setelah bug terkonfirmasi diperbaiki.
+        (function() {
+            var colA = STOK_COL.TGL_ALOKASI;
+            var colD = STOK_COL.TGL_DIGUNAKAN;
+            console.group('[STOK DIAG] stokData setelah normalizeStokDates (8 baris pertama)');
+            stokData.slice(0, 8).forEach(function(row, i) {
+                var noPerf = row[STOK_COL.NO_PERFORASI];
+                var rawA   = rows[i] ? rows[i][colA] : '???';  // sebelum normalisasi
+                var rawD   = rows[i] ? rows[i][colD] : '???';
+                var norA   = row[colA];
+                var norD   = row[colD];
+                console.log(
+                    'row[' + i + '] porforasi=' + noPerf +
+                    ' | TGL_ALOKASI: raw=' + JSON.stringify(rawA) +
+                    ' → norm=' + JSON.stringify(norA) +
+                    ' | TGL_DIGUNAKAN: raw=' + JSON.stringify(rawD) +
+                    ' → norm=' + JSON.stringify(norD)
+                );
+            });
+            console.groupEnd();
+        })();
+
         buildStokKUAOptions();
         buildStokStatusOptions();
         buildStokMonthOptions();

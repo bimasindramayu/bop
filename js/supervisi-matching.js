@@ -539,7 +539,7 @@ function renderMatchingTable() {
         // Status badge
         var badge = matched
             ? '<span class="match-badge match-yes">✅ Ada</span>'
-            : '<span class="match-badge match-no">❌ Tidak Ada</span>';
+            : '<span class="match-badge match-no">❌ Tidak Ada Data</span>';
         parts.push('<td>' + badge + '</td>');
 
         // No. Porforasi
