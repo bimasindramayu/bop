@@ -22,10 +22,16 @@
           updateBadge, XLSX */
 
 // ── State ──────────────────────────────────────────────────────────
-var matchingFilters = {};
-var matchingSort    = { col: 'noPerforasi', dir: 'asc' };
-var matchingPage    = 1;
-var matchingDirty   = true;
+var matchingFilters   = {};
+var matchingSort      = { col: 'noPerforasi', dir: 'asc' };
+var matchingPage      = 1;
+var matchingDirty     = true;
+var matchingPageSize  = 100;   // 0 = tampilkan semua (tanpa paginasi)
+
+// ── Selection State ─────────────────────────────────────────────────
+var matchingSelectedRows  = new Set();  // Set<number> — global row index di allRows
+var matchingSelectedCols  = new Set();  // Set<number> — column index (0-based di table)
+var matchingLastClickedRow = -1;        // untuk Shift+click range
 
 // ═══════════════════════════════════════════════════════════════════
 // 1. DATA JOIN (VLOOKUP)
@@ -87,6 +93,12 @@ function getMatchingFilteredData() {
     if (f.kuaStok && STOK_COL.KUA >= 0)
         rows = rows.filter(function(r) {
             return String(r.stok[STOK_COL.KUA] || '').trim() === f.kuaStok;
+        });
+
+    // ── Tahun Buku (kolom D) ──
+    if (f.tahunBuku && STOK_COL.TAHUN_BUKU >= 0)
+        rows = rows.filter(function(r) {
+            return String(r.stok[STOK_COL.TAHUN_BUKU] || '').trim() === f.tahunBuku;
         });
 
     // ── No. Porforasi ──
@@ -196,22 +208,19 @@ function setupMatchingFilter() {
         '<button class="btn btn-secondary btn-sm" onclick="toggleMatchingFilterSection()">Sembunyikan</button></div>' +
         '<div class="filter-grid" id="matchingFilterGrid">' +
 
-        // Baris 1 ─ Status Matching & No. Porforasi
-        '<div class="filter-group"><label>Status Matching</label>' +
-        '<select id="f-matching-matchStatus">' +
-        '<option value="">-- Semua --</option>' +
-        '<option value="matched">✅ Ada di Data Nikah</option>' +
-        '<option value="unmatched">❌ Belum Ada di Data Nikah</option>' +
-        '</select></div>' +
-
-        '<div class="filter-group"><label>No. Porforasi</label>' +
-        '<input type="text" id="f-matching-noPerforasi" placeholder="Cari..."></div>' +
-
-        // Baris 2 ─ KUA (Stok)
+        // 1 ─ KUA (Stok Buku) — paling pertama
         '<div class="filter-group"><label>KUA (Stok Buku)</label>' +
         '<select id="f-matching-kuaStok"><option value="">-- Semua KUA --</option></select></div>' +
 
-        // Baris 3 ─ Status Buku & Bulan Digunakan
+        // 2 ─ Tahun Buku
+        '<div class="filter-group"><label>Tahun Buku</label>' +
+        '<select id="f-matching-tahunBuku"><option value="">-- Semua Tahun --</option></select></div>' +
+
+        // 3 ─ No. Porforasi
+        '<div class="filter-group"><label>No. Porforasi</label>' +
+        '<input type="text" id="f-matching-noPerforasi" placeholder="Cari..."></div>' +
+
+        // 4 ─ Status Buku & Bulan Digunakan
         '<div class="filter-group"><label>Status Buku</label>' +
         '<select id="f-matching-status"><option value="">-- Semua Status --</option></select></div>' +
 
@@ -224,7 +233,7 @@ function setupMatchingFilter() {
         '<input type="checkbox" id="monthAll-mdig" checked> Pilih Semua</div>' +
         '</div></div></div>' +
 
-        // Baris 4 ─ Bulan Akad & Tempat Nikah
+        // 5 ─ Bulan Akad & Tempat Nikah
         '<div class="filter-group"><label>Bulan Akad (Nikah)</label>' +
         '<div class="multiselect-wrapper">' +
         '<button type="button" class="multiselect-trigger" onclick="toggleMonthDropdown(\'makad\')" id="monthTrigger-makad">' +
@@ -237,12 +246,20 @@ function setupMatchingFilter() {
         '<div class="filter-group"><label>Tempat Nikah</label>' +
         '<select id="f-matching-tempatNikah"><option value="">-- Semua Tempat --</option></select></div>' +
 
-        // Baris 5 ─ Nama Suami & Istri
+        // 6 ─ Nama Suami & Istri
         '<div class="filter-group"><label>Nama Suami</label>' +
         '<input type="text" id="f-matching-namaSuami" placeholder="Cari..."></div>' +
 
         '<div class="filter-group"><label>Nama Istri</label>' +
         '<input type="text" id="f-matching-namaIstri" placeholder="Cari..."></div>' +
+
+        // 7 ─ Status Matching — paling terakhir
+        '<div class="filter-group"><label>Status Matching</label>' +
+        '<select id="f-matching-matchStatus">' +
+        '<option value="">-- Semua --</option>' +
+        '<option value="matched">✅ Ada di Data Nikah</option>' +
+        '<option value="unmatched">❌ Belum Ada di Data Nikah</option>' +
+        '</select></div>' +
 
         '</div>' + // /matchingFilterGrid
         '<div class="filter-buttons">' +
@@ -272,6 +289,7 @@ function applyMatchingFilter() {
     matchingFilters = {
         matchStatus:    val('f-matching-matchStatus'),
         kuaStok:        val('f-matching-kuaStok'),
+        tahunBuku:      val('f-matching-tahunBuku'),
         noPerforasi:    val('f-matching-noPerforasi'),
         status:         val('f-matching-status'),
         bulanDigunakan: cbsDig.length === 0 || chkDig.length === cbsDig.length
@@ -312,6 +330,14 @@ function buildMatchingFilterOptions() {
         var m = {};
         if (STOK_COL.KUA >= 0)
             stokData.forEach(function(r) { var v = String(r[STOK_COL.KUA] || '').trim(); if (v) m[v] = true; });
+        return Object.keys(m).sort();
+    })());
+
+    // Tahun Buku (kolom D)
+    _buildSelectOptions('f-matching-tahunBuku', '-- Semua Tahun --', (function() {
+        var m = {};
+        if (STOK_COL.TAHUN_BUKU >= 0)
+            stokData.forEach(function(r) { var v = String(r[STOK_COL.TAHUN_BUKU] || '').trim(); if (v) m[v] = true; });
         return Object.keys(m).sort();
     })());
 
@@ -416,6 +442,227 @@ function toggleMatchingSort(col) {
 // 7. RENDER TABLE
 // ═══════════════════════════════════════════════════════════════════
 
+// ── Helper: hitung count & update badge TANPA render tabel ────────
+function updateMatchingBadgeOnly() {
+    if (stokData.length === 0) { updateBadge('matching', 0); return; }
+    var count = getMatchingFilteredData().length;
+    updateBadge('matching', count);
+}
+
+// ── Selection helpers (Excel-style) ─────────────────────────────────
+
+/**
+ * handleMatchingRowClick — dipanggil dari onclick setiap <tr>.
+ * Behavior persis seperti Excel:
+ *   Ctrl/Cmd + klik → toggle baris itu saja (tambah/hapus dari seleksi)
+ *   Shift + klik    → pilih range dari baris terakhir diklik s.d. baris ini
+ *   Klik biasa      → clear semua, pilih hanya baris ini
+ */
+function handleMatchingRowClick(evt, gidx) {
+    // Jika ini adalah akhir dari drag (mouse bergerak antar baris), abaikan —
+    // seleksi sudah diurus oleh _onMatchingMousemove.
+    if (_drag.moved) { _drag.moved = false; return; }
+
+    // Abaikan klik pada elemen interaktif di dalam baris
+    var tag = evt.target.tagName;
+    if (tag === 'BUTTON' || tag === 'A' || tag === 'INPUT' || tag === 'SELECT') return;
+
+    var ctrl  = evt.ctrlKey || evt.metaKey;
+    var shift = evt.shiftKey;
+
+    if (shift && matchingLastClickedRow >= 0) {
+        // ── Shift+click: range select ──
+        var from = Math.min(matchingLastClickedRow, gidx);
+        var to   = Math.max(matchingLastClickedRow, gidx);
+        // Tentukan apakah akan select atau deselect berdasarkan status baris yang diklik
+        var willSelect = !matchingSelectedRows.has(gidx);
+        for (var i = from; i <= to; i++) {
+            if (willSelect) matchingSelectedRows.add(i);
+            else            matchingSelectedRows.delete(i);
+        }
+        // jangan update matchingLastClickedRow agar Shift+click berikutnya tetap dari anchor yang sama
+
+    } else if (ctrl) {
+        // ── Ctrl/Cmd+click: toggle satu baris ──
+        if (matchingSelectedRows.has(gidx)) {
+            matchingSelectedRows.delete(gidx);
+        } else {
+            matchingSelectedRows.add(gidx);
+        }
+        matchingLastClickedRow = gidx;
+
+    } else {
+        // ── Klik biasa: clear semua, pilih hanya baris ini ──
+        matchingSelectedRows.clear();
+        matchingSelectedRows.add(gidx);
+        matchingLastClickedRow = gidx;
+    }
+
+    _applyMatchingSelectionUI();
+}
+
+function toggleMatchingColSelect(cidx) {
+    if (matchingSelectedCols.has(cidx)) {
+        matchingSelectedCols.delete(cidx);
+    } else {
+        matchingSelectedCols.add(cidx);
+    }
+    _applyMatchingSelectionUI();
+}
+
+function clearMatchingSelection() {
+    matchingSelectedRows.clear();
+    matchingSelectedCols.clear();
+    matchingLastClickedRow = -1;
+    _applyMatchingSelectionUI();
+}
+
+// ── Drag-to-select (mouse/trackpad click & drag) ─────────────────────
+var _drag = {
+    active:    false,   // drag sedang berlangsung
+    moved:     false,   // sudah pindah dari baris awal → bukan klik murni
+    anchorIdx: -1,      // gidx baris awal (mousedown)
+    ctrl:      false,   // Ctrl/Cmd ditekan saat mousedown
+    snapshot:  null     // snapshot Set sebelum drag untuk Ctrl+drag additive
+};
+
+/** Cari ancestor <tr data-gidx> dari elemen target */
+function _gidxFromEl(el) {
+    while (el && el.tagName !== 'TABLE') {
+        if (el.tagName === 'TR' && el.hasAttribute('data-gidx'))
+            return parseInt(el.getAttribute('data-gidx'), 10);
+        el = el.parentElement;
+    }
+    return -1;
+}
+
+/** Apakah target ada di dalam tbody #table-matching? */
+function _inMatchingTbody(el) {
+    var container = document.getElementById('table-matching');
+    if (!container || !container.contains(el)) return false;
+    // pastikan dalam tbody (bukan thead)
+    var cur = el;
+    while (cur && cur !== container) {
+        if (cur.tagName === 'TBODY') return true;
+        if (cur.tagName === 'THEAD') return false;
+        cur = cur.parentElement;
+    }
+    return false;
+}
+
+function _onMatchingMousedown(evt) {
+    if (!_inMatchingTbody(evt.target)) return;
+    var tag = evt.target.tagName;
+    if (tag === 'BUTTON' || tag === 'A' || tag === 'INPUT' || tag === 'SELECT') return;
+
+    var gidx = _gidxFromEl(evt.target);
+    if (gidx < 0) return;
+
+    _drag.active    = true;
+    _drag.moved     = false;
+    _drag.anchorIdx = gidx;
+    _drag.ctrl      = evt.ctrlKey || evt.metaKey;
+    _drag.snapshot  = new Set(matchingSelectedRows);   // snapshot untuk Ctrl+drag
+
+    evt.preventDefault(); // cegah text-selection selama drag
+}
+
+function _onMatchingMousemove(evt) {
+    if (!_drag.active) return;
+    var gidx = _gidxFromEl(evt.target);
+    if (gidx < 0) return;
+    if (gidx === _drag.anchorIdx && !_drag.moved) return; // belum bergerak
+
+    _drag.moved = true;
+
+    var from = Math.min(_drag.anchorIdx, gidx);
+    var to   = Math.max(_drag.anchorIdx, gidx);
+
+    if (_drag.ctrl) {
+        // Ctrl+drag: mulai dari snapshot lalu tambahkan range
+        matchingSelectedRows = new Set(_drag.snapshot);
+        for (var i = from; i <= to; i++) matchingSelectedRows.add(i);
+    } else {
+        // Drag biasa: hanya range yang di-drag
+        matchingSelectedRows.clear();
+        for (var i = from; i <= to; i++) matchingSelectedRows.add(i);
+    }
+
+    _applyMatchingSelectionUI();
+}
+
+function _onMatchingMouseup(evt) {
+    if (!_drag.active) return;
+    if (_drag.moved) {
+        // Update anchor ke ujung range agar Shift+click berikutnya benar
+        var gidx = _gidxFromEl(evt.target);
+        if (gidx >= 0) matchingLastClickedRow = gidx;
+    }
+    _drag.active = false;
+    // _drag.moved sengaja TIDAK direset di sini —
+    // handleMatchingRowClick akan memeriksanya dan mereset sendiri.
+}
+
+/** Terapkan kelas CSS selection ke DOM setelah render */
+function _applyMatchingSelectionUI() {
+    var container = document.getElementById('table-matching');
+    if (!container) return;
+    var table = container.querySelector('table');
+    if (!table) return;
+
+    // Row selection — tbody rows
+    table.querySelectorAll('tbody tr[data-gidx]').forEach(function(tr) {
+        var idx = parseInt(tr.getAttribute('data-gidx'), 10);
+        if (matchingSelectedRows.has(idx)) {
+            tr.classList.add('row-msel');
+        } else {
+            tr.classList.remove('row-msel');
+        }
+    });
+
+    // Column selection — add/remove class to all cells in selected columns
+    table.querySelectorAll('thead th[data-cidx]').forEach(function(th) {
+        var cidx = parseInt(th.getAttribute('data-cidx'), 10);
+        if (matchingSelectedCols.has(cidx)) {
+            th.classList.add('col-msel-header');
+        } else {
+            th.classList.remove('col-msel-header');
+        }
+    });
+    table.querySelectorAll('tbody td[data-cidx]').forEach(function(td) {
+        var cidx = parseInt(td.getAttribute('data-cidx'), 10);
+        if (matchingSelectedCols.has(cidx)) {
+            td.classList.add('col-msel');
+        } else {
+            td.classList.remove('col-msel');
+        }
+    });
+
+    // Update selection counter bar
+    var bar = document.getElementById('matchingSelBar');
+    if (!bar) return;
+    var rowCount = matchingSelectedRows.size;
+    var colCount = matchingSelectedCols.size;
+    if (rowCount === 0 && colCount === 0) {
+        bar.style.display = 'none';
+    } else {
+        bar.style.display = 'flex';
+        var msg = [];
+        if (rowCount > 0) msg.push('<strong>' + rowCount.toLocaleString('id-ID') + '</strong> baris dipilih');
+        if (colCount > 0) msg.push('<strong>' + colCount.toLocaleString('id-ID') + '</strong> kolom dipilih');
+        bar.querySelector('.msel-info').innerHTML = '☑ ' + msg.join(', ');
+    }
+}
+
+function changeMatchingPageSize(val) {
+    matchingPageSize = parseInt(val, 10);
+    matchingPage = 1;
+    matchingSelectedRows.clear();
+    matchingSelectedCols.clear();
+    matchingLastClickedRow = -1;
+    renderMatchingTable();
+}
+
 function renderMatchingTable() {
     var container = document.getElementById('table-matching');
     if (!container) return;
@@ -432,9 +679,8 @@ function renderMatchingTable() {
     var allRows    = getMatchingFilteredData();
     var allBasRows = buildMatchingRows();          // untuk summary (total tanpa filter)
     var totalRows  = allRows.length;
-    var totalPages = Math.max(1, Math.ceil(totalRows / PAGE_SIZE));
-    matchingPage   = Math.max(1, Math.min(matchingPage, totalPages));
 
+    // ── Fix 1: badge selalu update saat render ──
     updateBadge('matching', totalRows);
 
     var parts = [];
@@ -448,31 +694,58 @@ function renderMatchingTable() {
         return;
     }
 
-    var start       = (matchingPage - 1) * PAGE_SIZE;
-    var displayRows = allRows.slice(start, start + PAGE_SIZE);
+    // ── Fix 3: gunakan matchingPageSize, 0 = Semua ──
+    var showAll    = (matchingPageSize === 0);
+    var pageSize   = showAll ? totalRows : matchingPageSize;
+    var totalPages = Math.max(1, Math.ceil(totalRows / pageSize));
+    matchingPage   = Math.max(1, Math.min(matchingPage, totalPages));
 
-    // ── Info bar ──
+    var start       = (matchingPage - 1) * pageSize;
+    var displayRows = showAll ? allRows : allRows.slice(start, start + pageSize);
+
+    // ── Info bar (dengan per-page selector) ──
     parts.push('<div class="data-info-bar">');
     parts.push(
         '<div class="count-display">Menampilkan <span>' +
-        totalRows.toLocaleString('id-ID') + '</span> data' +
+        (showAll
+            ? totalRows.toLocaleString('id-ID')
+            : (start + 1).toLocaleString('id-ID') + '–' + Math.min(start + pageSize, totalRows).toLocaleString('id-ID')
+        ) + '</span>' +
         (totalRows !== allBasRows.length
-            ? ' dari ' + allBasRows.length.toLocaleString('id-ID') + ' total'
-            : '') +
+            ? ' dari <span>' + totalRows.toLocaleString('id-ID') + '</span> terfilter (' + allBasRows.length.toLocaleString('id-ID') + ' total)'
+            : ' dari <span>' + totalRows.toLocaleString('id-ID') + '</span> data') +
         '</div>'
     );
+    // Per-page selector + actions
     parts.push(
-        '<div class="action-btns">' +
+        '<div class="action-btns" style="align-items:center; gap:10px;">' +
+        '<label style="font-size:12px;color:#555;white-space:nowrap;">Tampilkan:</label>' +
+        '<select id="matchingPageSizeSelect" onchange="changeMatchingPageSize(this.value)" style="padding:5px 8px;border:1px solid #ddd;border-radius:6px;font-size:12px;">' +
+        [25,50,100,200,500].map(function(n) {
+            return '<option value="' + n + '"' + (matchingPageSize === n && !showAll ? ' selected' : '') + '>' + n + ' baris</option>';
+        }).join('') +
+        '<option value="0"' + (showAll ? ' selected' : '') + '>Semua</option>' +
+        '</select>' +
         '<button class="btn btn-warning btn-sm" onclick="copyMatchingTable()">📋 Salin</button>' +
-        '<button class="btn btn-download btn-sm" onclick="downloadMatchingAsXlsx()">⬇ Download XLSX</button>' +
-        '</div></div>'
+        '<button class="btn btn-download btn-sm" onclick="downloadMatchingAsXlsx()">⬇ XLSX</button>' +
+        '</div>'
+    );
+    parts.push('</div>');
+
+    // ── Fix 2: Selection counter bar (awalnya tersembunyi) ──
+    parts.push(
+        '<div id="matchingSelBar" style="display:none; align-items:center; gap:10px; padding:7px 12px; ' +
+        'background:#e8f0fe; border:1px solid #c5cdf5; border-radius:8px; margin-bottom:8px; font-size:13px;">' +
+        '<span class="msel-info" style="flex:1; color:#3949ab;"></span>' +
+        '<button class="btn btn-secondary btn-sm" onclick="clearMatchingSelection()">✕ Batalkan Pilihan</button>' +
+        '</div>'
     );
 
-    // ── Pagination top ──
-    parts.push(buildPagination('matching', matchingPage, totalPages, totalRows));
+    // ── Pagination top (sembunyikan jika showAll) ──
+    if (!showAll) parts.push(buildPagination('matching', matchingPage, totalPages, totalRows));
 
     // ── Table ──
-    parts.push('<div class="table-container"><table><thead>');
+    parts.push('<div class="table-container"><table id="matchingTable"><thead>');
 
     // ── Baris subheader ──
     var stokColSpan = 1; // No. Porforasi
@@ -492,101 +765,124 @@ function renderMatchingTable() {
     parts.push('<th colspan="' + nikahColSpan + '" class="mgh-nikah">💍 Data Nikah (Join)</th>');
     parts.push('</tr>');
 
-    // ── Header utama ──
+    // ── Header utama (dengan data-cidx untuk column select) ──
+    // cidx: 0=#, 1=Status, 2=No.Porforasi, 3..=Stok, kemudian Nikah
+    var _cidx = 0;
+    function _th(label, sortKey, extra) {
+        var cls = sortKey ? _sortClass(sortKey) : '';
+        var onclick = sortKey
+            ? 'toggleMatchingSort(\'' + sortKey + '\')'
+            : 'toggleMatchingColSelect(' + _cidx + ')';
+        var title = sortKey ? 'Urutkan / Klik untuk seleksi kolom' : 'Klik untuk seleksi kolom';
+        var str = '<th data-cidx="' + _cidx + '"' + cls +
+            ' onclick="' + onclick + '" title="' + title + '"' +
+            (extra || '') + '>' + label + '</th>';
+        _cidx++;
+        return str;
+    }
+
     parts.push('<tr>');
-    parts.push('<th class="col-no">#</th>');
-    parts.push('<th' + _sortClass('matchStatus') + ' onclick="toggleMatchingSort(\'matchStatus\')" title="Urutkan">Status</th>');
-    parts.push('<th' + _sortClass('noPerforasi')  + ' onclick="toggleMatchingSort(\'noPerforasi\')"  title="Urutkan">No. Porforasi</th>');
+    parts.push(_th('#', null, ' class="col-no"'));
+    parts.push(_th('Status', 'matchStatus'));
+    parts.push(_th('No. Porforasi', 'noPerforasi'));
 
-    // Kolom Stok
-    if (STOK_COL.NO_SERI >= 0)
-        parts.push('<th>No. Seri</th>');
-    if (STOK_COL.TAHUN_BUKU >= 0)
-        parts.push('<th>Tahun Buku</th>');
-    if (STOK_COL.KUA >= 0)
-        parts.push('<th>KUA (Stok)</th>');
-    if (STOK_COL.STATUS >= 0)
-        parts.push('<th' + _sortClass('statusBuku') + ' onclick="toggleMatchingSort(\'statusBuku\')" title="Urutkan">Status Buku</th>');
-    if (STOK_COL.TGL_ALOKASI >= 0)
-        parts.push('<th>Tgl. Alokasi</th>');
-    if (STOK_COL.TGL_DIGUNAKAN >= 0)
-        parts.push('<th' + _sortClass('tglDigunakan') + ' onclick="toggleMatchingSort(\'tglDigunakan\')" title="Urutkan">Tgl. Digunakan</th>');
-    if (STOK_COL.KETERANGAN >= 0)
-        parts.push('<th>Keterangan</th>');
+    if (STOK_COL.NO_SERI >= 0)       parts.push(_th('No. Seri', null));
+    if (STOK_COL.TAHUN_BUKU >= 0)    parts.push(_th('Tahun Buku', null));
+    if (STOK_COL.KUA >= 0)           parts.push(_th('KUA (Stok)', null));
+    if (STOK_COL.STATUS >= 0)        parts.push(_th('Status Buku', 'statusBuku'));
+    if (STOK_COL.TGL_ALOKASI >= 0)   parts.push(_th('Tgl. Alokasi', null));
+    if (STOK_COL.TGL_DIGUNAKAN >= 0) parts.push(_th('Tgl. Digunakan', 'tglDigunakan'));
+    if (STOK_COL.KETERANGAN >= 0)    parts.push(_th('Keterangan', null));
 
-    // Kolom Nikah (dengan divider visual pada kolom pertama)
-    parts.push('<th class="matching-divider-col">No. Pendaftaran</th>');
-    parts.push('<th>No. Akta Nikah</th>');
-    parts.push('<th>Tgl. Daftar</th>');
-    parts.push('<th' + _sortClass('tglAkad') + ' onclick="toggleMatchingSort(\'tglAkad\')" title="Urutkan">Tgl. Akad</th>');
-    parts.push('<th' + _sortClass('namaSuami') + ' onclick="toggleMatchingSort(\'namaSuami\')" title="Urutkan">Nama Suami</th>');
-    parts.push('<th' + _sortClass('namaIstri') + ' onclick="toggleMatchingSort(\'namaIstri\')" title="Urutkan">Nama Istri</th>');
-    parts.push('<th>Tempat Nikah</th>');
-    parts.push('<th>NTPN</th>');
+    parts.push(_th('No. Pendaftaran', null, ' class="matching-divider-col"'));
+    parts.push(_th('No. Akta Nikah', null));
+    parts.push(_th('Tgl. Daftar', null));
+    parts.push(_th('Tgl. Akad', 'tglAkad'));
+    parts.push(_th('Nama Suami', 'namaSuami'));
+    parts.push(_th('Nama Istri', 'namaIstri'));
+    parts.push(_th('Tempat Nikah', null));
+    parts.push(_th('NTPN', null));
     parts.push('</tr></thead><tbody>');
 
-    // ── Rows ──
+    // ── Rows (dengan data-gidx & data-cidx untuk selection) ──
     var DASH = '<td class="cell-empty">—</td>';
+    var totalCols = _cidx; // total kolom
 
     displayRows.forEach(function(row, idx) {
         var stok    = row.stok;
         var nikah   = row.nikah;
         var matched = row.matched;
+        var gidx    = start + idx;   // global index di allRows
 
-        parts.push('<tr class="' + (matched ? 'row-matched' : 'row-unmatched') + '">');
-        parts.push('<td class="col-no">' + (start + idx + 1) + '</td>');
+        var rowCls = (matched ? 'row-matched' : 'row-unmatched');
+        if (matchingSelectedRows.has(gidx)) rowCls += ' row-msel';
+
+        parts.push('<tr class="' + rowCls + '" data-gidx="' + gidx + '"' +
+            ' onclick="handleMatchingRowClick(event,' + gidx + ')">');
+        var ci = 0; // column index counter untuk td
+
+        // Col #
+        var cSelNo = matchingSelectedCols.has(ci) ? ' col-msel' : '';
+        parts.push('<td class="col-no' + cSelNo + '" data-cidx="' + ci + '">' + (gidx + 1) + '</td>'); ci++;
 
         // Status badge
+        var cSelSt = matchingSelectedCols.has(ci) ? ' col-msel' : '';
         var badge = matched
             ? '<span class="match-badge match-yes">✅ Ada</span>'
             : '<span class="match-badge match-no">❌ Tidak Ada Data</span>';
-        parts.push('<td>' + badge + '</td>');
+        parts.push('<td data-cidx="' + ci + '" class="' + cSelSt.trim() + '">' + badge + '</td>'); ci++;
 
         // No. Porforasi
+        var cSelPer = matchingSelectedCols.has(ci) ? ' col-msel' : '';
         var noPer = STOK_COL.NO_PERFORASI >= 0
             ? escHtml(String(stok[STOK_COL.NO_PERFORASI] || ''))
             : '';
-        parts.push('<td class="cell-perforasi">' + noPer + '</td>');
+        parts.push('<td class="cell-perforasi' + cSelPer + '" data-cidx="' + ci + '">' + noPer + '</td>'); ci++;
 
-        // Stok columns
-        if (STOK_COL.NO_SERI >= 0)
-            parts.push('<td>' + escHtml(String(stok[STOK_COL.NO_SERI] || '')) + '</td>');
-        if (STOK_COL.TAHUN_BUKU >= 0)
-            parts.push('<td>' + escHtml(String(stok[STOK_COL.TAHUN_BUKU] || '')) + '</td>');
-        if (STOK_COL.KUA >= 0)
-            parts.push('<td>' + escHtml(String(stok[STOK_COL.KUA] || '')) + '</td>');
-        if (STOK_COL.STATUS >= 0)
-            parts.push('<td>' + buildStatusBadge(stok[STOK_COL.STATUS]) + '</td>');
-        if (STOK_COL.TGL_ALOKASI >= 0)
-            parts.push('<td>' + formatStokDate(stok[STOK_COL.TGL_ALOKASI]) + '</td>');
-        if (STOK_COL.TGL_DIGUNAKAN >= 0)
-            parts.push('<td>' + formatStokDate(stok[STOK_COL.TGL_DIGUNAKAN]) + '</td>');
-        if (STOK_COL.KETERANGAN >= 0)
-            parts.push('<td>' + escHtml(String(stok[STOK_COL.KETERANGAN] || '')) + '</td>');
+        function _td(val, extraCls) {
+            var cSel = matchingSelectedCols.has(ci) ? ' col-msel' : '';
+            var str  = '<td data-cidx="' + ci + '" class="' + ((extraCls || '') + cSel).trim() + '">' + val + '</td>';
+            ci++;
+            return str;
+        }
+
+        if (STOK_COL.NO_SERI >= 0)       parts.push(_td(escHtml(String(stok[STOK_COL.NO_SERI]    || ''))));
+        if (STOK_COL.TAHUN_BUKU >= 0)    parts.push(_td(escHtml(String(stok[STOK_COL.TAHUN_BUKU] || ''))));
+        if (STOK_COL.KUA >= 0)           parts.push(_td(escHtml(String(stok[STOK_COL.KUA]        || ''))));
+        if (STOK_COL.STATUS >= 0)        parts.push(_td(buildStatusBadge(stok[STOK_COL.STATUS])));
+        if (STOK_COL.TGL_ALOKASI >= 0)   parts.push(_td(formatStokDate(stok[STOK_COL.TGL_ALOKASI])));
+        if (STOK_COL.TGL_DIGUNAKAN >= 0) parts.push(_td(formatStokDate(stok[STOK_COL.TGL_DIGUNAKAN])));
+        if (STOK_COL.KETERANGAN >= 0)    parts.push(_td(escHtml(String(stok[STOK_COL.KETERANGAN] || ''))));
 
         // Nikah columns
         if (!matched) {
-            // 8 empty cells (No.Pendaftaran, No.Akta, TglDaftar, TglAkad, Suami, Istri, Tempat, NTPN)
-            for (var e = 0; e < 8; e++) parts.push(DASH);
+            for (var e = 0; e < 8; e++) {
+                var cSel2 = matchingSelectedCols.has(ci) ? ' col-msel' : '';
+                parts.push('<td class="cell-empty' + cSel2 + '" data-cidx="' + ci + '">—</td>');
+                ci++;
+            }
         } else {
-            parts.push('<td class="matching-divider-col">' + escHtml(String(nikah[COL.NO_PENDAFTARAN] || '')) + '</td>');
-            parts.push('<td>' + escHtml(String(nikah[COL.NO_AKTA_NIKAH]  || '')) + '</td>');
-            parts.push('<td>' + formatDate(nikah[COL.TGL_DAFTAR]) + '</td>');
-            parts.push('<td>' + formatDate(nikah[COL.TGL_AKAD]) + '</td>');
-            parts.push('<td>' + escHtml(String(nikah[COL.NAMA_SUAMI] || '')) + '</td>');
-            parts.push('<td>' + escHtml(String(nikah[COL.NAMA_ISTRI] || '')) + '</td>');
-            parts.push('<td>' + escHtml(String(nikah[COL.TEMPAT_NIKAH] || '')) + '</td>');
-            parts.push('<td>' + escHtml(String(nikah[COL.NTPN] || '')) + '</td>');
+            parts.push(_td(escHtml(String(nikah[COL.NO_PENDAFTARAN] || '')), 'matching-divider-col'));
+            parts.push(_td(escHtml(String(nikah[COL.NO_AKTA_NIKAH]  || ''))));
+            parts.push(_td(formatDate(nikah[COL.TGL_DAFTAR])));
+            parts.push(_td(formatDate(nikah[COL.TGL_AKAD])));
+            parts.push(_td(escHtml(String(nikah[COL.NAMA_SUAMI] || ''))));
+            parts.push(_td(escHtml(String(nikah[COL.NAMA_ISTRI] || ''))));
+            parts.push(_td(escHtml(String(nikah[COL.TEMPAT_NIKAH] || ''))));
+            parts.push(_td(escHtml(String(nikah[COL.NTPN]       || ''))));
         }
 
         parts.push('</tr>');
     });
 
     parts.push('</tbody></table></div>');
-    parts.push(buildPagination('matching', matchingPage, totalPages, totalRows));
+    if (!showAll) parts.push(buildPagination('matching', matchingPage, totalPages, totalRows));
 
     container.innerHTML = parts.join('');
     matchingDirty = false;
+
+    // Terapkan selection bar state setelah render
+    _applyMatchingSelectionUI();
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -676,6 +972,7 @@ function restoreMatchingFilterUI() {
 
     setVal('f-matching-matchStatus', f.matchStatus);
     setVal('f-matching-kuaStok',     f.kuaStok);
+    setVal('f-matching-tahunBuku',   f.tahunBuku);
     setInp('f-matching-noPerforasi', f.noPerforasi);
     setVal('f-matching-status',      f.status);
     setInp('f-matching-namaSuami',   f.namaSuami);
@@ -728,6 +1025,9 @@ function restoreMatchingFilterUI() {
     window.changePage = function(which, page) {
         if (which === 'matching') {
             matchingPage = page;
+            // Bersihkan row selection saat ganti halaman (indeks berubah)
+            matchingSelectedRows.clear();
+            matchingLastClickedRow = -1;
             renderMatchingTable();
             var tc = document.querySelector('#table-matching .table-container');
             if (tc) tc.scrollTop = 0;
@@ -743,10 +1043,13 @@ function restoreMatchingFilterUI() {
     window.clearData = function() {
         _orig();
         // Reset matching state setelah clearData selesai
-        matchingFilters = {};
-        matchingSort    = { col: 'noPerforasi', dir: 'asc' };
-        matchingPage    = 1;
-        matchingDirty   = true;
+        matchingFilters      = {};
+        matchingSort         = { col: 'noPerforasi', dir: 'asc' };
+        matchingPage         = 1;
+        matchingDirty        = true;
+        matchingSelectedRows.clear();
+        matchingSelectedCols.clear();
+        matchingLastClickedRow = -1;
         updateBadge('matching', 0);
         var div = document.getElementById('table-matching');
         if (div) div.innerHTML = buildEmptyState(
@@ -762,6 +1065,8 @@ function restoreMatchingFilterUI() {
     window.buildStokKUAOptions = function() {
         _orig();
         matchingDirty = true;
+        // ✅ Fix 1: Update badge segera setelah data stok dimuat (tanpa tunggu tab aktif)
+        updateMatchingBadgeOnly();
         // Jika tab matching sedang aktif, langsung refresh
         var activeTabEl = document.querySelector('.tab-content.active');
         if (activeTabEl && activeTabEl.id === 'tab-matching') {
@@ -778,6 +1083,8 @@ function restoreMatchingFilterUI() {
     window.buildNikahKUAOptions = function() {
         _orig();
         matchingDirty = true;
+        // ✅ Fix 1: Update badge segera setelah data nikah dimuat
+        updateMatchingBadgeOnly();
     };
 })();
 
@@ -791,6 +1098,58 @@ function switchStokView(view) {
 // ═══════════════════════════════════════════════════════════════════
 
 function _initMatchingTab() {
+    // ── Inject CSS untuk selection & per-page UI ──
+    if (!document.getElementById('matching-extra-styles')) {
+        var style = document.createElement('style');
+        style.id = 'matching-extra-styles';
+        style.textContent = [
+            /* Row selection */
+            '#matchingTable tbody tr[data-gidx] { cursor: pointer; }',
+            '#matchingTable tbody tr.row-msel td { background: #dbeafe !important; border-bottom-color: #93c5fd; }',
+            '#matchingTable tbody tr.row-msel:hover td { background: #bfdbfe !important; }',
+            /* Column selection */
+            '#matchingTable thead th.col-msel-header { background: #dbeafe !important; color: #1e40af !important; border-bottom-color: #3b82f6 !important; }',
+            '#matchingTable tbody td.col-msel { background: #eff6ff !important; color: #1e3a8a; }',
+            '#matchingTable tbody tr:hover td.col-msel { background: #dbeafe !important; }',
+            /* Row+Col intersection */
+            '#matchingTable tbody tr.row-msel td.col-msel { background: #bfdbfe !important; }',
+            /* Prevent text-selection cursor while dragging */
+            'body.matching-dragging { user-select: none !important; cursor: row-resize !important; }',
+            'body.matching-dragging #matchingTable tbody tr[data-gidx] { cursor: row-resize !important; }',
+            /* Selection bar */
+            '#matchingSelBar { animation: selBarIn 0.2s ease-out; }',
+            '@keyframes selBarIn { from{opacity:0;transform:translateY(-4px)} to{opacity:1;transform:translateY(0)} }',
+        ].join('\n');
+        document.head.appendChild(style);
+    }
+
+    // ── Delegated drag-to-select listeners (didaftarkan sekali) ──
+    if (!document._matchingDragBound) {
+        document._matchingDragBound = true;
+
+        document.addEventListener('mousedown', function(e) {
+            _onMatchingMousedown(e);
+            if (_drag.active) document.body.classList.add('matching-dragging');
+        });
+
+        document.addEventListener('mousemove', function(e) {
+            _onMatchingMousemove(e);
+        });
+
+        document.addEventListener('mouseup', function(e) {
+            _onMatchingMouseup(e);
+            document.body.classList.remove('matching-dragging');
+        });
+
+        // Batalkan drag jika mouse keluar dari window (misal trackpad lepas di luar)
+        document.addEventListener('mouseleave', function() {
+            if (_drag.active) {
+                _drag.active = false;
+                document.body.classList.remove('matching-dragging');
+            }
+        });
+    }
+
     setupMatchingFilter();
     var div = document.getElementById('table-matching');
     if (div) div.innerHTML = buildEmptyState(
@@ -820,5 +1179,15 @@ window.buildMatchingFilterOptions  = buildMatchingFilterOptions;
 window.copyMatchingTable           = copyMatchingTable;
 window.downloadMatchingAsXlsx      = downloadMatchingAsXlsx;
 window.switchStokView              = switchStokView;
+// Selection & UI helpers
+window.updateMatchingBadgeOnly     = updateMatchingBadgeOnly;
+window.handleMatchingRowClick      = handleMatchingRowClick;   // Excel-style (Shift/Ctrl + drag)
+window.toggleMatchingColSelect     = toggleMatchingColSelect;
+window.clearMatchingSelection      = clearMatchingSelection;
+window.changeMatchingPageSize      = changeMatchingPageSize;
+// Drag internals (exposed for potential external use)
+window._onMatchingMousedown        = _onMatchingMousedown;
+window._onMatchingMousemove        = _onMatchingMousemove;
+window._onMatchingMouseup          = _onMatchingMouseup;
 
 console.log('[MATCHING] ✓ supervisi-matching.js loaded');
