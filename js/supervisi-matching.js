@@ -108,11 +108,11 @@ function getMatchingFilteredData() {
                 .toLowerCase().indexOf(f.noPerforasi.toLowerCase()) !== -1;
         });
 
-    // ── Status buku (Stok) ──
-    if (f.status && STOK_COL.STATUS >= 0)
+    // ── Status buku (Stok) — multiselect ──
+    if (f.status && Array.isArray(f.status) && f.status.length > 0 && STOK_COL.STATUS >= 0)
         rows = rows.filter(function(r) {
-            return String(r.stok[STOK_COL.STATUS] || '').toLowerCase().trim()
-                === f.status.toLowerCase();
+            var v = String(r.stok[STOK_COL.STATUS] || '').trim();
+            return f.status.some(function(s) { return s.toLowerCase() === v.toLowerCase(); });
         });
 
     // ── Bulan Digunakan (Stok) ──
@@ -220,9 +220,15 @@ function setupMatchingFilter() {
         '<div class="filter-group"><label>No. Porforasi</label>' +
         '<input type="text" id="f-matching-noPerforasi" placeholder="Cari..."></div>' +
 
-        // 4 ─ Status Buku & Bulan Digunakan
+        // 4 ─ Status Buku (multiselect) & Bulan Digunakan
         '<div class="filter-group"><label>Status Buku</label>' +
-        '<select id="f-matching-status"><option value="">-- Semua Status --</option></select></div>' +
+        '<div class="multiselect-wrapper">' +
+        '<button type="button" class="multiselect-trigger" onclick="toggleStatusBukuDropdown()" id="statusBukuTrigger">' +
+        '<span id="statusBukuLabel">-- Semua Status --</span><span class="arrow">▼</span></button>' +
+        '<div class="multiselect-dropdown" id="statusBukuDropdown">' +
+        '<div class="multiselect-select-all" onclick="toggleAllStatusBuku()">' +
+        '<input type="checkbox" id="statusBukuAll" checked> Pilih Semua</div>' +
+        '</div></div></div>' +
 
         '<div class="filter-group"><label>Bulan Digunakan (Stok)</label>' +
         '<div class="multiselect-wrapper">' +
@@ -286,12 +292,16 @@ function applyMatchingFilter() {
     var cbsAkad = Array.from(document.querySelectorAll('.month-cb-makad'));
     var chkAkad = cbsAkad.filter(function(c) { return c.checked; });
 
+    var cbsSt   = Array.from(document.querySelectorAll('.status-buku-cb'));
+    var chkSt   = cbsSt.filter(function(c) { return c.checked; });
+
     matchingFilters = {
         matchStatus:    val('f-matching-matchStatus'),
         kuaStok:        val('f-matching-kuaStok'),
         tahunBuku:      val('f-matching-tahunBuku'),
         noPerforasi:    val('f-matching-noPerforasi'),
-        status:         val('f-matching-status'),
+        status:         cbsSt.length === 0 || chkSt.length === cbsSt.length
+                        ? [] : chkSt.map(function(c) { return c.value; }),
         bulanDigunakan: cbsDig.length === 0 || chkDig.length === cbsDig.length
                         ? [] : chkDig.map(function(c) { return parseInt(c.value); }),
         bulanAkad:      cbsAkad.length === 0 || chkAkad.length === cbsAkad.length
@@ -313,6 +323,8 @@ function resetMatchingFilter() {
         sec.querySelectorAll('input[type="text"]').forEach(function(el) { el.value = ''; });
         sec.querySelectorAll('select').forEach(function(el) { el.selectedIndex = 0; });
     }
+    document.querySelectorAll('.status-buku-cb').forEach(function(c) { c.checked = true; });
+    _updateStatusBukuLabel();
     document.querySelectorAll('.month-cb-mdig').forEach(function(c)  { c.checked = true; });
     document.querySelectorAll('.month-cb-makad').forEach(function(c) { c.checked = true; });
     updateMonthLabel('mdig');
@@ -341,20 +353,8 @@ function buildMatchingFilterOptions() {
         return Object.keys(m).sort();
     })());
 
-    // Status buku
-    var statusSel = document.getElementById('f-matching-status');
-    if (statusSel && STOK_COL.STATUS >= 0) {
-        var vals = {};
-        stokData.forEach(function(r) { var v = String(r[STOK_COL.STATUS] || '').trim(); if (v) vals[v] = true; });
-        statusSel.innerHTML = '<option value="">-- Semua Status --</option>';
-        Object.keys(vals).sort().forEach(function(k) {
-            var o = document.createElement('option');
-            var s = getStatusStyle(k);
-            o.value = k; o.textContent = k;
-            o.style.background = s.bg; o.style.color = s.color;
-            statusSel.appendChild(o);
-        });
-    }
+    // Status buku — multiselect checkbox dropdown
+    buildStatusBukuOptions();
 
     // Tempat Nikah
     _buildSelectOptions('f-matching-tempatNikah', '-- Semua Tempat --', (function() {
@@ -383,6 +383,71 @@ function _buildSelectOptions(id, placeholder, sortedKeys) {
         var o = document.createElement('option');
         o.value = k; o.textContent = k; sel.appendChild(o);
     });
+}
+
+// ── Status Buku multiselect (checkbox dropdown) ───────────────────
+function buildStatusBukuOptions() {
+    var dropdown = document.getElementById('statusBukuDropdown');
+    if (!dropdown || STOK_COL.STATUS < 0) return;
+    var vals = {};
+    stokData.forEach(function(r) { var v = String(r[STOK_COL.STATUS] || '').trim(); if (v) vals[v] = true; });
+    var sorted = Object.keys(vals).sort();
+    // Clear existing items (keep "Pilih Semua" first child)
+    while (dropdown.children.length > 1) dropdown.removeChild(dropdown.lastChild);
+    sorted.forEach(function(k) {
+        var s   = getStatusStyle(k);
+        var div = document.createElement('div');
+        div.className = 'multiselect-item';
+        var cb  = document.createElement('input');
+        cb.type = 'checkbox'; cb.value = k; cb.checked = true;
+        cb.className = 'status-buku-cb';
+        cb.id  = 'sbcb-' + k.replace(/\s+/g, '_');
+        cb.addEventListener('change', _updateStatusBukuLabel);
+        var lbl = document.createElement('label');
+        lbl.htmlFor = cb.id;
+        lbl.style.cssText = 'display:inline-block;padding:1px 6px;border-radius:4px;background:' +
+            s.bg + ';color:' + s.color + ';cursor:pointer;';
+        lbl.textContent = k;
+        div.appendChild(cb); div.appendChild(lbl);
+        dropdown.appendChild(div);
+    });
+    _updateStatusBukuLabel();
+}
+
+function _updateStatusBukuLabel() {
+    var all  = Array.from(document.querySelectorAll('.status-buku-cb'));
+    var chk  = all.filter(function(c) { return c.checked; });
+    var lbl  = document.getElementById('statusBukuLabel');
+    var allCb = document.getElementById('statusBukuAll');
+    if (!lbl) return;
+    if (all.length === 0 || chk.length === all.length) {
+        lbl.textContent = '-- Semua Status --';
+        if (allCb) allCb.checked = true;
+    } else if (chk.length === 0) {
+        lbl.textContent = '(tidak ada)';
+        if (allCb) allCb.checked = false;
+    } else {
+        lbl.textContent = chk.length + ' status dipilih';
+        if (allCb) allCb.indeterminate = true;
+    }
+}
+
+function toggleStatusBukuDropdown() {
+    var dd = document.getElementById('statusBukuDropdown');
+    if (!dd) return;
+    var isOpen = dd.classList.contains('open');
+    // Tutup semua dropdown multiselect lain
+    document.querySelectorAll('.multiselect-dropdown.open').forEach(function(d) {
+        d.classList.remove('open');
+    });
+    if (!isOpen) dd.classList.add('open');
+}
+
+function toggleAllStatusBuku() {
+    var allCb  = document.getElementById('statusBukuAll');
+    var should = allCb ? allCb.checked : true;
+    document.querySelectorAll('.status-buku-cb').forEach(function(cb) { cb.checked = should; });
+    _updateStatusBukuLabel();
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -558,32 +623,42 @@ function _onMatchingMousedown(evt) {
     var gidx = _gidxFromEl(evt.target);
     if (gidx < 0) return;
 
+    // Simpan state drag — tapi JANGAN preventDefault di sini agar
+    // klik biasa masih bisa memblok teks untuk di-copy.
+    // preventDefault hanya dipanggil saat drag benar-benar melewati baris lain.
     _drag.active    = true;
     _drag.moved     = false;
     _drag.anchorIdx = gidx;
     _drag.ctrl      = evt.ctrlKey || evt.metaKey;
-    _drag.snapshot  = new Set(matchingSelectedRows);   // snapshot untuk Ctrl+drag
-
-    evt.preventDefault(); // cegah text-selection selama drag
+    _drag.snapshot  = new Set(matchingSelectedRows);
 }
 
-function _onMatchingMousemove(evt) {
+/**
+ * Gunakan mouseover (bukan mousemove) agar kita hanya bereaksi saat
+ * pointer masuk ke ROW berbeda — jauh lebih efisien dan tidak
+ * mengganggu scroll atau teks-copy di dalam satu baris.
+ */
+function _onMatchingMouseover(evt) {
     if (!_drag.active) return;
-    var gidx = _gidxFromEl(evt.target);
-    if (gidx < 0) return;
-    if (gidx === _drag.anchorIdx && !_drag.moved) return; // belum bergerak
+    // Cek tombol mouse masih ditekan (button bitmask bit-0)
+    if ((evt.buttons & 1) === 0) { _drag.active = false; return; }
 
-    _drag.moved = true;
+    var gidx = _gidxFromEl(evt.target);
+    if (gidx < 0 || gidx === _drag.anchorIdx && !_drag.moved) return;
+
+    if (!_drag.moved) {
+        // Pertama kali drag melewati baris lain → baru block text-selection
+        _drag.moved = true;
+        document.body.classList.add('matching-dragging');
+    }
 
     var from = Math.min(_drag.anchorIdx, gidx);
     var to   = Math.max(_drag.anchorIdx, gidx);
 
     if (_drag.ctrl) {
-        // Ctrl+drag: mulai dari snapshot lalu tambahkan range
         matchingSelectedRows = new Set(_drag.snapshot);
         for (var i = from; i <= to; i++) matchingSelectedRows.add(i);
     } else {
-        // Drag biasa: hanya range yang di-drag
         matchingSelectedRows.clear();
         for (var i = from; i <= to; i++) matchingSelectedRows.add(i);
     }
@@ -594,13 +669,12 @@ function _onMatchingMousemove(evt) {
 function _onMatchingMouseup(evt) {
     if (!_drag.active) return;
     if (_drag.moved) {
-        // Update anchor ke ujung range agar Shift+click berikutnya benar
         var gidx = _gidxFromEl(evt.target);
         if (gidx >= 0) matchingLastClickedRow = gidx;
     }
     _drag.active = false;
-    // _drag.moved sengaja TIDAK direset di sini —
-    // handleMatchingRowClick akan memeriksanya dan mereset sendiri.
+    document.body.classList.remove('matching-dragging');
+    // _drag.moved TIDAK direset — handleMatchingRowClick akan memeriksanya.
 }
 
 /** Terapkan kelas CSS selection ke DOM setelah render */
@@ -974,7 +1048,13 @@ function restoreMatchingFilterUI() {
     setVal('f-matching-kuaStok',     f.kuaStok);
     setVal('f-matching-tahunBuku',   f.tahunBuku);
     setInp('f-matching-noPerforasi', f.noPerforasi);
-    setVal('f-matching-status',      f.status);
+    // Status buku — multiselect
+    if (f.status && Array.isArray(f.status) && f.status.length > 0) {
+        document.querySelectorAll('.status-buku-cb').forEach(function(cb) {
+            cb.checked = f.status.some(function(s) { return s.toLowerCase() === cb.value.toLowerCase(); });
+        });
+        _updateStatusBukuLabel();
+    }
     setInp('f-matching-namaSuami',   f.namaSuami);
     setInp('f-matching-namaIstri',   f.namaIstri);
     setVal('f-matching-tempatNikah', f.tempatNikah);
@@ -1129,24 +1209,15 @@ function _initMatchingTab() {
 
         document.addEventListener('mousedown', function(e) {
             _onMatchingMousedown(e);
-            if (_drag.active) document.body.classList.add('matching-dragging');
         });
 
-        document.addEventListener('mousemove', function(e) {
-            _onMatchingMousemove(e);
+        // mouseover: baru bereaksi saat masuk ROW berbeda → tidak ganggu teks-copy
+        document.addEventListener('mouseover', function(e) {
+            _onMatchingMouseover(e);
         });
 
         document.addEventListener('mouseup', function(e) {
             _onMatchingMouseup(e);
-            document.body.classList.remove('matching-dragging');
-        });
-
-        // Batalkan drag jika mouse keluar dari window (misal trackpad lepas di luar)
-        document.addEventListener('mouseleave', function() {
-            if (_drag.active) {
-                _drag.active = false;
-                document.body.classList.remove('matching-dragging');
-            }
         });
     }
 
@@ -1181,13 +1252,13 @@ window.downloadMatchingAsXlsx      = downloadMatchingAsXlsx;
 window.switchStokView              = switchStokView;
 // Selection & UI helpers
 window.updateMatchingBadgeOnly     = updateMatchingBadgeOnly;
-window.handleMatchingRowClick      = handleMatchingRowClick;   // Excel-style (Shift/Ctrl + drag)
+window.handleMatchingRowClick      = handleMatchingRowClick;
 window.toggleMatchingColSelect     = toggleMatchingColSelect;
 window.clearMatchingSelection      = clearMatchingSelection;
 window.changeMatchingPageSize      = changeMatchingPageSize;
-// Drag internals (exposed for potential external use)
-window._onMatchingMousedown        = _onMatchingMousedown;
-window._onMatchingMousemove        = _onMatchingMousemove;
-window._onMatchingMouseup          = _onMatchingMouseup;
+// Status Buku multiselect
+window.buildStatusBukuOptions      = buildStatusBukuOptions;
+window.toggleStatusBukuDropdown    = toggleStatusBukuDropdown;
+window.toggleAllStatusBuku         = toggleAllStatusBuku;
 
 console.log('[MATCHING] ✓ supervisi-matching.js loaded');
