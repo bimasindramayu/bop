@@ -1,0 +1,870 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Excel Data Merger</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            padding: 40px;
+            max-width: 900px;
+            width: 100%;
+        }
+        
+        h1 {
+            color: #667eea;
+            margin-bottom: 10px;
+            font-size: 28px;
+            text-align: center;
+        }
+        
+        .subtitle {
+            color: #666;
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+        
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 30px;
+            border-bottom: 2px solid #e0e0e0;
+        }
+        
+        .tab {
+            padding: 12px 30px;
+            background: transparent;
+            border: none;
+            border-bottom: 3px solid transparent;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 600;
+            color: #666;
+            transition: all 0.3s;
+        }
+        
+        .tab:hover {
+            color: #667eea;
+        }
+        
+        .tab.active {
+            color: #667eea;
+            border-bottom-color: #667eea;
+        }
+        
+        .tab-content {
+            display: none;
+        }
+        
+        .tab-content.active {
+            display: block;
+        }
+        
+        .file-section {
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 25px;
+            margin-bottom: 20px;
+            border: 2px dashed #667eea;
+            transition: all 0.3s;
+        }
+        
+        .file-section:hover {
+            border-color: #764ba2;
+            background: #f0f1ff;
+        }
+        
+        .file-label {
+            display: block;
+            font-weight: 600;
+            margin-bottom: 10px;
+            color: #333;
+            font-size: 16px;
+        }
+        
+        .file-description {
+            font-size: 13px;
+            color: #666;
+            margin-bottom: 12px;
+            line-height: 1.5;
+        }
+        
+        input[type="file"] {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 14px;
+            cursor: pointer;
+            transition: border-color 0.3s;
+        }
+        
+        input[type="file"]:hover {
+            border-color: #667eea;
+        }
+        
+        .file-info {
+            margin-top: 10px;
+            padding: 10px;
+            background: #e8f5e9;
+            border-radius: 6px;
+            font-size: 13px;
+            color: #2e7d32;
+            display: none;
+        }
+        
+        .file-info.show {
+            display: block;
+        }
+        
+        .btn-process {
+            width: 100%;
+            padding: 16px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 18px;
+            font-weight: 600;
+            cursor: pointer;
+            margin-top: 20px;
+            transition: transform 0.2s, box-shadow 0.2s;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+        }
+        
+        .btn-process:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
+        }
+        
+        .btn-process:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            box-shadow: none;
+        }
+        
+        .status {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 8px;
+            font-size: 14px;
+            display: none;
+        }
+        
+        .status.show {
+            display: block;
+        }
+        
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        
+        .status.info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+        
+        .loader-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            z-index: 9999;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        .loader-overlay.show {
+            display: flex;
+        }
+        
+        .loader-content {
+            text-align: center;
+            color: white;
+        }
+        
+        .spinner {
+            width: 60px;
+            height: 60px;
+            border: 6px solid rgba(255, 255, 255, 0.3);
+            border-top: 6px solid white;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .loader-text {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 10px;
+        }
+        
+        .loader-subtext {
+            font-size: 14px;
+            opacity: 0.8;
+        }
+        
+        .summary {
+            margin-top: 20px;
+            padding: 20px;
+            background: #fff3cd;
+            border-radius: 8px;
+            border: 1px solid #ffeaa7;
+            display: none;
+        }
+        
+        .summary.show {
+            display: block;
+        }
+        
+        .summary h3 {
+            color: #856404;
+            margin-bottom: 10px;
+            font-size: 16px;
+        }
+        
+        .summary-item {
+            padding: 8px 0;
+            border-bottom: 1px solid #ffeaa7;
+            color: #856404;
+            font-size: 14px;
+        }
+        
+        .summary-item:last-child {
+            border-bottom: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="loader-overlay" id="loaderOverlay">
+        <div class="loader-content">
+            <div class="spinner"></div>
+            <div class="loader-text" id="loaderText">Memproses data...</div>
+            <div class="loader-subtext" id="loaderSubtext">Mohon tunggu sebentar</div>
+        </div>
+    </div>
+
+    <div class="container">
+        <h1>📊 Excel Data Merger</h1>
+        <p class="subtitle">Menggabungkan data JASPRO & TRANSPO berdasarkan NAMA dan No Rekening</p>
+        
+        <div class="tabs">
+            <button class="tab active" onclick="switchTab('jaspro')">📄 JASPRO</button>
+            <button class="tab" onclick="switchTab('transpo')">🚚 TRANSPO</button>
+        </div>
+        
+        <!-- TAB JASPRO -->
+        <div id="jaspro-tab" class="tab-content active">
+            <div class="file-section">
+                <label class="file-label" for="file1-jaspro">📄 Sheet 1 JASPRO (File XLSX)</label>
+                <div class="file-description">
+                    Sheet "JASPRO": No, NAMA, KUA, NIP, GOL, NO. REKENING CSV, NO. REKENING, JUMLAH, TARIF, JUMLAH, PPH, JUMLAH DITERIMA
+                </div>
+                <input type="file" id="file1-jaspro" accept=".xlsx" aria-label="Upload file Sheet 1 JASPRO" title="Pilih file Sheet 1 dalam format XLSX" />
+                <div class="file-info" id="file1-jaspro-info"></div>
+            </div>
+            
+            <div class="file-section">
+                <label class="file-label" for="file2-jaspro">📋 Sheet 2 (File XLSM)</label>
+                <div class="file-description">
+                    Kolom dimulai dari B11: NO, NAMA_SUPPLIER, NAMA_PEMILIK_REKENING, NO_REKENING, JUMLAH_UANG
+                </div>
+                <input type="file" id="file2-jaspro" accept=".xlsm" aria-label="Upload file Sheet 2" title="Pilih file Sheet 2 dalam format XLSM" />
+                <div class="file-info" id="file2-jaspro-info"></div>
+            </div>
+
+            <button class="btn-process" id="btnProcessJaspro" disabled>Proses Data JASPRO</button>
+            
+            <div class="status" id="status-jaspro"></div>
+            <div class="summary" id="summary-jaspro"></div>
+        </div>
+        
+        <!-- TAB TRANSPO -->
+        <div id="transpo-tab" class="tab-content">
+            <div class="file-section">
+                <label class="file-label" for="file1-transpo">🚚 Sheet 1 TRANSPO (File XLSX)</label>
+                <div class="file-description">
+                    Sheet "TRANSPO": No, NAMA, KUA, NIP, GOL, NO. REKENING CSV, NO. REKENING, JUMLAH, TARIF, TRANSPORT, JUMLAH DITERIMA
+                </div>
+                <input type="file" id="file1-transpo" accept=".xlsx" aria-label="Upload file Sheet 1 TRANSPO" title="Pilih file Sheet 1 dalam format XLSX" />
+                <div class="file-info" id="file1-transpo-info"></div>
+            </div>
+            
+            <div class="file-section">
+                <label class="file-label" for="file2-transpo">📋 Sheet 2 (File XLSM)</label>
+                <div class="file-description">
+                    Kolom dimulai dari B11: NO, NAMA_SUPPLIER, NAMA_PEMILIK_REKENING, NO_REKENING, JUMLAH_UANG
+                </div>
+                <input type="file" id="file2-transpo" accept=".xlsm" aria-label="Upload file Sheet 2" title="Pilih file Sheet 2 dalam format XLSM" />
+                <div class="file-info" id="file2-transpo-info"></div>
+            </div>
+
+            <button class="btn-process" id="btnProcessTranspo" disabled>Proses Data TRANSPO</button>
+            
+            <div class="status" id="status-transpo"></div>
+            <div class="summary" id="summary-transpo"></div>
+        </div>
+    </div>
+
+    <script>
+        // Data untuk JASPRO
+        let jasproSheet1Data = null;
+        let jasproSheet2Data = null;
+        let jasproSheet2Workbook = null;
+
+        // Data untuk TRANSPO
+        let transpoSheet1Data = null;
+        let transpoSheet2Data = null;
+        let transpoSheet2Workbook = null;
+
+        function switchTab(tabName) {
+            // Update tab buttons
+            document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
+            event.target.classList.add('active');
+            
+            // Update tab content
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+            document.getElementById(tabName + '-tab').classList.add('active');
+        }
+
+        function showLoader(text, subtext) {
+            document.getElementById('loaderText').textContent = text;
+            document.getElementById('loaderSubtext').textContent = subtext;
+            document.getElementById('loaderOverlay').classList.add('show');
+        }
+
+        function hideLoader() {
+            document.getElementById('loaderOverlay').classList.remove('show');
+        }
+
+        function formatDateTime() {
+            const now = new Date();
+            const year = now.getFullYear();
+            const month = String(now.getMonth() + 1).padStart(2, '0');
+            const day = String(now.getDate()).padStart(2, '0');
+            const hours = String(now.getHours()).padStart(2, '0');
+            const minutes = String(now.getMinutes()).padStart(2, '0');
+            const seconds = String(now.getSeconds()).padStart(2, '0');
+            return `${year}${month}${day}_${hours}${minutes}${seconds}`;
+        }
+
+        // JASPRO File Handlers
+        document.getElementById('file1-jaspro').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (file) {
+                showLoader('Membaca file JASPRO...', 'Mencari sheet yang mengandung "JASPRO"');
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    try {
+                        const data = new Uint8Array(e.target.result);
+                        const workbook = XLSX.read(data, {type: 'array'});
+                        
+                        let jasproSheet = null;
+                        let jasproSheetName = '';
+                        
+                        for (let sheetName of workbook.SheetNames) {
+                            if (sheetName.toUpperCase().includes('JASPRO')) {
+                                jasproSheet = workbook.Sheets[sheetName];
+                                jasproSheetName = sheetName;
+                                break;
+                            }
+                        }
+                        
+                        hideLoader();
+                        
+                        if (!jasproSheet) {
+                            showStatus('jaspro', 'error', 'Sheet yang mengandung "JASPRO" tidak ditemukan!');
+                            return;
+                        }
+                        
+                        jasproSheet1Data = XLSX.utils.sheet_to_json(jasproSheet, {header: 1});
+                        
+                        document.getElementById('file1-jaspro-info').textContent = `✓ File berhasil dimuat: ${file.name} | Sheet: "${jasproSheetName}" (${jasproSheet1Data.length} baris)`;
+                        document.getElementById('file1-jaspro-info').classList.add('show');
+                        checkBothFilesLoaded('jaspro');
+                    } catch (error) {
+                        hideLoader();
+                        showStatus('jaspro', 'error', 'Error membaca Sheet 1: ' + error.message);
+                    }
+                };
+                reader.readAsArrayBuffer(file);
+            }
+        });
+
+        document.getElementById('file2-jaspro').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (file) {
+                showLoader('Membaca file Sheet 2...', 'Memproses data...');
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    try {
+                        const data = new Uint8Array(e.target.result);
+                        jasproSheet2Workbook = XLSX.read(data, {type: 'array'});
+                        const firstSheet = jasproSheet2Workbook.Sheets[jasproSheet2Workbook.SheetNames[0]];
+                        jasproSheet2Data = XLSX.utils.sheet_to_json(firstSheet, {header: 1});
+                        
+                        hideLoader();
+                        
+                        document.getElementById('file2-jaspro-info').textContent = `✓ File berhasil dimuat: ${file.name} (${jasproSheet2Data.length} baris)`;
+                        document.getElementById('file2-jaspro-info').classList.add('show');
+                        checkBothFilesLoaded('jaspro');
+                    } catch (error) {
+                        hideLoader();
+                        showStatus('jaspro', 'error', 'Error membaca Sheet 2: ' + error.message);
+                    }
+                };
+                reader.readAsArrayBuffer(file);
+            }
+        });
+
+        // TRANSPO File Handlers
+        document.getElementById('file1-transpo').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (file) {
+                showLoader('Membaca file TRANSPO...', 'Mencari sheet yang mengandung "TRANSPO"');
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    try {
+                        const data = new Uint8Array(e.target.result);
+                        const workbook = XLSX.read(data, {type: 'array'});
+                        
+                        let transpoSheet = null;
+                        let transpoSheetName = '';
+                        
+                        for (let sheetName of workbook.SheetNames) {
+                            if (sheetName.toUpperCase().includes('TRANSPO')) {
+                                transpoSheet = workbook.Sheets[sheetName];
+                                transpoSheetName = sheetName;
+                                break;
+                            }
+                        }
+                        
+                        hideLoader();
+                        
+                        if (!transpoSheet) {
+                            showStatus('transpo', 'error', 'Sheet yang mengandung "TRANSPO" tidak ditemukan!');
+                            return;
+                        }
+                        
+                        transpoSheet1Data = XLSX.utils.sheet_to_json(transpoSheet, {header: 1});
+                        
+                        document.getElementById('file1-transpo-info').textContent = `✓ File berhasil dimuat: ${file.name} | Sheet: "${transpoSheetName}" (${transpoSheet1Data.length} baris)`;
+                        document.getElementById('file1-transpo-info').classList.add('show');
+                        checkBothFilesLoaded('transpo');
+                    } catch (error) {
+                        hideLoader();
+                        showStatus('transpo', 'error', 'Error membaca Sheet 1: ' + error.message);
+                    }
+                };
+                reader.readAsArrayBuffer(file);
+            }
+        });
+
+        document.getElementById('file2-transpo').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (file) {
+                showLoader('Membaca file Sheet 2...', 'Memproses data...');
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    try {
+                        const data = new Uint8Array(e.target.result);
+                        transpoSheet2Workbook = XLSX.read(data, {type: 'array'});
+                        const firstSheet = transpoSheet2Workbook.Sheets[transpoSheet2Workbook.SheetNames[0]];
+                        transpoSheet2Data = XLSX.utils.sheet_to_json(firstSheet, {header: 1});
+                        
+                        hideLoader();
+                        
+                        document.getElementById('file2-transpo-info').textContent = `✓ File berhasil dimuat: ${file.name} (${transpoSheet2Data.length} baris)`;
+                        document.getElementById('file2-transpo-info').classList.add('show');
+                        checkBothFilesLoaded('transpo');
+                    } catch (error) {
+                        hideLoader();
+                        showStatus('transpo', 'error', 'Error membaca Sheet 2: ' + error.message);
+                    }
+                };
+                reader.readAsArrayBuffer(file);
+            }
+        });
+
+        function checkBothFilesLoaded(type) {
+            if (type === 'jaspro') {
+                if (jasproSheet1Data && jasproSheet2Data) {
+                    document.getElementById('btnProcessJaspro').disabled = false;
+                }
+            } else if (type === 'transpo') {
+                if (transpoSheet1Data && transpoSheet2Data) {
+                    document.getElementById('btnProcessTranspo').disabled = false;
+                }
+            }
+        }
+
+        // ═══════════════════════════════════════════════════════════════════════
+        // 📋 CONFIG — Sesuaikan di sini jika struktur kolom xlsx/xlsm berubah
+        // ═══════════════════════════════════════════════════════════════════════
+        const PROCESS_CONFIG = {
+
+            jaspro: {
+                // ── Sheet 1 (xlsx sumber data) ──────────────────────────────────────
+                sheet1: {
+                    dataStartRow  : 1,      // index baris pertama data (0=header)
+                    colNama       : 2,      // kolom NAMA individu
+                    colRekening1  : 6,      // kolom NO.REKENING utama (NO.REK CSV)
+                    colRekening2  : 7,      // kolom NO.REKENING fallback (NO.REK)
+                    colJumlah     : 12,     // kolom JUMLAH DITERIMA
+                    // null = tidak ada filter validasi baris (semua baris diproses)
+                    validRekeningPattern: null,
+                },
+                // ── Sheet 2 (xlsm target yang akan diisi) ───────────────────────────
+                sheet2: {
+                    dataStartRow  : 10,     // index baris pertama data
+                    colNo         : 1,      // kolom NO
+                    colNamaSupplier   : 2,  // kolom NAMA_SUPPLIER
+                    colNamaPemilik    : 3,  // kolom NAMA_PEMILIK_REKENING
+                    colNoRekening     : 4,  // kolom NO_REKENING
+                    colJumlahUang     : 5,  // kolom JUMLAH_UANG (target ditulis)
+                },
+            },
+
+            transpo: {
+                // ── Sheet 1 (xlsx sumber data) ──────────────────────────────────────
+                sheet1: {
+                    dataStartRow  : 1,      // index baris pertama data (0=header)
+                    colNama       : 1,      // kolom NAMA individu (bukan KUA di col[2])
+                    colRekening1  : 5,      // kolom NO.REKENING individu (NO.REK CSV)
+                    colRekening2  : null,   // tidak ada fallback rekening
+                    colJumlah     : 10,     // kolom JUMLAH DITERIMA
+                    // Hanya proses baris dengan rekening numerik >= 6 digit
+                    // (menyaring baris judul, header, dan total KUA)
+                    validRekeningPattern: /^\d{6,}$/,
+                },
+                // ── Sheet 2 (xlsm target yang akan diisi) ───────────────────────────
+                sheet2: {
+                    dataStartRow  : 10,     // index baris pertama data
+                    colNo         : 1,      // kolom NO
+                    colNamaSupplier   : 2,  // kolom NAMA_SUPPLIER
+                    colNamaPemilik    : 3,  // kolom NAMA_PEMILIK_REKENING
+                    colNoRekening     : 4,  // kolom NO_REKENING
+                    colJumlahUang     : 5,  // kolom JUMLAH_UANG (target ditulis)
+                },
+            },
+
+        };
+        // ═══════════════════════════════════════════════════════════════════════
+
+        document.getElementById('btnProcessJaspro').addEventListener('click', () => processData('jaspro'));
+        document.getElementById('btnProcessTranspo').addEventListener('click', () => processData('transpo'));
+
+        function processData(type) {
+            const cfg   = PROCESS_CONFIG[type];
+            const s1cfg = cfg.sheet1;
+            const s2cfg = cfg.sheet2;
+
+            showLoader('Memproses data ' + type.toUpperCase() + '...', 'Mencocokkan nama dan nomor rekening...');
+
+            const sheet1Data     = type === 'jaspro' ? jasproSheet1Data     : transpoSheet1Data;
+            const sheet2Data     = type === 'jaspro' ? jasproSheet2Data     : transpoSheet2Data;
+            const sheet2Workbook = type === 'jaspro' ? jasproSheet2Workbook : transpoSheet2Workbook;
+
+            setTimeout(() => {
+                try {
+                    const sheet1Map        = {};
+                    const sheet1RekeningMap = {};
+                    const sheet1DetailMap  = {};
+
+                    // ─────────────────────────────────────────────
+                    // 🔍 DEBUG: Header Sheet 1
+                    // ─────────────────────────────────────────────
+                    console.group(`%c[${type.toUpperCase()}] 🔍 DEBUG - Membangun Index Sheet 1`, 'color: #667eea; font-weight: bold; font-size: 14px');
+                    console.log('📋 Config Sheet1:', s1cfg);
+                    console.log('📋 Header Row (row[0]):', sheet1Data[0]);
+                    const sampleRow = sheet1Data[s1cfg.dataStartRow] || [];
+                    console.log(`📋 Contoh data Row[${s1cfg.dataStartRow}]:`, sampleRow);
+                    console.log(`   └─ col[${s1cfg.colNama}] NAMA       = "${sampleRow[s1cfg.colNama]}"`);
+                    console.log(`   └─ col[${s1cfg.colRekening1}] REKENING 1 = "${sampleRow[s1cfg.colRekening1]}"`);
+                    if (s1cfg.colRekening2 !== null)
+                        console.log(`   └─ col[${s1cfg.colRekening2}] REKENING 2 = "${sampleRow[s1cfg.colRekening2]}"`);
+                    console.log(`   └─ col[${s1cfg.colJumlah}] JUMLAH    = "${sampleRow[s1cfg.colJumlah]}"`);
+                    console.groupEnd();
+
+                    // ── Build index dari Sheet 1 ─────────────────────────────────────
+                    for (let i = s1cfg.dataStartRow; i < sheet1Data.length; i++) {
+                        const row  = sheet1Data[i];
+                        const nama = row[s1cfg.colNama];
+                        const noRekening = s1cfg.colRekening2 !== null
+                            ? (row[s1cfg.colRekening1] || row[s1cfg.colRekening2])
+                            : row[s1cfg.colRekening1];
+                        const jumlahDiterima = parseFloat(row[s1cfg.colJumlah]) || 0;
+
+                        // Filter baris non-data (misal header/judul/total) jika ada pattern
+                        if (s1cfg.validRekeningPattern) {
+                            const rekStr = noRekening ? String(noRekening).trim() : '';
+                            if (!rekStr || !s1cfg.validRekeningPattern.test(rekStr)) continue;
+                        }
+
+                        if (i <= s1cfg.dataStartRow + 4) {
+                            console.log(`%c[${type.toUpperCase()}] Sheet1 Row[${i}]`, 'color: #2196F3; font-weight: bold',
+                                `| NAMA: "${nama}"`,
+                                `| noRekening: "${noRekening}"`,
+                                `| jumlahDiterima: ${jumlahDiterima}`
+                            );
+                        }
+
+                        if (nama) {
+                            const namaTrimmed = String(nama).trim().toUpperCase();
+                            sheet1Map[namaTrimmed] = (sheet1Map[namaTrimmed] || 0) + jumlahDiterima;
+                            if (!sheet1DetailMap[namaTrimmed]) sheet1DetailMap[namaTrimmed] = [];
+                            sheet1DetailMap[namaTrimmed].push({
+                                rekening: noRekening ? String(noRekening).trim() : null,
+                                jumlah  : jumlahDiterima
+                            });
+                        }
+
+                        if (noRekening) {
+                            const rekeningTrimmed = String(noRekening).trim();
+                            sheet1RekeningMap[rekeningTrimmed] = (sheet1RekeningMap[rekeningTrimmed] || 0) + jumlahDiterima;
+                        }
+                    }
+
+                    // ─────────────────────────────────────────────
+                    // 🔍 DEBUG: Snapshot index
+                    // ─────────────────────────────────────────────
+                    console.group(`%c[${type.toUpperCase()}] 📦 Snapshot Index Sheet 1`, 'color: #9C27B0; font-weight: bold; font-size: 14px');
+                    console.log(`Total nama unik     : ${Object.keys(sheet1Map).length}`);
+                    console.log(`Total rekening unik : ${Object.keys(sheet1RekeningMap).length}`);
+                    console.log(`5 nama pertama      :`, Object.entries(sheet1Map).slice(0, 5).map(([k,v]) => `"${k}" → ${v}`));
+                    console.log(`5 rekening pertama  :`, Object.entries(sheet1RekeningMap).slice(0, 5).map(([k,v]) => `"${k}" → ${v}`));
+                    console.groupEnd();
+
+                    // ─────────────────────────────────────────────
+                    // 🔍 DEBUG: Header Sheet 2
+                    // ─────────────────────────────────────────────
+                    console.group(`%c[${type.toUpperCase()}] 📄 Sheet 2 - Header & Sample`, 'color: #FF5722; font-weight: bold; font-size: 14px');
+                    console.log('📋 Config Sheet2:', s2cfg);
+                    console.log(`Sheet2 row[${s2cfg.dataStartRow - 1}] (header row):`, sheet2Data[s2cfg.dataStartRow - 1]);
+                    console.log(`Sheet2 row[${s2cfg.dataStartRow}] (data pertama):`, sheet2Data[s2cfg.dataStartRow]);
+                    const s2sample = sheet2Data[s2cfg.dataStartRow] || [];
+                    console.log(`   └─ col[${s2cfg.colNamaSupplier}] NAMA_SUPPLIER  = "${s2sample[s2cfg.colNamaSupplier]}"`);
+                    console.log(`   └─ col[${s2cfg.colNoRekening}] NO_REKENING    = "${s2sample[s2cfg.colNoRekening]}"`);
+                    console.log(`   └─ col[${s2cfg.colJumlahUang}] JUMLAH_UANG   = "${s2sample[s2cfg.colJumlahUang]}"`);
+                    console.groupEnd();
+
+                    // ── Matching Sheet 2 ────────────────────────────────────────────
+                    let updatedCount       = 0;
+                    let notFoundCount      = 0;
+                    const notFoundNames    = [];
+                    let matchedByName      = 0;
+                    let matchedByRekening  = 0;
+                    let matchedByPartialName = 0;
+                    let skipLoggedOnce     = false;
+
+                    for (let i = s2cfg.dataStartRow; i < sheet2Data.length; i++) {
+                        const row = sheet2Data[i];
+                        if (!row || row.length === 0) continue;
+
+                        const namaSupplier = row[s2cfg.colNamaSupplier];
+                        const noRekening   = row[s2cfg.colNoRekening];
+                        // ─────────────────────────────────────────────
+                        // ⚡ EARLY EXIT: Skip jika NO_REKENING kosong
+                        // ─────────────────────────────────────────────
+                        if (!noRekening || String(noRekening).trim() === '') {
+                            if (!skipLoggedOnce && namaSupplier && String(namaSupplier).trim() !== '' && String(namaSupplier).trim() !== 'undefined') {
+                                console.log(`%c[${type.toUpperCase()}] Row[${i}] ⏭ SKIP - NO_REKENING kosong (NAMA: "${namaSupplier}") [selanjutnya tidak dilog]`, 'color: #9E9E9E');
+                                skipLoggedOnce = true;
+                            }
+                            // Tulis "-" di JUMLAH_UANG hanya jika salah satu kolom lain ada isinya
+                            const hasAnyValue = (row[s2cfg.colNo]            !== undefined && row[s2cfg.colNo]            !== null && String(row[s2cfg.colNo]).trim()            !== '') ||
+                                               (row[s2cfg.colNamaSupplier]   !== undefined && row[s2cfg.colNamaSupplier]   !== null && String(row[s2cfg.colNamaSupplier]).trim()   !== '') ||
+                                               (row[s2cfg.colNamaPemilik]    !== undefined && row[s2cfg.colNamaPemilik]    !== null && String(row[s2cfg.colNamaPemilik]).trim()    !== '');
+                            if (hasAnyValue) row[s2cfg.colJumlahUang] = '-';
+                            continue;
+                        }
+
+                        const namaTrimmed    = namaSupplier ? String(namaSupplier).trim().toUpperCase() : '';
+                        const rekeningTrimmed = String(noRekening).trim();
+                        let jumlahUang = null;
+                        let matchType  = null;
+
+                        // ─────────────────────────────────────────────
+                        // ✅ STRATEGI 1: Match by NO_REKENING
+                        // ─────────────────────────────────────────────
+                        console.log(`%c[${type.toUpperCase()}] Sheet2 Row[${i}] → Matching`, 'color: #607D8B; font-weight: bold');
+                        console.log(`  NAMA_SUPPLIER (raw)  : "${namaSupplier}"`);
+                        console.log(`  NAMA_SUPPLIER (upper): "${namaTrimmed}"`);
+                        console.log(`  NO_REKENING Sheet2   : "${noRekening}" → trimmed: "${rekeningTrimmed}"`);
+                        console.log(`  sheet1RekeningMap[rek] ada? : ${sheet1RekeningMap[rekeningTrimmed] !== undefined} → nilai: ${sheet1RekeningMap[rekeningTrimmed]}`);
+                        console.log(`  sheet1Map[nama] ada? : ${sheet1Map[namaTrimmed] !== undefined} → nilai: ${sheet1Map[namaTrimmed]}`);
+
+                        if (sheet1RekeningMap[rekeningTrimmed] !== undefined) {
+                            jumlahUang = sheet1RekeningMap[rekeningTrimmed];
+                            matchType  = 'by_rekening';
+                            matchedByRekening++;
+                        }
+
+                        // ─────────────────────────────────────────────
+                        // ✅ STRATEGI 2: Match by NAMA exact
+                        // ─────────────────────────────────────────────
+                        if (jumlahUang === null && namaTrimmed && sheet1Map[namaTrimmed] !== undefined) {
+                            jumlahUang = sheet1Map[namaTrimmed];
+                            matchType  = 'exact_name';
+                            matchedByName++;
+                        }
+
+                        // ─────────────────────────────────────────────
+                        // ✅ STRATEGI 3: Match by NAMA partial (fallback)
+                        // ─────────────────────────────────────────────
+                        if (jumlahUang === null && namaTrimmed) {
+                            for (let key in sheet1Map) {
+                                if (key.includes(namaTrimmed) || namaTrimmed.includes(key)) {
+                                    if (sheet1DetailMap[key]) {
+                                        const matchingDetail = sheet1DetailMap[key].find(d => d.rekening === rekeningTrimmed);
+                                        if (matchingDetail) {
+                                            jumlahUang = sheet1Map[key];
+                                            matchType  = 'partial_name';
+                                            matchedByPartialName++;
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        if (jumlahUang !== null) {
+                            row[s2cfg.colJumlahUang] = jumlahUang;
+                            updatedCount++;
+                        } else {
+                            const namaForLog = namaSupplier ? String(namaSupplier).trim().toUpperCase() : 'No Name';
+                            const rekForLog  = noRekening   ? String(noRekening).trim()                 : 'No Rekening';
+                            console.warn(`%c[${type.toUpperCase()}] ❌ NOT FOUND Row[${i}]: NAMA="${namaForLog}" | NO.REK="${rekForLog}"`, 'color: red');
+                            row[s2cfg.colJumlahUang] = '-';
+                            notFoundCount++;
+                            notFoundNames.push(namaSupplier || 'No Name');
+                        }
+                    }
+
+                    // ─────────────────────────────────────────────
+                    // 🔍 DEBUG: Ringkasan akhir
+                    // ─────────────────────────────────────────────
+                    console.group(`%c[${type.toUpperCase()}] ✅ RINGKASAN AKHIR`, 'color: #4CAF50; font-weight: bold; font-size: 14px');
+                    console.log(`Total diproses       : ${sheet2Data.length - s2cfg.dataStartRow}`);
+                    console.log(`Berhasil diupdate    : ${updatedCount}`);
+                    console.log(`  ↳ exact_name       : ${matchedByName}`);
+                    console.log(`  ↳ partial_name     : ${matchedByPartialName}`);
+                    console.log(`  ↳ by rekening      : ${matchedByRekening}`);
+                    console.log(`Tidak ditemukan (-)  : ${notFoundCount}`);
+                    if (notFoundNames.length > 0) console.warn(`Nama tidak ditemukan :`, notFoundNames);
+                    console.groupEnd();
+
+                    // ─────────────────────────────────────────────
+                    // ✅ OUTPUT: Hanya 5 kolom yang dibutuhkan
+                    // ─────────────────────────────────────────────
+                    const outputData = [];
+                    outputData.push(['NO', 'NAMA_SUPPLIER', 'NAMA_PEMILIK_REKENING', 'NO_REKENING', 'JUMLAH_UANG']);
+                    for (let i = s2cfg.dataStartRow; i < sheet2Data.length; i++) {
+                        const row = sheet2Data[i];
+                        if (!row || row.length === 0) continue;
+                        outputData.push([
+                            row[s2cfg.colNo],
+                            row[s2cfg.colNamaSupplier],
+                            row[s2cfg.colNamaPemilik],
+                            row[s2cfg.colNoRekening],
+                            row[s2cfg.colJumlahUang],
+                        ]);
+                    }
+
+                    const newWb = XLSX.utils.book_new();
+                    const newWs = XLSX.utils.aoa_to_sheet(outputData);
+
+                    // Auto-resize kolom berdasarkan panjang value terpanjang
+                    const colCount = outputData[0].length;
+                    const colWidths = Array(colCount).fill(10);
+                    for (const row of outputData) {
+                        for (let c = 0; c < colCount; c++) {
+                            const val = row[c] !== undefined && row[c] !== null ? String(row[c]) : '';
+                            if (val.length > colWidths[c]) colWidths[c] = val.length;
+                        }
+                    }
+                    newWs['!cols'] = colWidths.map(w => ({ wch: w + 2 }));
+
+                    XLSX.utils.book_append_sheet(newWb, newWs, type.toUpperCase());
+
+                    const wbout = XLSX.write(newWb, {bookType: 'xlsx', type: 'array'});
+                    const blob  = new Blob([wbout], {type: 'application/octet-stream'});
+                    const url   = URL.createObjectURL(blob);
+                    const a     = document.createElement('a');
+                    a.href      = url;
+                    a.download  = `${type.toUpperCase()}_${formatDateTime()}.xlsx`;
+                    a.click();
+                    URL.revokeObjectURL(url);
+
+                    hideLoader();
+                    showStatus(type, 'success', `✓ Proses selesai! File ${type.toUpperCase()}_${formatDateTime()}.xlsx telah diunduh.`);
+
+                    const summaryDiv = document.getElementById('summary-' + type);
+                    summaryDiv.innerHTML = `
+                        <h3>📊 Ringkasan Proses ${type.toUpperCase()}</h3>
+                        <div class="summary-item"><strong>Total nama unik di Sheet 1:</strong> ${Object.keys(sheet1Map).length}</div>
+                        <div class="summary-item"><strong>Total rekening unik di Sheet 1:</strong> ${Object.keys(sheet1RekeningMap).length}</div>
+                        <div class="summary-item"><strong>Data berhasil diupdate:</strong> ${updatedCount}</div>
+                        <div class="summary-item" style="padding-left: 20px;">↳ Match berdasarkan nama exact: ${matchedByName}</div>
+                        <div class="summary-item" style="padding-left: 20px;">↳ Match berdasarkan nama partial: ${matchedByPartialName}</div>
+                        <div class="summary-item" style="padding-left: 20px;">↳ Match berdasarkan no rekening: ${matchedByRekening}</div>
+                        <div class="summary-item"><strong>Data tidak ditemukan:</strong> ${notFoundCount}</div>
+                        ${notFoundNames.length > 0 && notFoundNames.length <= 10 ?
+                            `<div class="summary-item"><strong>Nama tidak ditemukan:</strong><br>${notFoundNames.slice(0, 10).join(', ')}</div>` : ''}
+                    `;
+                    summaryDiv.classList.add('show');
+
+                } catch (error) {
+                    hideLoader();
+                    showStatus(type, 'error', 'Error saat memproses data: ' + error.message);
+                    console.error(error);
+                }
+            }, 500);
+        }
+
+        function showStatus(type, statusType, message) {
+            const statusDiv = document.getElementById('status-' + type);
+            statusDiv.className = 'status show ' + statusType;
+            statusDiv.textContent = message;
+        }
+    </script>
+</body>
+</html>
