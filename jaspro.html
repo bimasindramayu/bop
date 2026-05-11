@@ -538,51 +538,86 @@
 
         // ═══════════════════════════════════════════════════════════════════════
         // 📋 CONFIG — Sesuaikan di sini jika struktur kolom xlsx/xlsm berubah
+        // headerKeywords: kata kunci untuk deteksi kolom secara dinamis
+        //   → aman terhadap kolom hidden / kolom sisipan / urutan berubah
+        // Fallback index (colNama, colRekening1, dst) tetap dipakai jika
+        //   header row tidak ditemukan sama sekali.
         // ═══════════════════════════════════════════════════════════════════════
         const PROCESS_CONFIG = {
 
             jaspro: {
                 // ── Sheet 1 (xlsx sumber data) ──────────────────────────────────────
                 sheet1: {
-                    dataStartRow  : 1,      // index baris pertama data (0=header)
-                    colNama       : 2,      // kolom NAMA individu
-                    colRekening1  : 6,      // kolom NO.REKENING utama (NO.REK CSV)
-                    colRekening2  : 7,      // kolom NO.REKENING fallback (NO.REK)
-                    colJumlah     : 12,     // kolom JUMLAH DITERIMA
-                    // null = tidak ada filter validasi baris (semua baris diproses)
+                    headerScanRows: 15,     // scan maks 15 baris untuk menemukan header
+                    dataStartRow  : 1,      // fallback jika header tidak ditemukan
+                    // headerKeywords: urutan array = prioritas pencocokan (paling spesifik duluan)
+                    headerKeywords: {
+                        colNama      : ['NAMA'],
+                        colRekening1 : ['REKENING CSV', 'NO. REKENING CSV', 'NO REKENING CSV'],
+                        colRekening2 : ['NO. REKENING', 'NO REKENING', 'REKENING'],
+                        colJumlah    : ['JUMLAH DITERIMA', 'JML DITERIMA', 'JUMLAH\nDITERIMA'],
+                    },
+                    // Fallback index (dipakai bila deteksi header gagal)
+                    colNama       : 2,
+                    colRekening1  : 6,
+                    colRekening2  : 7,
+                    colJumlah     : 12,
                     validRekeningPattern: null,
                 },
                 // ── Sheet 2 (xlsm target yang akan diisi) ───────────────────────────
                 sheet2: {
-                    dataStartRow  : 10,     // index baris pertama data
-                    colNo         : 1,      // kolom NO
-                    colNamaSupplier   : 2,  // kolom NAMA_SUPPLIER
-                    colNamaPemilik    : 3,  // kolom NAMA_PEMILIK_REKENING
-                    colNoRekening     : 4,  // kolom NO_REKENING
-                    colJumlahUang     : 5,  // kolom JUMLAH_UANG (target ditulis)
+                    headerScanRows: 15,
+                    dataStartRow  : 10,     // fallback jika header tidak ditemukan
+                    headerKeywords: {
+                        colNo            : ['NO'],
+                        colNamaSupplier  : ['NAMA_SUPPLIER', 'NAMA SUPPLIER'],
+                        colNamaPemilik   : ['NAMA_PEMILIK', 'NAMA PEMILIK'],
+                        colNoRekening    : ['NO_REKENING', 'NO REKENING'],
+                        colJumlahUang    : ['JUMLAH_UANG', 'JUMLAH UANG'],
+                    },
+                    // Fallback index
+                    colNo             : 1,
+                    colNamaSupplier   : 2,
+                    colNamaPemilik    : 3,
+                    colNoRekening     : 4,
+                    colJumlahUang     : 5,
                 },
             },
 
             transpo: {
                 // ── Sheet 1 (xlsx sumber data) ──────────────────────────────────────
                 sheet1: {
-                    dataStartRow  : 1,      // index baris pertama data (0=header)
-                    colNama       : 1,      // kolom NAMA individu (bukan KUA di col[2])
-                    colRekening1  : 5,      // kolom NO.REKENING individu (NO.REK CSV)
-                    colRekening2  : null,   // tidak ada fallback rekening
-                    colJumlah     : 10,     // kolom JUMLAH DITERIMA
-                    // Hanya proses baris dengan rekening numerik >= 6 digit
-                    // (menyaring baris judul, header, dan total KUA)
+                    headerScanRows: 15,
+                    dataStartRow  : 1,
+                    headerKeywords: {
+                        colNama      : ['NAMA'],
+                        colRekening1 : ['REKENING CSV', 'NO. REKENING CSV', 'NO REKENING CSV'],
+                        colRekening2 : null,   // TRANSPO tidak pakai fallback rekening
+                        colJumlah    : ['JUMLAH DITERIMA', 'JML DITERIMA', 'JUMLAH\nDITERIMA'],
+                    },
+                    // Fallback index
+                    colNama       : 1,
+                    colRekening1  : 5,
+                    colRekening2  : null,
+                    colJumlah     : 10,
                     validRekeningPattern: /^\d{6,}$/,
                 },
                 // ── Sheet 2 (xlsm target yang akan diisi) ───────────────────────────
                 sheet2: {
-                    dataStartRow  : 10,     // index baris pertama data
-                    colNo         : 1,      // kolom NO
-                    colNamaSupplier   : 2,  // kolom NAMA_SUPPLIER
-                    colNamaPemilik    : 3,  // kolom NAMA_PEMILIK_REKENING
-                    colNoRekening     : 4,  // kolom NO_REKENING
-                    colJumlahUang     : 5,  // kolom JUMLAH_UANG (target ditulis)
+                    headerScanRows: 15,
+                    dataStartRow  : 10,
+                    headerKeywords: {
+                        colNo            : ['NO'],
+                        colNamaSupplier  : ['NAMA_SUPPLIER', 'NAMA SUPPLIER'],
+                        colNamaPemilik   : ['NAMA_PEMILIK', 'NAMA PEMILIK'],
+                        colNoRekening    : ['NO_REKENING', 'NO REKENING'],
+                        colJumlahUang    : ['JUMLAH_UANG', 'JUMLAH UANG'],
+                    },
+                    colNo             : 1,
+                    colNamaSupplier   : 2,
+                    colNamaPemilik    : 3,
+                    colNoRekening     : 4,
+                    colJumlahUang     : 5,
                 },
             },
 
@@ -592,10 +627,116 @@
         document.getElementById('btnProcessJaspro').addEventListener('click', () => processData('jaspro'));
         document.getElementById('btnProcessTranspo').addEventListener('click', () => processData('transpo'));
 
+        // ═══════════════════════════════════════════════════════════════════════
+        // 🔍 resolveColIndices — Deteksi kolom secara dinamis berdasarkan header
+        //    Aman terhadap kolom hidden, kolom sisipan, atau urutan kolom berubah.
+        //    Mengembalikan salinan cfg dengan index kolom yang sudah diperbarui.
+        // ═══════════════════════════════════════════════════════════════════════
+        function resolveColIndices(sheetData, cfg, label) {
+            // Jika tidak ada headerKeywords, kembalikan cfg apa adanya
+            if (!cfg.headerKeywords) return { ...cfg };
+
+            const resolved      = { ...cfg };
+            const scanLimit     = Math.min(cfg.headerScanRows || 15, sheetData.length);
+            const keywords      = cfg.headerKeywords;
+            const fieldNames    = Object.keys(keywords);
+
+            // ── LANGKAH 1: Temukan baris header ─────────────────────────────────
+            let headerRowIdx = -1;
+            let headerRow    = null;
+
+            for (let i = 0; i < scanLimit; i++) {
+                const row = sheetData[i];
+                if (!row || row.length === 0) continue;
+
+                // Normalisasi sel ke uppercase string (ganti newline → spasi)
+                // Pakai Array.from agar sparse array (hasil SheetJS) tidak berlubang
+                // Strip karakter non-alfanumerik di luar spasi (misal asterisk * dari xlsm)
+                const cells = Array.from({ length: row.length }, (_, i) => {
+                    const c = row[i];
+                    if (c === undefined || c === null) return '';
+                    return String(c)
+                        .replace(/\s+/g, ' ')
+                        .replace(/[^A-Za-z0-9\s._]/g, '') // buang karakter aneh (*, #, dll)
+                        .trim()
+                        .toUpperCase();
+                });
+
+                // Hitung berapa field yang bisa dicocokan di baris ini
+                let hits = 0;
+                for (const field of fieldNames) {
+                    const kwList = keywords[field];
+                    if (!kwList) continue; // field null (mis. colRekening2 TRANSPO)
+                    for (const kw of kwList) {
+                        const kwUpper = kw.toUpperCase();
+                        if (cells.some(c => c.includes(kwUpper))) { hits++; break; }
+                    }
+                }
+
+                // Anggap baris ini header jika ≥ 50% field cocok
+                const activeFields = fieldNames.filter(f => keywords[f] !== null).length;
+                if (hits >= Math.max(1, Math.ceil(activeFields * 0.5))) {
+                    headerRowIdx = i;
+                    headerRow    = cells; // sudah uppercase
+                    break;
+                }
+            }
+
+            if (headerRow === null) {
+                console.warn(`%c[${label}] ⚠️ Header row tidak ditemukan dalam ${scanLimit} baris pertama. Menggunakan fallback index.`, 'color: orange');
+                return resolved;
+            }
+
+            console.group(`%c[${label}] 📌 Dynamic Header Detected — row[${headerRowIdx}]`, 'color: #4CAF50; font-weight: bold');
+            console.log('Header cells:', headerRow.filter(c => c !== '').join(' | '));
+
+            // ── LANGKAH 2: Petakan setiap field ke index kolom ──────────────────
+            // Kumpulkan kolom yang sudah dipakai agar tidak bentrok (mis. rek1 vs rek2)
+            const usedCols = new Set();
+
+            for (const field of fieldNames) {
+                const kwList = keywords[field];
+                if (!kwList) {
+                    // null = field ini sengaja dikosongkan (misal colRekening2 TRANSPO)
+                    resolved[field] = null;
+                    continue;
+                }
+
+                let found = false;
+                // Coba setiap keyword dari yang paling spesifik
+                for (const kw of kwList) {
+                    const kwUpper = kw.toUpperCase();
+                    for (let c = 0; c < headerRow.length; c++) {
+                        if (!headerRow[c] || !headerRow[c].includes(kwUpper)) continue;
+                        if (usedCols.has(c)) continue; // kolom sudah dipakai field lain
+                        resolved[field] = c;
+                        usedCols.add(c);
+                        console.log(`  ✅ ${field.padEnd(16)} → col[${c}]  (header: "${headerRow[c]}", keyword: "${kw}")`);
+                        found = true;
+                        break;
+                    }
+                    if (found) break;
+                }
+
+                if (!found) {
+                    console.warn(`  ⚠️ ${field.padEnd(16)} → tidak ditemukan, fallback: col[${cfg[field]}]`);
+                    // Fallback tetap dipakai (nilai sudah ada dari spread cfg)
+                }
+            }
+
+            // dataStartRow = baris setelah header
+            resolved.dataStartRow = headerRowIdx + 1;
+            console.log(`  📍 dataStartRow diset ke ${resolved.dataStartRow}`);
+            console.groupEnd();
+
+            return resolved;
+        }
+        // ═══════════════════════════════════════════════════════════════════════
+
         function processData(type) {
             const cfg   = PROCESS_CONFIG[type];
-            const s1cfg = cfg.sheet1;
-            const s2cfg = cfg.sheet2;
+            let s1cfg = cfg.sheet1;
+            let s2cfg = cfg.sheet2;
 
             showLoader('Memproses data ' + type.toUpperCase() + '...', 'Mencocokkan nama dan nomor rekening...');
 
@@ -605,6 +746,13 @@
 
             setTimeout(() => {
                 try {
+                    // ─────────────────────────────────────────────────────────────
+                    // 🔍 DYNAMIC HEADER RESOLUTION
+                    // Deteksi posisi kolom dari header row — aman terhadap kolom hidden
+                    // ─────────────────────────────────────────────────────────────
+                    s1cfg = resolveColIndices(sheet1Data, s1cfg, type + ':sheet1');
+                    s2cfg = resolveColIndices(sheet2Data, s2cfg, type + ':sheet2');
+
                     const sheet1Map        = {};
                     const sheet1RekeningMap = {};
                     const sheet1DetailMap  = {};
