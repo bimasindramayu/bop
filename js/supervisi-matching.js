@@ -12,7 +12,8 @@
 // ===================================================================
 
 /* global COL, STOK_COL, DISPLAY_STOK_COLS, STOK_COL_NAMES,
-          allData, stokData, allHeaders, stokHeaders,
+          DUPLIKAT_COL,
+          allData, stokData, duplikatData, allHeaders, stokHeaders,
           PAGE_SIZE, BULAN_ID,
           parseDate, formatDate, formatStokDate, getMonthNumber,
           buildPagination, buildEmptyState, buildTabLoadingState,
@@ -61,18 +62,84 @@ function buildNikahPerforasiIndex() {
 }
 
 /**
+ * Bangun lookup index dari sheet "Duplikat".
+ * Kunci match: No Porforasi Lama, No Porforasi Duplikat Suami, No Porforasi Duplikat Istri
+ * Semua tiga kolom di-index ke baris Duplikat yang sama.
+ */
+function buildDuplikatPerforasiIndex() {
+    var map = {};
+    var dc  = typeof DUPLIKAT_COL !== 'undefined' ? DUPLIKAT_COL : (window.DUPLIKAT_COL || {});
+    var src = typeof duplikatData !== 'undefined' ? duplikatData : (window.duplikatData || []);
+    src.forEach(function(row) {
+        var cols = [dc.NO_PERFORASI_LAMA, dc.NO_PERFORASI_SUAMI, dc.NO_PERFORASI_ISTRI];
+        cols.forEach(function(c) {
+            if (c < 0) return;
+            var raw = String(row[c] || '');
+            raw.split('|').forEach(function(part) {
+                var key = normalizePerforasi(part);
+                if (key && !map[key]) map[key] = row;
+            });
+        });
+    });
+    return map;
+}
+
+/**
  * Bangun array merged rows: setiap baris stokData dipasangkan
- * dengan baris nikah yang cocok (atau null jika tidak ditemukan).
- * @returns {Array<{stok, nikah, matched}>}
+ * dengan baris duplikat dan/atau nikah yang cocok.
+ *
+ * matchSource:
+ *   'duplikat' — ditemukan di Duplikat (prioritas utama, meski juga ada di Nikah)
+ *   'nikah'    — hanya ditemukan di Data Nikah
+ *   null       — tidak ditemukan di keduanya
+ * alsoInNikah:
+ *   true       — ditemukan di KEDUA sheet (Duplikat DAN Nikah); untuk statistik
+ *
+ * @returns {Array<{stok, nikah, duplikat, matched, matchSource, alsoInNikah}>}
  */
 function buildMatchingRows() {
     if (stokData.length === 0) return [];
-    var idx = buildNikahPerforasiIndex();
+    var nikahIdx    = buildNikahPerforasiIndex();
+    var duplikatIdx = buildDuplikatPerforasiIndex();
     return stokData.map(function(stokRow) {
-        var key      = normalizePerforasi(stokRow[STOK_COL.NO_PERFORASI]);
-        var nikahRow = key ? (idx[key] || null) : null;
-        return { stok: stokRow, nikah: nikahRow, matched: !!nikahRow };
+        var key         = normalizePerforasi(stokRow[STOK_COL.NO_PERFORASI]);
+        var nikahRow    = key ? (nikahIdx[key]    || null) : null;
+        var duplikatRow = key ? (duplikatIdx[key] || null) : null;
+
+        // ── Duplikat always takes priority ──────────────────────────────
+        // Jika nomor porforasi ada di sheet Duplikat, statusnya adalah
+        // 'duplikat' — tidak bisa masuk status matching Data Nikah,
+        // meskipun nomornya juga ditemukan di Data Nikah.
+        // Data nikah tetap disimpan (nikahRow) untuk ditampilkan di kolom,
+        // tapi matchSource tetap 'duplikat'.
+        var matchSource = null;
+        if (duplikatRow)  matchSource = 'duplikat';
+        else if (nikahRow) matchSource = 'nikah';
+
+        return {
+            stok:        stokRow,
+            nikah:       nikahRow,       // disimpan untuk tampilan kolom Nikah
+            duplikat:    duplikatRow,
+            matched:     !!(nikahRow || duplikatRow),
+            matchSource: matchSource,
+            alsoInNikah: !!(nikahRow && duplikatRow)  // ada di kedua sheet (statistik)
+        };
     });
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// 1b. ROW CACHE
+//     buildMatchingRows() adalah O(n) yang membangun index dan iterasi
+//     seluruh stokData. Cache hasilnya agar tidak rebuild tiap render/filter.
+//     Di-invalidate saat matchingDirty=true (di renderMatchingTable & hooks).
+// ═══════════════════════════════════════════════════════════════════
+var _cachedAllRows = null;
+
+function _getAllMatchingRows() {
+    if (!_cachedAllRows) {
+        _cachedAllRows = buildMatchingRows();
+    }
+    return _cachedAllRows;
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -80,10 +147,10 @@ function buildMatchingRows() {
 // ═══════════════════════════════════════════════════════════════════
 
 function getMatchingFilteredData() {
-    var rows = buildMatchingRows();
+    var rows = _getAllMatchingRows();
     var f    = matchingFilters;
 
-    // ── Match status ──
+    // ── Match status — hanya Ada Data atau Tidak Ada Data ──
     if (f.matchStatus === 'matched')
         rows = rows.filter(function(r) { return  r.matched; });
     else if (f.matchStatus === 'unmatched')
@@ -108,12 +175,21 @@ function getMatchingFilteredData() {
                 .toLowerCase().indexOf(f.noPerforasi.toLowerCase()) !== -1;
         });
 
-    // ── Status buku (Stok) — multiselect ──
-    if (f.status && Array.isArray(f.status) && f.status.length > 0 && STOK_COL.STATUS >= 0)
+    // ── Status buku (Stok) — multiselect; "Duplikat" adalah opsi virtual ──
+    if (f.status && Array.isArray(f.status) && f.status.length > 0) {
+        var hasDupVirtual = f.status.some(function(s) { return s.toLowerCase() === 'duplikat'; });
+        var realStatuses  = f.status.filter(function(s) { return s.toLowerCase() !== 'duplikat'; });
         rows = rows.filter(function(r) {
-            var v = String(r.stok[STOK_COL.STATUS] || '').trim();
-            return f.status.some(function(s) { return s.toLowerCase() === v.toLowerCase(); });
+            // Baris cocok jika ada di sheet Duplikat (virtual filter aktif)
+            if (hasDupVirtual && r.duplikat) return true;
+            // Atau jika status buku sesuai salah satu status nyata yang dipilih
+            if (realStatuses.length > 0 && STOK_COL.STATUS >= 0) {
+                var v = String(r.stok[STOK_COL.STATUS] || '').trim();
+                return realStatuses.some(function(s) { return s.toLowerCase() === v.toLowerCase(); });
+            }
+            return false;
         });
+    }
 
     // ── Bulan Digunakan (Stok) ──
     if (f.bulanDigunakan && f.bulanDigunakan.length > 0 && STOK_COL.TGL_DIGUNAKAN >= 0)
@@ -240,17 +316,17 @@ function setupMatchingFilter() {
         '</div></div></div>' +
 
         // 5 ─ Bulan Akad & Tempat Nikah
-        '<div class="filter-group"><label>Bulan Akad (Nikah)</label>' +
-        '<div class="multiselect-wrapper">' +
-        '<button type="button" class="multiselect-trigger" onclick="toggleMonthDropdown(\'makad\')" id="monthTrigger-makad">' +
-        '<span id="monthLabel-makad">-- Semua Bulan --</span><span class="arrow">▼</span></button>' +
-        '<div class="multiselect-dropdown" id="monthDropdown-makad">' +
-        '<div class="multiselect-select-all" onclick="toggleAllMonths(\'makad\')">' +
-        '<input type="checkbox" id="monthAll-makad" checked> Pilih Semua</div>' +
-        '</div></div></div>' +
+        // '<div class="filter-group"><label>Bulan Akad (Nikah)</label>' +
+        // '<div class="multiselect-wrapper">' +
+        // '<button type="button" class="multiselect-trigger" onclick="toggleMonthDropdown(\'makad\')" id="monthTrigger-makad">' +
+        // '<span id="monthLabel-makad">-- Semua Bulan --</span><span class="arrow">▼</span></button>' +
+        // '<div class="multiselect-dropdown" id="monthDropdown-makad">' +
+        // '<div class="multiselect-select-all" onclick="toggleAllMonths(\'makad\')">' +
+        // '<input type="checkbox" id="monthAll-makad" checked> Pilih Semua</div>' +
+        // '</div></div></div>' +
 
-        '<div class="filter-group"><label>Tempat Nikah</label>' +
-        '<select id="f-matching-tempatNikah"><option value="">-- Semua Tempat --</option></select></div>' +
+        // '<div class="filter-group"><label>Tempat Nikah</label>' +
+        // '<select id="f-matching-tempatNikah"><option value="">-- Semua Tempat --</option></select></div>' +
 
         // 6 ─ Nama Suami & Istri
         '<div class="filter-group"><label>Nama Suami</label>' +
@@ -263,8 +339,8 @@ function setupMatchingFilter() {
         '<div class="filter-group"><label>Status Matching</label>' +
         '<select id="f-matching-matchStatus">' +
         '<option value="">-- Semua --</option>' +
-        '<option value="matched">✅ Ada di Data Nikah</option>' +
-        '<option value="unmatched">❌ Belum Ada di Data Nikah</option>' +
+        '<option value="matched">✅ Ada Data</option>' +
+        '<option value="unmatched">❌ Tidak Ada Data</option>' +
         '</select></div>' +
 
         '</div>' + // /matchingFilterGrid
@@ -411,6 +487,29 @@ function buildStatusBukuOptions() {
         div.appendChild(cb); div.appendChild(lbl);
         dropdown.appendChild(div);
     });
+
+    // ── Opsi virtual "Duplikat" ──────────────────────────────────────
+    // Bukan status nyata di Stok Buku, melainkan filter berdasarkan
+    // keberadaan No. Porforasi di sheet Duplikat.
+    var sepDiv = document.createElement('div');
+    sepDiv.style.cssText = 'border-top:1px solid #e5e7eb;margin:4px 0;';
+    dropdown.appendChild(sepDiv);
+
+    var dupDiv = document.createElement('div');
+    dupDiv.className = 'multiselect-item';
+    var dupCb  = document.createElement('input');
+    dupCb.type = 'checkbox'; dupCb.value = 'Duplikat'; dupCb.checked = true;
+    dupCb.className = 'status-buku-cb';
+    dupCb.id  = 'sbcb-Duplikat';
+    dupCb.addEventListener('change', _updateStatusBukuLabel);
+    var dupLbl = document.createElement('label');
+    dupLbl.htmlFor = dupCb.id;
+    dupLbl.style.cssText = 'display:inline-block;padding:1px 6px;border-radius:4px;' +
+        'background:#fef3c7;color:#92400e;cursor:pointer;font-style:italic;';
+    dupLbl.innerHTML = '📋 Duplikat <small style="font-size:10px;opacity:.75;">(virtual)</small>';
+    dupDiv.appendChild(dupCb); dupDiv.appendChild(dupLbl);
+    dropdown.appendChild(dupDiv);
+
     _updateStatusBukuLabel();
 }
 
@@ -455,10 +554,11 @@ function toggleAllStatusBuku() {
 // ═══════════════════════════════════════════════════════════════════
 
 function buildMatchingSummaryBar(filteredRows, totalRows) {
-    var total     = filteredRows.length;
-    var matched   = filteredRows.filter(function(r) { return r.matched; }).length;
-    var unmatched = total - matched;
-    var pct       = total > 0 ? Math.round(matched / total * 100) : 0;
+    var total      = filteredRows.length;
+    var cDup       = filteredRows.filter(function(r) { return r.matchSource === 'duplikat'; }).length;
+    var cNikah     = filteredRows.filter(function(r) { return r.matchSource === 'nikah'; }).length;
+    var cTidakAda  = filteredRows.filter(function(r) { return !r.matchSource; }).length;
+    var pctTerdata = total > 0 ? Math.round((total - cTidakAda) / total * 100) : 0;
     var isFiltered = totalRows && totalRows.length !== total;
 
     var totalNum = isFiltered
@@ -471,17 +571,21 @@ function buildMatchingSummaryBar(filteredRows, totalRows) {
             '<div class="msb-num">' + totalNum + '</div>' +
             '<div class="msb-lbl">' + totalLbl + '</div>' +
         '</div>' +
+        '<div class="msb-item msb-dup">' +
+            '<div class="msb-num">' + cDup.toLocaleString('id-ID') + '</div>' +
+            '<div class="msb-lbl">📋 Duplikat</div>' +
+        '</div>' +
         '<div class="msb-item msb-matched">' +
-            '<div class="msb-num">' + matched.toLocaleString('id-ID') + '</div>' +
-            '<div class="msb-lbl">✅ Ada di Data Nikah</div>' +
+            '<div class="msb-num">' + cNikah.toLocaleString('id-ID') + '</div>' +
+            '<div class="msb-lbl">💍 Ada di Data Nikah</div>' +
         '</div>' +
         '<div class="msb-item msb-unmatched">' +
-            '<div class="msb-num">' + unmatched.toLocaleString('id-ID') + '</div>' +
-            '<div class="msb-lbl">❌ Duplikat/Rusak/Belum Terpakai</div>' +
+            '<div class="msb-num">' + cTidakAda.toLocaleString('id-ID') + '</div>' +
+            '<div class="msb-lbl">❌ Tidak Ada Data</div>' +
         '</div>' +
         '<div class="msb-item msb-pct">' +
-            '<div class="msb-pct-track"><div class="msb-pct-fill" style="width:' + pct + '%"></div></div>' +
-            '<div class="msb-lbl">' + pct + '% Terpakai</div>' +
+            '<div class="msb-pct-track"><div class="msb-pct-fill" style="width:' + pctTerdata + '%"></div></div>' +
+            '<div class="msb-lbl">' + pctTerdata + '% Terdata</div>' +
         '</div>' +
     '</div>';
 }
@@ -750,25 +854,27 @@ function renderMatchingTable() {
         return;
     }
 
+    // ── Fix 1: Invalidate cache hanya saat data benar-benar berubah ──
+    if (matchingDirty) {
+        _cachedAllRows = null;
+    }
+
     var allRows    = getMatchingFilteredData();
-    var allBasRows = buildMatchingRows();          // untuk summary (total tanpa filter)
+    var allBasRows = _getAllMatchingRows();   // untuk summary (total tanpa filter)
     var totalRows  = allRows.length;
 
-    // ── Fix 1: badge selalu update saat render ──
     updateBadge('matching', totalRows);
 
     var parts = [];
-
-    // ── Summary bar — selalu reflect data terfilter ──
     parts.push(buildMatchingSummaryBar(allRows, allBasRows));
 
     if (totalRows === 0) {
         parts.push(buildEmptyState('Tidak ada data', 'Tidak ada data yang cocok dengan filter.'));
         container.innerHTML = parts.join('');
+        matchingDirty = false;
         return;
     }
 
-    // ── Fix 3: gunakan matchingPageSize, 0 = Semua ──
     var showAll    = (matchingPageSize === 0);
     var pageSize   = showAll ? totalRows : matchingPageSize;
     var totalPages = Math.max(1, Math.ceil(totalRows / pageSize));
@@ -777,7 +883,7 @@ function renderMatchingTable() {
     var start       = (matchingPage - 1) * pageSize;
     var displayRows = showAll ? allRows : allRows.slice(start, start + pageSize);
 
-    // ── Info bar (dengan per-page selector) ──
+    // ── Info bar ──
     parts.push('<div class="data-info-bar">');
     parts.push(
         '<div class="count-display">Menampilkan <span>' +
@@ -790,7 +896,6 @@ function renderMatchingTable() {
             : ' dari <span>' + totalRows.toLocaleString('id-ID') + '</span> data') +
         '</div>'
     );
-    // Per-page selector + actions
     parts.push(
         '<div class="action-btns" style="align-items:center; gap:10px;">' +
         '<label style="font-size:12px;color:#555;white-space:nowrap;">Tampilkan:</label>' +
@@ -806,7 +911,6 @@ function renderMatchingTable() {
     );
     parts.push('</div>');
 
-    // ── Fix 2: Selection counter bar (awalnya tersembunyi) ──
     parts.push(
         '<div id="matchingSelBar" style="display:none; align-items:center; gap:10px; padding:7px 12px; ' +
         'background:#e8f0fe; border:1px solid #c5cdf5; border-radius:8px; margin-bottom:8px; font-size:13px;">' +
@@ -815,41 +919,110 @@ function renderMatchingTable() {
         '</div>'
     );
 
-    // ── Pagination top (sembunyikan jika showAll) ──
     if (!showAll) parts.push(buildPagination('matching', matchingPage, totalPages, totalRows));
 
-    // ── Table ──
+    // ═══════════════════════════════════════════════════════════════
+    // Fix #5: Pre-scan allRows untuk menentukan kolom mana yang punya data
+    // Scan dilakukan sekali dalam satu pass O(n) agar efisien
+    // ═══════════════════════════════════════════════════════════════
+    var dc = typeof DUPLIKAT_COL !== 'undefined' ? DUPLIKAT_COL : (window.DUPLIKAT_COL || {});
+    var vis = {
+        // Stok
+        NO_SERI:       false, TAHUN_BUKU:    false, KUA:           false,
+        STATUS:        false, TGL_ALOKASI:   false, TGL_DIGUNAKAN: false, KETERANGAN: false,
+        // Duplikat (Fix #4: urutan Duplikat dulu baru Nikah)
+        D_TGL:         false, D_NO_DAFTAR:   false, D_AKTA_LAMA:   false,
+        D_SUAMI:       false, D_ISTRI:       false, D_TGL_AKAD:    false, D_SUMBER: false,
+        // Nikah
+        N_NO_DAFTAR:   false, N_AKTA:        false, N_TGL_DAFTAR:  false,
+        N_TGL_AKAD:    false, N_SUAMI:       false, N_ISTRI:       false,
+        N_TEMPAT:      false, N_NTPN:        false
+    };
+    for (var si = 0; si < allRows.length; si++) {
+        var sr = allRows[si];
+        var ss = sr.stok;
+        var sn = sr.nikah;
+        var sd = sr.duplikat;
+        if (!vis.NO_SERI       && STOK_COL.NO_SERI >= 0       && ss[STOK_COL.NO_SERI])       vis.NO_SERI = true;
+        if (!vis.TAHUN_BUKU    && STOK_COL.TAHUN_BUKU >= 0    && ss[STOK_COL.TAHUN_BUKU])    vis.TAHUN_BUKU = true;
+        if (!vis.KUA           && STOK_COL.KUA >= 0           && ss[STOK_COL.KUA])           vis.KUA = true;
+        if (!vis.STATUS        && STOK_COL.STATUS >= 0        && ss[STOK_COL.STATUS])        vis.STATUS = true;
+        if (!vis.TGL_ALOKASI   && STOK_COL.TGL_ALOKASI >= 0   && ss[STOK_COL.TGL_ALOKASI])   vis.TGL_ALOKASI = true;
+        if (!vis.TGL_DIGUNAKAN && STOK_COL.TGL_DIGUNAKAN >= 0 && ss[STOK_COL.TGL_DIGUNAKAN]) vis.TGL_DIGUNAKAN = true;
+        if (!vis.KETERANGAN    && STOK_COL.KETERANGAN >= 0    && ss[STOK_COL.KETERANGAN])    vis.KETERANGAN = true;
+        if (sd) {
+            if (!vis.D_TGL      && dc.TGL_DUPLIKAT >= 0     && sd[dc.TGL_DUPLIKAT])     vis.D_TGL = true;
+            if (!vis.D_NO_DAFTAR && dc.NO_PENDAFTARAN >= 0  && sd[dc.NO_PENDAFTARAN])   vis.D_NO_DAFTAR = true;
+            if (!vis.D_AKTA_LAMA && dc.NO_AKTA_LAMA >= 0   && sd[dc.NO_AKTA_LAMA])    vis.D_AKTA_LAMA = true;
+            if (!vis.D_SUAMI     && dc.NAMA_SUAMI >= 0      && sd[dc.NAMA_SUAMI])      vis.D_SUAMI = true;
+            if (!vis.D_ISTRI     && dc.NAMA_ISTRI >= 0      && sd[dc.NAMA_ISTRI])      vis.D_ISTRI = true;
+            if (!vis.D_TGL_AKAD  && dc.TGL_AKAD >= 0        && sd[dc.TGL_AKAD])        vis.D_TGL_AKAD = true;
+            if (!vis.D_SUMBER    && dc.SUMBER >= 0           && sd[dc.SUMBER])          vis.D_SUMBER = true;
+        }
+        if (sn) {
+            if (!vis.N_NO_DAFTAR && sn[COL.NO_PENDAFTARAN]) vis.N_NO_DAFTAR = true;
+            if (!vis.N_AKTA      && sn[COL.NO_AKTA_NIKAH])  vis.N_AKTA      = true;
+            if (!vis.N_TGL_DAFTAR && sn[COL.TGL_DAFTAR])   vis.N_TGL_DAFTAR = true;
+            if (!vis.N_TGL_AKAD  && sn[COL.TGL_AKAD])      vis.N_TGL_AKAD  = true;
+            if (!vis.N_SUAMI     && sn[COL.NAMA_SUAMI])     vis.N_SUAMI     = true;
+            if (!vis.N_ISTRI     && sn[COL.NAMA_ISTRI])     vis.N_ISTRI     = true;
+            if (!vis.N_TEMPAT    && sn[COL.TEMPAT_NIKAH])   vis.N_TEMPAT    = true;
+            if (!vis.N_NTPN      && sn[COL.NTPN])           vis.N_NTPN      = true;
+        }
+    }
+
+    // Hitung colspan dinamis berdasarkan kolom yang visible
+    var stokSpan = 1; // No. Porforasi selalu ada
+    if (vis.NO_SERI)       stokSpan++;
+    if (vis.TAHUN_BUKU)    stokSpan++;
+    if (vis.KUA)           stokSpan++;
+    if (vis.STATUS)        stokSpan++;
+    if (vis.TGL_ALOKASI)   stokSpan++;
+    if (vis.TGL_DIGUNAKAN) stokSpan++;
+    if (vis.KETERANGAN)    stokSpan++;
+
+    var dupSpan  = 0;
+    if (vis.D_TGL)      dupSpan++;
+    if (vis.D_NO_DAFTAR) dupSpan++;
+    if (vis.D_AKTA_LAMA) dupSpan++;
+    if (vis.D_SUAMI)     dupSpan++;
+    if (vis.D_ISTRI)     dupSpan++;
+    if (vis.D_TGL_AKAD)  dupSpan++;
+    if (vis.D_SUMBER)    dupSpan++;
+
+    var nikSpan  = 0;
+    if (vis.N_NO_DAFTAR)  nikSpan++;
+    if (vis.N_AKTA)       nikSpan++;
+    if (vis.N_TGL_DAFTAR) nikSpan++;
+    if (vis.N_TGL_AKAD)   nikSpan++;
+    if (vis.N_SUAMI)      nikSpan++;
+    if (vis.N_ISTRI)      nikSpan++;
+    if (vis.N_TEMPAT)     nikSpan++;
+    if (vis.N_NTPN)       nikSpan++;
+
+    // ── Build Table ──
     parts.push('<div class="table-container"><table id="matchingTable"><thead>');
 
-    // ── Baris subheader ──
-    var stokColSpan = 1; // No. Porforasi
-    if (STOK_COL.NO_SERI >= 0)       stokColSpan++;
-    if (STOK_COL.TAHUN_BUKU >= 0)    stokColSpan++;
-    if (STOK_COL.KUA >= 0)           stokColSpan++;
-    if (STOK_COL.STATUS >= 0)        stokColSpan++;
-    if (STOK_COL.TGL_ALOKASI >= 0)   stokColSpan++;
-    if (STOK_COL.TGL_DIGUNAKAN >= 0) stokColSpan++;
-    if (STOK_COL.KETERANGAN >= 0)    stokColSpan++;
-
-    var nikahColSpan = 8; // No.Pendaftaran, No.Akta, TglDaftar, TglAkad, Suami, Istri, Tempat, NTPN
-
+    // ── Subheader row (group labels) ──
     parts.push('<tr class="matching-group-header">');
     parts.push('<th colspan="2" class="mgh-status">Status & No. Porforasi</th>');
-    parts.push('<th colspan="' + stokColSpan + '" class="mgh-stok">📚 Data Stok Buku</th>');
-    parts.push('<th colspan="' + nikahColSpan + '" class="mgh-nikah">💍 Data Nikah (Join)</th>');
+    parts.push('<th colspan="' + stokSpan + '" class="mgh-stok">📚 Data Stok Buku</th>');
+    // Fix #4: Duplikat group dulu, baru Nikah
+    if (dupSpan > 0)
+        parts.push('<th colspan="' + dupSpan + '" class="mgh-dup">📋 Data Duplikat</th>');
+    if (nikSpan > 0)
+        parts.push('<th colspan="' + nikSpan + '" class="mgh-nikah">💍 Data Nikah (NB)</th>');
     parts.push('</tr>');
 
-    // ── Header utama (dengan data-cidx untuk column select) ──
-    // cidx: 0=#, 1=Status, 2=No.Porforasi, 3..=Stok, kemudian Nikah
+    // ── Header utama ──
     var _cidx = 0;
     function _th(label, sortKey, extra) {
-        var cls = sortKey ? _sortClass(sortKey) : '';
+        var cls     = sortKey ? _sortClass(sortKey) : '';
         var onclick = sortKey
             ? 'toggleMatchingSort(\'' + sortKey + '\')'
             : 'toggleMatchingColSelect(' + _cidx + ')';
-        var title = sortKey ? 'Urutkan / Klik untuk seleksi kolom' : 'Klik untuk seleksi kolom';
         var str = '<th data-cidx="' + _cidx + '"' + cls +
-            ' onclick="' + onclick + '" title="' + title + '"' +
+            ' onclick="' + onclick + '" title="Urutkan / Klik untuk seleksi kolom"' +
             (extra || '') + '>' + label + '</th>';
         _cidx++;
         return str;
@@ -860,58 +1033,84 @@ function renderMatchingTable() {
     parts.push(_th('Status', 'matchStatus'));
     parts.push(_th('No. Porforasi', 'noPerforasi'));
 
-    if (STOK_COL.NO_SERI >= 0)       parts.push(_th('No. Seri', null));
-    if (STOK_COL.TAHUN_BUKU >= 0)    parts.push(_th('Tahun Buku', null));
-    if (STOK_COL.KUA >= 0)           parts.push(_th('KUA (Stok)', null));
-    if (STOK_COL.STATUS >= 0)        parts.push(_th('Status Buku', 'statusBuku'));
-    if (STOK_COL.TGL_ALOKASI >= 0)   parts.push(_th('Tgl. Alokasi', null));
-    if (STOK_COL.TGL_DIGUNAKAN >= 0) parts.push(_th('Tgl. Digunakan', 'tglDigunakan'));
-    if (STOK_COL.KETERANGAN >= 0)    parts.push(_th('Keterangan', null));
+    if (vis.NO_SERI)       parts.push(_th('No. Seri', null));
+    if (vis.TAHUN_BUKU)    parts.push(_th('Tahun Buku', null));
+    if (vis.KUA)           parts.push(_th('KUA (Stok)', null));
+    if (vis.STATUS)        parts.push(_th('Status Buku', 'statusBuku'));
+    if (vis.TGL_ALOKASI)   parts.push(_th('Tgl. Alokasi', null));
+    if (vis.TGL_DIGUNAKAN) parts.push(_th('Tgl. Digunakan', 'tglDigunakan'));
+    if (vis.KETERANGAN)    parts.push(_th('Keterangan', null));
 
-    parts.push(_th('No. Pendaftaran', null, ' class="matching-divider-col"'));
-    parts.push(_th('No. Akta Nikah', null));
-    parts.push(_th('Tgl. Daftar', null));
-    parts.push(_th('Tgl. Akad', 'tglAkad'));
-    parts.push(_th('Nama Suami', 'namaSuami'));
-    parts.push(_th('Nama Istri', 'namaIstri'));
-    parts.push(_th('Tempat Nikah', null));
-    parts.push(_th('NTPN', null));
+    // Fix #4: Duplikat columns first
+    if (vis.D_TGL)       parts.push(_th('Tgl. Duplikat',          null, ' class="matching-divider-col-dup"'));
+    if (vis.D_NO_DAFTAR) parts.push(_th('No. Pendaftaran (Dup)',  null));
+    if (vis.D_AKTA_LAMA) parts.push(_th('No. Akta Lama',         null));
+    if (vis.D_SUAMI)     parts.push(_th('Nama Suami (Dup)',       null));
+    if (vis.D_ISTRI)     parts.push(_th('Nama Istri (Dup)',       null));
+    if (vis.D_TGL_AKAD)  parts.push(_th('Tgl. Akad (Dup)',       null));
+    if (vis.D_SUMBER)    parts.push(_th('Sumber',                 null));
+
+    // Then Nikah columns
+    var nikFirstCls = dupSpan > 0 ? ' class="matching-divider-col"' : ' class="matching-divider-col"';
+    if (vis.N_NO_DAFTAR)  parts.push(_th('No. Pendaftaran',  null, nikFirstCls));
+    if (vis.N_AKTA)       parts.push(_th('No. Akta Nikah',   null));
+    if (vis.N_TGL_DAFTAR) parts.push(_th('Tgl. Daftar',      null));
+    if (vis.N_TGL_AKAD)   parts.push(_th('Tgl. Akad',        'tglAkad'));
+    if (vis.N_SUAMI)      parts.push(_th('Nama Suami',        'namaSuami'));
+    if (vis.N_ISTRI)      parts.push(_th('Nama Istri',        'namaIstri'));
+    if (vis.N_TEMPAT)     parts.push(_th('Tempat Nikah',      null));
+    if (vis.N_NTPN)       parts.push(_th('NTPN',              null));
+
     parts.push('</tr></thead><tbody>');
 
-    // ── Rows (dengan data-gidx & data-cidx untuk selection) ──
-    var DASH = '<td class="cell-empty">—</td>';
-    var totalCols = _cidx; // total kolom
+    // ── Rows ──
+    var totalCols = _cidx;
 
     displayRows.forEach(function(row, idx) {
         var stok    = row.stok;
         var nikah   = row.nikah;
-        var matched = row.matched;
-        var gidx    = start + idx;   // global index di allRows
+        var dup     = row.duplikat;
+        var src     = row.matchSource;
+        var gidx    = start + idx;
 
-        var rowCls = (matched ? 'row-matched' : 'row-unmatched');
+        var rowCls;
+        switch (src) {
+            case 'duplikat':
+                rowCls = row.alsoInNikah ? 'row-matched row-both' : 'row-matched row-dup-only';
+                break;
+            case 'nikah':  rowCls = 'row-matched';    break;
+            default:       rowCls = 'row-unmatched';
+        }
         if (matchingSelectedRows.has(gidx)) rowCls += ' row-msel';
 
         parts.push('<tr class="' + rowCls + '" data-gidx="' + gidx + '"' +
             ' onclick="handleMatchingRowClick(event,' + gidx + ')">');
-        var ci = 0; // column index counter untuk td
+        var ci = 0;
 
         // Col #
-        var cSelNo = matchingSelectedCols.has(ci) ? ' col-msel' : '';
-        parts.push('<td class="col-no' + cSelNo + '" data-cidx="' + ci + '">' + (gidx + 1) + '</td>'); ci++;
+        var cNo = matchingSelectedCols.has(ci) ? ' col-msel' : '';
+        parts.push('<td class="col-no' + cNo + '" data-cidx="' + ci + '">' + (gidx + 1) + '</td>'); ci++;
 
         // Status badge
-        var cSelSt = matchingSelectedCols.has(ci) ? ' col-msel' : '';
-        var badge = matched
-            ? '<span class="match-badge match-yes">✅ Ada</span>'
-            : '<span class="match-badge match-no">❌ Tidak Ada Data</span>';
-        parts.push('<td data-cidx="' + ci + '" class="' + cSelSt.trim() + '">' + badge + '</td>'); ci++;
+        var cSt = matchingSelectedCols.has(ci) ? ' col-msel' : '';
+        var badge;
+        switch (src) {
+            case 'duplikat':
+                badge = row.alsoInNikah
+                    ? '<span class="match-badge match-dup">📋 Duplikat <small style="font-size:10px;opacity:.8;">+NB</small></span>'
+                    : '<span class="match-badge match-dup">📋 Duplikat</span>';
+                break;
+            case 'nikah':
+                badge = '<span class="match-badge match-yes">💍 Data Nikah</span>'; break;
+            default:
+                badge = '<span class="match-badge match-no">❌ Tidak Ada</span>';
+        }
+        parts.push('<td data-cidx="' + ci + '" class="' + cSt.trim() + '">' + badge + '</td>'); ci++;
 
         // No. Porforasi
-        var cSelPer = matchingSelectedCols.has(ci) ? ' col-msel' : '';
-        var noPer = STOK_COL.NO_PERFORASI >= 0
-            ? escHtml(String(stok[STOK_COL.NO_PERFORASI] || ''))
-            : '';
-        parts.push('<td class="cell-perforasi' + cSelPer + '" data-cidx="' + ci + '">' + noPer + '</td>'); ci++;
+        var cPer = matchingSelectedCols.has(ci) ? ' col-msel' : '';
+        var noPer = STOK_COL.NO_PERFORASI >= 0 ? escHtml(String(stok[STOK_COL.NO_PERFORASI] || '')) : '';
+        parts.push('<td class="cell-perforasi' + cPer + '" data-cidx="' + ci + '">' + noPer + '</td>'); ci++;
 
         function _td(val, extraCls) {
             var cSel = matchingSelectedCols.has(ci) ? ' col-msel' : '';
@@ -919,32 +1118,50 @@ function renderMatchingTable() {
             ci++;
             return str;
         }
-
-        if (STOK_COL.NO_SERI >= 0)       parts.push(_td(escHtml(String(stok[STOK_COL.NO_SERI]    || ''))));
-        if (STOK_COL.TAHUN_BUKU >= 0)    parts.push(_td(escHtml(String(stok[STOK_COL.TAHUN_BUKU] || ''))));
-        if (STOK_COL.KUA >= 0)           parts.push(_td(escHtml(String(stok[STOK_COL.KUA]        || ''))));
-        if (STOK_COL.STATUS >= 0)        parts.push(_td(buildStatusBadge(stok[STOK_COL.STATUS])));
-        if (STOK_COL.TGL_ALOKASI >= 0)   parts.push(_td(formatStokDate(stok[STOK_COL.TGL_ALOKASI])));
-        if (STOK_COL.TGL_DIGUNAKAN >= 0) parts.push(_td(formatStokDate(stok[STOK_COL.TGL_DIGUNAKAN])));
-        if (STOK_COL.KETERANGAN >= 0)    parts.push(_td(escHtml(String(stok[STOK_COL.KETERANGAN] || ''))));
-
-        // Nikah columns
-        if (!matched) {
-            for (var e = 0; e < 8; e++) {
-                var cSel2 = matchingSelectedCols.has(ci) ? ' col-msel' : '';
-                parts.push('<td class="cell-empty' + cSel2 + '" data-cidx="' + ci + '">—</td>');
-                ci++;
-            }
-        } else {
-            parts.push(_td(escHtml(String(nikah[COL.NO_PENDAFTARAN] || '')), 'matching-divider-col'));
-            parts.push(_td(escHtml(String(nikah[COL.NO_AKTA_NIKAH]  || ''))));
-            parts.push(_td(formatDate(nikah[COL.TGL_DAFTAR])));
-            parts.push(_td(formatDate(nikah[COL.TGL_AKAD])));
-            parts.push(_td(escHtml(String(nikah[COL.NAMA_SUAMI] || ''))));
-            parts.push(_td(escHtml(String(nikah[COL.NAMA_ISTRI] || ''))));
-            parts.push(_td(escHtml(String(nikah[COL.TEMPAT_NIKAH] || ''))));
-            parts.push(_td(escHtml(String(nikah[COL.NTPN]       || ''))));
+        function _tdEmpty(extraCls) {
+            var cSel = matchingSelectedCols.has(ci) ? ' col-msel' : '';
+            var str = '<td data-cidx="' + ci + '" class="cell-empty ' + ((extraCls || '') + cSel).trim() + '">—</td>';
+            ci++;
+            return str;
         }
+
+        // Stok columns
+        if (vis.NO_SERI)       parts.push(_td(escHtml(String(stok[STOK_COL.NO_SERI]    || ''))));
+        if (vis.TAHUN_BUKU)    parts.push(_td(escHtml(String(stok[STOK_COL.TAHUN_BUKU] || ''))));
+        if (vis.KUA)           parts.push(_td(escHtml(String(stok[STOK_COL.KUA]        || ''))));
+        if (vis.STATUS)        parts.push(_td(buildStatusBadge(stok[STOK_COL.STATUS])));
+        if (vis.TGL_ALOKASI)   parts.push(_td(formatStokDate(stok[STOK_COL.TGL_ALOKASI])));
+        if (vis.TGL_DIGUNAKAN) parts.push(_td(formatStokDate(stok[STOK_COL.TGL_DIGUNAKAN])));
+        if (vis.KETERANGAN)    parts.push(_td(escHtml(String(stok[STOK_COL.KETERANGAN] || ''))));
+
+        // Fix #4: Duplikat columns first
+        var firstDupRendered = false;
+        function _dupCls() {
+            if (!firstDupRendered) { firstDupRendered = true; return 'matching-divider-col-dup'; }
+            return '';
+        }
+        if (vis.D_TGL)       parts.push(dup && dc.TGL_DUPLIKAT >= 0   ? _td(formatDate(dup[dc.TGL_DUPLIKAT]),              _dupCls()) : _tdEmpty(_dupCls()));
+        if (vis.D_NO_DAFTAR) parts.push(dup && dc.NO_PENDAFTARAN >= 0  ? _td(escHtml(String(dup[dc.NO_PENDAFTARAN]  || '')), _dupCls()) : _tdEmpty(_dupCls()));
+        if (vis.D_AKTA_LAMA) parts.push(dup && dc.NO_AKTA_LAMA >= 0   ? _td(escHtml(String(dup[dc.NO_AKTA_LAMA]   || '')), _dupCls()) : _tdEmpty(_dupCls()));
+        if (vis.D_SUAMI)     parts.push(dup && dc.NAMA_SUAMI >= 0      ? _td(escHtml(String(dup[dc.NAMA_SUAMI]     || '')), _dupCls()) : _tdEmpty(_dupCls()));
+        if (vis.D_ISTRI)     parts.push(dup && dc.NAMA_ISTRI >= 0      ? _td(escHtml(String(dup[dc.NAMA_ISTRI]     || '')), _dupCls()) : _tdEmpty(_dupCls()));
+        if (vis.D_TGL_AKAD)  parts.push(dup && dc.TGL_AKAD >= 0        ? _td(formatDate(dup[dc.TGL_AKAD]),                 _dupCls()) : _tdEmpty(_dupCls()));
+        if (vis.D_SUMBER)    parts.push(dup && dc.SUMBER >= 0           ? _td(escHtml(String(dup[dc.SUMBER]         || '')), _dupCls()) : _tdEmpty(_dupCls()));
+
+        // Then Nikah columns
+        var firstNikRendered = false;
+        function _nikCls() {
+            if (!firstNikRendered) { firstNikRendered = true; return 'matching-divider-col'; }
+            return '';
+        }
+        if (vis.N_NO_DAFTAR)  parts.push(nikah ? _td(escHtml(String(nikah[COL.NO_PENDAFTARAN] || '')), _nikCls()) : _tdEmpty(_nikCls()));
+        if (vis.N_AKTA)       parts.push(nikah ? _td(escHtml(String(nikah[COL.NO_AKTA_NIKAH]  || '')), _nikCls()) : _tdEmpty(_nikCls()));
+        if (vis.N_TGL_DAFTAR) parts.push(nikah ? _td(formatDate(nikah[COL.TGL_DAFTAR]),               _nikCls()) : _tdEmpty(_nikCls()));
+        if (vis.N_TGL_AKAD)   parts.push(nikah ? _td(formatDate(nikah[COL.TGL_AKAD]),                 _nikCls()) : _tdEmpty(_nikCls()));
+        if (vis.N_SUAMI)      parts.push(nikah ? _td(escHtml(String(nikah[COL.NAMA_SUAMI] || '')),    _nikCls()) : _tdEmpty(_nikCls()));
+        if (vis.N_ISTRI)      parts.push(nikah ? _td(escHtml(String(nikah[COL.NAMA_ISTRI] || '')),    _nikCls()) : _tdEmpty(_nikCls()));
+        if (vis.N_TEMPAT)     parts.push(nikah ? _td(escHtml(String(nikah[COL.TEMPAT_NIKAH] || '')),  _nikCls()) : _tdEmpty(_nikCls()));
+        if (vis.N_NTPN)       parts.push(nikah ? _td(escHtml(String(nikah[COL.NTPN] || '')),          _nikCls()) : _tdEmpty(_nikCls()));
 
         parts.push('</tr>');
     });
@@ -955,7 +1172,6 @@ function renderMatchingTable() {
     container.innerHTML = parts.join('');
     matchingDirty = false;
 
-    // Terapkan selection bar state setelah render
     _applyMatchingSelectionUI();
 }
 
@@ -964,11 +1180,18 @@ function renderMatchingTable() {
 // ═══════════════════════════════════════════════════════════════════
 
 function _matchingRowToArray(r, idx) {
-    var s = r.stok;
-    var n = r.nikah;
+    var s  = r.stok;
+    var n  = r.nikah;
+    var d  = r.duplikat;
+    var dc = typeof DUPLIKAT_COL !== 'undefined' ? DUPLIKAT_COL : (window.DUPLIKAT_COL || {});
+    var srcLabel;
+    if (r.alsoInNikah)          srcLabel = 'Duplikat + Data Nikah';
+    else if (r.matchSource === 'duplikat') srcLabel = 'Duplikat';
+    else if (r.matchSource === 'nikah')    srcLabel = 'Data Nikah';
+    else                                   srcLabel = 'Tidak Ada';
     return [
         idx + 1,
-        r.matched ? 'Ada' : 'Belum',
+        srcLabel,
         STOK_COL.NO_PERFORASI  >= 0 ? (s[STOK_COL.NO_PERFORASI]  || '') : '',
         STOK_COL.NO_SERI       >= 0 ? (s[STOK_COL.NO_SERI]       || '') : '',
         STOK_COL.TAHUN_BUKU    >= 0 ? (s[STOK_COL.TAHUN_BUKU]    || '') : '',
@@ -977,6 +1200,7 @@ function _matchingRowToArray(r, idx) {
         STOK_COL.TGL_ALOKASI   >= 0 ? formatStokDate(s[STOK_COL.TGL_ALOKASI])   : '',
         STOK_COL.TGL_DIGUNAKAN >= 0 ? formatStokDate(s[STOK_COL.TGL_DIGUNAKAN]) : '',
         STOK_COL.KETERANGAN    >= 0 ? (s[STOK_COL.KETERANGAN]    || '') : '',
+        // Nikah
         n ? (n[COL.NO_PENDAFTARAN] || '') : '',
         n ? (n[COL.NO_AKTA_NIKAH]  || '') : '',
         n ? formatDate(n[COL.TGL_DAFTAR]) : '',
@@ -984,15 +1208,27 @@ function _matchingRowToArray(r, idx) {
         n ? (n[COL.NAMA_SUAMI]   || '') : '',
         n ? (n[COL.NAMA_ISTRI]   || '') : '',
         n ? (n[COL.TEMPAT_NIKAH] || '') : '',
-        n ? (n[COL.NTPN]         || '') : ''
+        n ? (n[COL.NTPN]         || '') : '',
+        // Duplikat
+        d && dc.TGL_DUPLIKAT >= 0    ? formatDate(d[dc.TGL_DUPLIKAT])         : '',
+        d && dc.NO_PENDAFTARAN >= 0   ? (d[dc.NO_PENDAFTARAN]   || '')         : '',
+        d && dc.NO_AKTA_LAMA >= 0     ? (d[dc.NO_AKTA_LAMA]     || '')         : '',
+        d && dc.NAMA_SUAMI >= 0       ? (d[dc.NAMA_SUAMI]       || '')         : '',
+        d && dc.NAMA_ISTRI >= 0       ? (d[dc.NAMA_ISTRI]       || '')         : '',
+        d && dc.TGL_AKAD >= 0         ? formatDate(d[dc.TGL_AKAD])             : '',
+        d && dc.SUMBER >= 0           ? (d[dc.SUMBER]           || '')         : ''
     ];
 }
 
 var _MATCHING_HEADERS = [
-    '#', 'Status', 'No. Porforasi', 'No. Seri', 'Tahun Buku',
+    '#', 'Status Matching', 'No. Porforasi', 'No. Seri', 'Tahun Buku',
     'KUA (Stok)', 'Status Buku', 'Tgl. Alokasi', 'Tgl. Digunakan', 'Keterangan',
-    'No. Pendaftaran', 'No. Akta Nikah', 'Tgl. Daftar',
-    'Tgl. Akad', 'Nama Suami', 'Nama Istri', 'Tempat Nikah', 'NTPN'
+    // Nikah
+    'No. Pendaftaran (NB)', 'No. Akta Nikah', 'Tgl. Daftar',
+    'Tgl. Akad (NB)', 'Nama Suami (NB)', 'Nama Istri (NB)', 'Tempat Nikah', 'NTPN',
+    // Duplikat
+    'Tgl. Duplikat', 'No. Pendaftaran (Dup)', 'No. Akta Lama',
+    'Nama Suami (Dup)', 'Nama Istri (Dup)', 'Tgl. Akad (Dup)', 'Sumber'
 ];
 
 function copyMatchingTable() {
@@ -1136,6 +1372,8 @@ function restoreMatchingFilterUI() {
             'Belum ada data dimuat',
             'Muat data terlebih dahulu dari tab Dashboard.'
         );
+        // Reset duplikat reference
+        if (typeof window.duplikatData !== 'undefined') window.duplikatData = [];
     };
 })();
 
@@ -1148,6 +1386,22 @@ function restoreMatchingFilterUI() {
         // ✅ Fix 1: Update badge segera setelah data stok dimuat (tanpa tunggu tab aktif)
         updateMatchingBadgeOnly();
         // Jika tab matching sedang aktif, langsung refresh
+        var activeTabEl = document.querySelector('.tab-content.active');
+        if (activeTabEl && activeTabEl.id === 'tab-matching') {
+            buildMatchingFilterOptions();
+            restoreMatchingFilterUI();
+            renderMatchingTable();
+        }
+    };
+})();
+
+// ── Hook buildDuplikatIndex (dipanggil setelah duplikat selesai dimuat) ──
+(function() {
+    var _orig = window.buildDuplikatIndex || function() {};
+    window.buildDuplikatIndex = function() {
+        _orig();
+        matchingDirty = true;
+        updateMatchingBadgeOnly();
         var activeTabEl = document.querySelector('.tab-content.active');
         if (activeTabEl && activeTabEl.id === 'tab-matching') {
             buildMatchingFilterOptions();
@@ -1187,6 +1441,12 @@ function _initMatchingTab() {
             '#matchingTable tbody tr[data-gidx] { cursor: pointer; }',
             '#matchingTable tbody tr.row-msel td { background: #dbeafe !important; border-bottom-color: #93c5fd; }',
             '#matchingTable tbody tr.row-msel:hover td { background: #bfdbfe !important; }',
+            /* Duplikat-only row tint */
+            '#matchingTable tbody tr.row-dup-only td { background: #fef9ec; }',
+            '#matchingTable tbody tr.row-dup-only:hover td { background: #fef3c7; }',
+            /* Both row tint */
+            '#matchingTable tbody tr.row-both td { background: #f0fdf4; }',
+            '#matchingTable tbody tr.row-both:hover td { background: #dcfce7; }',
             /* Column selection */
             '#matchingTable thead th.col-msel-header { background: #dbeafe !important; color: #1e40af !important; border-bottom-color: #3b82f6 !important; }',
             '#matchingTable tbody td.col-msel { background: #eff6ff !important; color: #1e3a8a; }',
@@ -1199,6 +1459,20 @@ function _initMatchingTab() {
             /* Selection bar */
             '#matchingSelBar { animation: selBarIn 0.2s ease-out; }',
             '@keyframes selBarIn { from{opacity:0;transform:translateY(-4px)} to{opacity:1;transform:translateY(0)} }',
+            /* Match badges */
+            '.match-badge { display:inline-block; padding:2px 8px; border-radius:12px; font-size:12px; font-weight:600; white-space:nowrap; }',
+            '.match-yes  { background:#d1fae5; color:#065f46; }',
+            '.match-no   { background:#fee2e2; color:#991b1b; }',
+            '.match-dup  { background:#fef3c7; color:#92400e; }',
+            '.match-both { background:#dbeafe; color:#1e40af; }',
+            /* Group header colours */
+            '#matchingTable thead tr.matching-group-header th.mgh-dup { background:#fffbeb; color:#92400e; border-bottom:2px solid #fcd34d; }',
+            /* Duplikat column divider */
+            '#matchingTable thead th.matching-divider-col-dup { border-left: 3px solid #fcd34d !important; }',
+            '#matchingTable tbody td.matching-divider-col-dup { border-left: 3px solid #fcd34d !important; }',
+            /* Summary bar extra items */
+            '.msb-dup  { border-top: 4px solid #f59e0b; }',
+            '.msb-both { border-top: 4px solid #3b82f6; }',
         ].join('\n');
         document.head.appendChild(style);
     }
@@ -1260,5 +1534,7 @@ window.changeMatchingPageSize      = changeMatchingPageSize;
 window.buildStatusBukuOptions      = buildStatusBukuOptions;
 window.toggleStatusBukuDropdown    = toggleStatusBukuDropdown;
 window.toggleAllStatusBuku         = toggleAllStatusBuku;
+// Duplikat index hook (diisi oleh supervisi-script.js)
+window.buildDuplikatIndex          = window.buildDuplikatIndex || function() {};
 
 console.log('[MATCHING] ✓ supervisi-matching.js loaded');

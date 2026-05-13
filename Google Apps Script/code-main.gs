@@ -135,6 +135,11 @@ function doPost(e) {
         return ContentService
           .createTextOutput(JSON.stringify(handleGetStokData(data)))
           .setMimeType(ContentService.MimeType.JSON);
+
+      case 'getDuplikatData':
+        return ContentService
+          .createTextOutput(JSON.stringify(handleGetDuplikatData(data)))
+          .setMimeType(ContentService.MimeType.JSON);
       
       default:
         Logger.log(`[ERROR] Unknown action: ${action}`);

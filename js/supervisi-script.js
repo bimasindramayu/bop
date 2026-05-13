@@ -71,6 +71,58 @@ var STOK_COL = {
 var DISPLAY_STOK_COLS = [];
 var STOK_COL_NAMES    = [];
 
+// =====================================================================
+// DUPLIKAT COLUMN MAP — dynamic (resolved from header row "Duplikat" sheet)
+// =====================================================================
+var DUPLIKAT_COL = {
+    NO: -1, PROVINSI: -1, KAB: -1, KEC: -1, KODE_KUA: -1, NAMA_KUA: -1,
+    TGL_DUPLIKAT: -1, NO_PENDAFTARAN: -1, NO_AKTA_LAMA: -1,
+    NO_PERFORASI_LAMA: -1, NO_PERFORASI_SUAMI: -1, NO_PERFORASI_ISTRI: -1,
+    TAHUN_BUKU: -1, NIK_SUAMI: -1, NAMA_SUAMI: -1,
+    NIK_ISTRI: -1, NAMA_ISTRI: -1, TGL_AKAD: -1, SUMBER: -1
+};
+
+var DUPLIKAT_HEADER_ALIASES = {
+    NO:                ['no', 'no.', 'nomor'],
+    PROVINSI:          ['provinsi'],
+    KAB:               ['kabupaten/kota', 'kabupaten', 'kota', 'kab/kota'],
+    KEC:               ['kecamatan', 'kec'],
+    KODE_KUA:          ['kode kua'],
+    NAMA_KUA:          ['nama kua', 'kua'],
+    TGL_DUPLIKAT:      ['tgl duplikat', 'tgl. duplikat', 'tanggal duplikat'],
+    NO_PENDAFTARAN:    ['no pendaftaran', 'no. pendaftaran', 'nomor pendaftaran'],
+    NO_AKTA_LAMA:      ['no akta lama', 'no. akta lama', 'nomor akta lama'],
+    NO_PERFORASI_LAMA: ['no porforasi lama', 'no. porforasi lama',
+                        'no perforasi lama', 'no. perforasi lama', 'nomor porforasi lama'],
+    NO_PERFORASI_SUAMI:['no porforasi duplikat suami', 'no. porforasi duplikat suami',
+                        'no perforasi duplikat suami'],
+    NO_PERFORASI_ISTRI:['no porforasi duplikat istri', 'no. porforasi duplikat istri',
+                        'no perforasi duplikat istri'],
+    TAHUN_BUKU:        ['tahun buku', 'tahun'],
+    NIK_SUAMI:         ['nik suami'],
+    NAMA_SUAMI:        ['nama suami'],
+    NIK_ISTRI:         ['nik istri'],
+    NAMA_ISTRI:        ['nama istri'],
+    TGL_AKAD:          ['tgl akad', 'tgl. akad', 'tanggal akad'],
+    SUMBER:            ['sumber']
+};
+
+function resolveDuplikatCols(headers) {
+    Object.keys(DUPLIKAT_COL).forEach(function(k) { DUPLIKAT_COL[k] = -1; });
+    var lookup = {};
+    headers.forEach(function(h, i) { lookup[String(h).toLowerCase().trim()] = i; });
+    Object.keys(DUPLIKAT_HEADER_ALIASES).forEach(function(field) {
+        var aliases = DUPLIKAT_HEADER_ALIASES[field];
+        for (var a = 0; a < aliases.length; a++) {
+            if (lookup[aliases[a]] !== undefined) {
+                DUPLIKAT_COL[field] = lookup[aliases[a]];
+                break;
+            }
+        }
+    });
+    console.log('[DUPLIKAT] resolveDuplikatCols →', JSON.stringify(DUPLIKAT_COL));
+}
+
 // Alias map: field key → array of lowercase header strings yang dikenali.
 // Tambahkan alias baru di sini jika nama kolom di spreadsheet berubah.
 var STOK_HEADER_ALIASES = {
@@ -158,6 +210,10 @@ var stokFilters     = {};
 var stokSort        = { col: -1, dir: 'asc' };   // col resolved after headers load
 var stokPage        = 1;
 var stokDirty       = true;
+
+// Duplikat state
+var duplikatData    = [];
+var duplikatHeaders = [];
 
 // =====================================================================
 // BULAN INDONESIA
@@ -1806,6 +1862,9 @@ async function loadData() {
         // Load stok data
         loadStokData(fileId);
 
+        // Load duplikat data (sheet "Duplikat")
+        loadDuplikatData(fileId);
+
         showProgress(100);
         hideLoading();
         hideProgress();
@@ -1977,6 +2036,72 @@ async function loadStokData(fileId) {
 }
 
 // =====================================================================
+// LOAD DUPLIKAT DATA
+// =====================================================================
+async function loadDuplikatData(fileId) {
+    try {
+        duplikatData    = [];
+        duplikatHeaders = [];
+
+        var result = await apiCall('getDuplikatData', { fileId: fileId });
+
+        if (result && result.notFound) {
+            // Sheet "Duplikat" belum ada — tidak masalah, matching tetap berjalan
+            console.log('[DUPLIKAT] Sheet tidak ditemukan, duplikatData = []');
+            if (typeof window.buildDuplikatIndex === 'function') window.buildDuplikatIndex();
+            return;
+        }
+
+        var rows    = [];
+        var headers = [];
+
+        if (result && result.type === 'base64') {
+            // XLSX — parse sheet "Duplikat" di client
+            if (typeof XLSX === 'undefined') throw new Error('SheetJS belum termuat.');
+            var wb = XLSX.read(result.content, { type: 'base64' });
+            var sheetName = wb.SheetNames.find(function(n) {
+                return n.toLowerCase().trim() === 'duplikat';
+            });
+            if (!sheetName) {
+                console.log('[DUPLIKAT] Sheet "Duplikat" tidak ada di XLSX');
+                if (typeof window.buildDuplikatIndex === 'function') window.buildDuplikatIndex();
+                return;
+            }
+            var ws  = wb.Sheets[sheetName];
+            var raw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: false });
+            if (raw.length > 0) {
+                headers = raw[0].map(function(h) { return h != null ? String(h) : ''; });
+                rows = raw.slice(1)
+                    .filter(function(r) { return r.some(function(c) { return c !== '' && c != null; }); })
+                    .map(function(r) { return r.map(function(c) { return c != null ? String(c) : ''; }); });
+            }
+        } else if (result && result.headers) {
+            headers = result.headers;
+            rows    = result.rows || [];
+        } else {
+            throw new Error('Format data Duplikat tidak dikenali');
+        }
+
+        duplikatHeaders = headers;
+        resolveDuplikatCols(duplikatHeaders);
+        duplikatData = rows;
+
+        console.log('[DUPLIKAT] Loaded ' + duplikatData.length + ' rows');
+
+        // Signal ke matching module
+        if (typeof window.buildDuplikatIndex === 'function') {
+            window.buildDuplikatIndex();
+        }
+
+    } catch (err) {
+        console.warn('[DUPLIKAT] loadDuplikatData gagal (tidak fatal): ' + err.message);
+        duplikatData    = [];
+        duplikatHeaders = [];
+        if (typeof window.buildDuplikatIndex === 'function') window.buildDuplikatIndex();
+    }
+}
+
+// =====================================================================
 // CLEAR DATA
 // =====================================================================
 function clearData() {
@@ -1998,6 +2123,9 @@ function clearData() {
     stokSort    = { col: -1, dir: 'asc' };
     stokPage    = 1;
     stokDirty   = true;
+
+    duplikatData    = [];
+    duplikatHeaders = [];
 
     ['total','kantor','wna','kurang10','ntpn'].forEach(function(k) {
         var el = document.getElementById('stat-' + k);
@@ -2144,5 +2272,8 @@ window.changePage            = changePage;
 window.toggleMonthDropdown   = toggleMonthDropdown;
 window.toggleAllMonths       = toggleAllMonths;
 window.updateMonthLabel      = updateMonthLabel;
+// Duplikat globals — diakses oleh supervisi-matching.js
+window.duplikatData          = duplikatData;
+window.DUPLIKAT_COL          = DUPLIKAT_COL;
 var _refreshFileList = refreshFileList;
 window.refreshFileList = function() { return _refreshFileList(true); };

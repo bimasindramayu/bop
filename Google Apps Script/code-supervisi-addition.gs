@@ -316,3 +316,107 @@ function handleGetStokData(data) {
     return { success: false, message: 'Error membaca sheet Stok: ' + e.toString() };
   }
 }
+// =====================================================================
+// FUNGSI: BACA SHEET "Duplikat"
+// =====================================================================
+function handleGetDuplikatData(data) {
+  try {
+    var fileId = data.fileId;
+    if (!fileId) return { success: false, message: 'fileId tidak diberikan' };
+
+    var file     = DriveApp.getFileById(fileId);
+    var mimeType = file.getMimeType();
+    Logger.log('[DUPLIKAT] Loading sheet Duplikat from file: ' + file.getName());
+
+    if (mimeType === MimeType.GOOGLE_SHEETS) {
+      var ss = SpreadsheetApp.openById(fileId);
+      var dupSheet = null;
+      ss.getSheets().forEach(function(sh) {
+        if (sh.getName().toLowerCase().trim() === 'duplikat') dupSheet = sh;
+      });
+
+      // Sheet tidak wajib ada — kembalikan kosong tanpa error
+      if (!dupSheet) {
+        Logger.log('[DUPLIKAT] Sheet "Duplikat" tidak ditemukan — skip');
+        return { success: true, data: { headers: [], rows: [], total: 0, notFound: true } };
+      }
+
+      var range      = dupSheet.getDataRange();
+      var rawDisplay = range.getDisplayValues();
+
+      if (rawDisplay.length === 0)
+        return { success: true, data: { headers: [], rows: [], total: 0 } };
+
+      var tz      = ss.getSpreadsheetTimeZone();
+      var headers = rawDisplay[0].map(function(h) { return String(h || ''); });
+
+      // Identifikasi kolom tanggal
+      var dateColIdx = {};
+      headers.forEach(function(h, i) {
+        var lower = (h || '').toLowerCase();
+        if (lower.indexOf('tgl') !== -1 || lower.indexOf('tanggal') !== -1 ||
+            lower.indexOf('date') !== -1 || lower.indexOf('akad') !== -1 ||
+            lower.indexOf('duplikat') !== -1) {
+          dateColIdx[i] = h;
+        }
+      });
+
+      var MON = {
+        jan:1,januari:1,january:1, feb:2,februari:2,february:2,
+        mar:3,maret:3,march:3,    apr:4,april:4,
+        may:5,mei:5,              jun:6,juni:6,june:6,
+        jul:7,juli:7,july:7,      aug:8,agu:8,agustus:8,august:8,
+        sep:9,september:9,        oct:10,okt:10,oktober:10,october:10,
+        nov:11,november:11,       dec:12,des:12,desember:12,december:12
+      };
+
+      function parseDupDate(raw) {
+        if (!raw) return '';
+        var s = String(raw).trim();
+        if (!s) return '';
+        if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+        var m1 = s.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})$/);
+        if (m1) {
+          var f1=+m1[1], s1=+m1[2], y1=m1[3], d1, mo1;
+          if (f1>12){d1=f1;mo1=s1;}else if(s1>12){d1=s1;mo1=f1;}else{d1=f1;mo1=s1;}
+          if(mo1>=1&&mo1<=12&&d1>=1&&d1<=31)
+            return y1+'-'+String(mo1).padStart(2,'0')+'-'+String(d1).padStart(2,'0');
+        }
+        var m3=s.match(/^(\d{1,2})[\s\-\/]([A-Za-z]{3,})[\s\-\/](\d{2,4})$/);
+        if(m3){
+          var d3=+m3[1],y3=+m3[3];if(y3<100)y3+=2000;
+          var k3=m3[2].toLowerCase(),mo3=MON[k3]||MON[k3.substring(0,3)];
+          if(mo3&&d3>=1&&d3<=31)
+            return y3+'-'+String(mo3).padStart(2,'0')+'-'+String(d3).padStart(2,'0');
+        }
+        return s;
+      }
+
+      var rows = rawDisplay.slice(1)
+        .map(function(row) {
+          return row.map(function(cell, colIdx) {
+            var v = (cell !== null && cell !== undefined) ? String(cell) : '';
+            if (v && dateColIdx[colIdx]) return parseDupDate(v);
+            return v;
+          });
+        })
+        .filter(function(row) { return row.some(function(c) { return c !== ''; }); });
+
+      Logger.log('[DUPLIKAT] Loaded ' + rows.length + ' rows');
+      return { success: true, data: { type: 'json', headers: headers, rows: rows, total: rows.length } };
+    }
+
+    // XLSX — kirim base64, biarkan client yang parse sheet "Duplikat"
+    if (mimeType === MimeType.MICROSOFT_EXCEL ||
+        mimeType === 'application/vnd.ms-excel' ||
+        mimeType === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet') {
+      return readXlsxAsBase64(file);
+    }
+
+    return { success: false, message: 'Format file tidak didukung: ' + mimeType };
+
+  } catch (e) {
+    Logger.log('[DUPLIKAT] getDuplikatData error: ' + e.toString());
+    return { success: false, message: 'Error membaca sheet Duplikat: ' + e.toString() };
+  }
+}
