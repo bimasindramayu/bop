@@ -1,0 +1,528 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>NexaAPI — Invoice Generator</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#f0f2f5;color:#1a1a1a}
+
+.app{display:grid;grid-template-columns:340px 1fr;gap:20px;padding:20px;min-height:100vh;align-items:start}
+
+.panel{background:#fff;border:1px solid #e5e7eb;border-radius:14px;padding:20px;position:sticky;top:20px;max-height:calc(100vh - 40px);overflow-y:auto}
+.panel::-webkit-scrollbar{width:4px}
+.panel::-webkit-scrollbar-thumb{background:#e0e0e0;border-radius:4px}
+.panel h3{font-size:11px;font-weight:600;color:#9ca3af;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:12px}
+.field{margin-bottom:10px}
+.field label{display:block;font-size:12px;color:#6b7280;margin-bottom:4px;font-weight:500}
+.field input,.field textarea,.field select{width:100%;padding:8px 11px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;background:#fff;color:#1a1a1a;outline:none;transition:border 0.15s}
+.field input:focus,.field textarea:focus,.field select:focus{border-color:#0F4C8A;box-shadow:0 0 0 3px rgba(15,76,138,0.08)}
+.field textarea{resize:vertical;min-height:60px;line-height:1.5}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+
+.btn-primary{width:100%;padding:11px;background:#0F4C8A;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;margin-top:10px}
+.btn-primary:hover{background:#0D3F72}
+.btn-sec{width:100%;padding:10px;background:#fff;color:#0F4C8A;border:1px solid #0F4C8A;border-radius:8px;font-size:13px;font-weight:500;cursor:pointer;margin-top:6px}
+.btn-sec:hover{background:#f0f6ff}
+.divider{border:none;border-top:1px solid #f0f0f0;margin:16px 0}
+
+.items-table{width:100%;border-collapse:collapse;font-size:12px;margin-top:6px}
+.items-table th{text-align:left;padding:6px 4px;color:#9ca3af;font-weight:500;border-bottom:1px solid #f0f0f0;font-size:11px}
+.items-table td{padding:3px 2px}
+.items-table td input{padding:5px 7px;font-size:12px;border:1px solid transparent;border-radius:6px;background:transparent;width:100%;color:#1a1a1a;outline:none}
+.items-table td input:hover,.items-table td input:focus{border-color:#e5e7eb;background:#f9fafb}
+.btn-add-item{font-size:12px;color:#0F4C8A;background:none;border:1px dashed #c7d8ed;border-radius:6px;cursor:pointer;padding:6px 10px;margin-top:6px;width:100%}
+.btn-add-item:hover{background:#f0f6ff}
+.btn-del{color:#ef4444;background:none;border:none;cursor:pointer;font-size:16px;padding:2px 5px;border-radius:4px}
+.btn-del:hover{background:#fff0f0}
+
+/* Invoice */
+.invoice-wrap{background:#fff;border-radius:14px;overflow:hidden;border:1px solid #e5e7eb;box-shadow:0 4px 24px rgba(0,0,0,0.06)}
+.inv-header{background:#0F4C8A;padding:36px 40px 30px;position:relative;overflow:hidden}
+.inv-header::before{content:'';position:absolute;right:-60px;top:-60px;width:220px;height:220px;border-radius:50%;background:rgba(255,255,255,0.05)}
+.logo-row{display:flex;align-items:center;justify-content:space-between;position:relative}
+.logo-mark{display:flex;align-items:center;gap:12px}
+.logo-icon{width:46px;height:46px;background:rgba(255,255,255,0.15);border-radius:12px;display:flex;align-items:center;justify-content:center;border:1px solid rgba(255,255,255,0.2)}
+.logo-text .company{font-size:22px;font-weight:700;color:#fff;letter-spacing:-0.02em}
+.logo-text .tagline{font-size:11px;color:rgba(255,255,255,0.55);margin-top:2px}
+.inv-badge{background:rgba(255,255,255,0.15);color:#fff;padding:6px 16px;border-radius:20px;font-size:12px;font-weight:600;letter-spacing:0.08em;border:1px solid rgba(255,255,255,0.2)}
+.inv-meta{margin-top:26px;display:flex;justify-content:space-between;align-items:flex-end;position:relative}
+.inv-meta-label{font-size:10px;color:rgba(255,255,255,0.45);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:4px}
+.inv-meta-val{font-size:13px;color:#fff;font-weight:500}
+.inv-num{font-size:26px;font-weight:700;color:#fff;letter-spacing:-0.02em}
+.inv-date-grid{display:grid;grid-template-columns:auto auto;gap:24px;text-align:right}
+.inv-body{padding:28px 40px}
+/* Bill Section — modern clean minimal */
+.bill-section{display:grid;grid-template-columns:1fr 44px 1fr;align-items:center;margin-bottom:28px}
+.bill-card{padding:14px 0}
+.bill-card-from{padding-right:24px}
+.bill-card-to{padding-left:24px}
+.bill-card-inner{border-top:1.5px solid #e5e7eb;padding-top:14px}
+.bill-card-inner.is-from{border-top-color:#0F4C8A}
+.bill-label{font-size:10px;font-weight:600;color:#9ca3af;text-transform:uppercase;letter-spacing:0.12em;margin-bottom:7px}
+.bill-label.is-from{color:#0F4C8A}
+.bill-company{font-size:14px;font-weight:700;color:#111;margin-bottom:5px;letter-spacing:-0.01em}
+.bill-detail{font-size:11.5px;color:#6b7280;line-height:1.75}
+.bill-arrow{display:flex;align-items:center;justify-content:center;color:#d1d5db}
+.section-title{font-size:11px;font-weight:700;color:#0F4C8A;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:12px}
+.inv-items{width:100%;border-collapse:collapse}
+.inv-items thead tr{background:#0F4C8A}
+.inv-items th{padding:11px 16px;font-size:11px;font-weight:500;color:rgba(255,255,255,0.8);text-transform:uppercase;letter-spacing:0.07em;text-align:left}
+.inv-items th.right{text-align:right}
+.inv-items th.center{text-align:center}
+.inv-items td{padding:13px 16px;font-size:13px;color:#374151;border-bottom:1px solid #f3f4f6}
+.inv-items td.right{text-align:right}
+.inv-items td.center{text-align:center}
+.inv-items tr:last-child td{border-bottom:none}
+.inv-items tr:nth-child(even) td{background:#fafbfc}
+.item-name{font-weight:600;color:#111}
+.item-desc{font-size:11px;color:#9ca3af;margin-top:2px}
+.item-amount{font-weight:700;color:#0F4C8A}
+.totals{margin-top:24px;display:flex;justify-content:flex-end}
+.totals-box{width:280px}
+.total-row{display:flex;justify-content:space-between;font-size:13px;padding:7px 0;border-bottom:1px solid #f3f4f6;color:#6b7280}
+.total-final{display:flex;justify-content:space-between;align-items:center;background:#0F4C8A;border-radius:10px;padding:14px 18px;margin-top:12px}
+.total-final .lbl{font-size:11px;color:rgba(255,255,255,0.7);text-transform:uppercase;letter-spacing:0.07em}
+.total-final .amt{font-size:24px;font-weight:700;color:#fff}
+.payment-section{margin-top:30px;display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.payment-card{background:#f8fafc;border-radius:10px;padding:16px 18px}
+.payment-card-title{font-size:11px;font-weight:700;color:#0F4C8A;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:10px}
+.payment-card-body{font-size:12px;color:#555;line-height:1.8}
+.payment-card-body strong{color:#111;font-weight:600}
+.status-badge{display:inline-flex;align-items:center;gap:5px;padding:4px 12px;border-radius:20px;font-size:11px;font-weight:700;letter-spacing:0.04em}
+.status-PAID{background:#dcfce7;color:#166534}
+.status-UNPAID{background:#fff7ed;color:#c2410c}
+.status-OVERDUE{background:#fef2f2;color:#b91c1c}
+.status-DRAFT{background:#f1f5f9;color:#475569}
+.status-dot{width:6px;height:6px;border-radius:50%;background:currentColor;display:inline-block}
+.inv-footer{background:#f8fafc;border-top:1px solid #e5e7eb;padding:20px 40px;display:flex;justify-content:space-between;align-items:center}
+.inv-footer-left{font-size:11px;color:#9ca3af;line-height:1.7}
+.inv-footer-left strong{color:#374151}
+.inv-footer-right{font-size:11px;color:#0F4C8A;text-align:right;line-height:1.7}
+.terms-box{margin-top:20px;padding:14px 18px;background:#fffbeb;border-radius:10px;border-left:3px solid #f59e0b}
+.terms-title{font-size:10px;font-weight:700;color:#b45309;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:8px}
+.terms-body{font-size:12px;color:#78350f;line-height:1.7}
+
+@media print {
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    color-adjust: exact !important;
+  }
+  @page { size: A4 portrait; margin: 0; }
+
+  html, body { width: 210mm; margin: 0 !important; padding: 0 !important; background: #fff !important; }
+  .panel { display: none !important; }
+  .app { display: block !important; padding: 0 !important; margin: 0 !important; min-height: auto !important; }
+
+  .invoice-wrap {
+    box-shadow: none !important; border: none !important; border-radius: 0 !important;
+    width: 210mm !important;
+    display: flex !important; flex-direction: column !important;
+    min-height: 0 !important;
+  }
+
+  /* Header compact */
+  .inv-header { background: #0F4C8A !important; padding: 18px 28px 14px !important; }
+  .inv-header::before { background: rgba(255,255,255,0.05) !important; }
+  .logo-icon { background: rgba(255,255,255,0.15) !important; border-color: rgba(255,255,255,0.2) !important; width: 38px !important; height: 38px !important; }
+  .logo-text .company { color: #fff !important; font-size: 17px !important; }
+  .logo-text .tagline { color: rgba(255,255,255,0.55) !important; font-size: 10px !important; }
+  .inv-badge { background: rgba(255,255,255,0.15) !important; color: #fff !important; border-color: rgba(255,255,255,0.2) !important; font-size: 11px !important; }
+  .inv-meta { margin-top: 14px !important; }
+  .inv-meta-label { color: rgba(255,255,255,0.45) !important; font-size: 9px !important; }
+  .inv-meta-val { color: #fff !important; font-size: 12px !important; }
+  .inv-num { color: #fff !important; font-size: 19px !important; }
+  .inv-date-grid { gap: 16px !important; }
+
+  /* Body compact */
+  .inv-body { padding: 14px 28px 10px !important; }
+
+  /* Bill section */
+  .bill-section { margin-bottom: 14px !important; }
+  .bill-card-inner { padding-top: 10px !important; }
+  .bill-card { padding: 10px 0 !important; }
+  .bill-company { font-size: 12px !important; }
+  .bill-detail { font-size: 10.5px !important; line-height: 1.55 !important; }
+  .bill-label { font-size: 9px !important; margin-bottom: 5px !important; }
+  .bill-label.is-from { color: #0F4C8A !important; }
+  .bill-card-inner.is-from { border-top-color: #0F4C8A !important; }
+
+  /* Section title */
+  .section-title { color: #0F4C8A !important; margin-bottom: 8px !important; font-size: 10px !important; }
+
+  /* Table */
+  .inv-items thead tr { background: #0F4C8A !important; }
+  .inv-items th { color: rgba(255,255,255,0.85) !important; background: #0F4C8A !important; padding: 7px 12px !important; font-size: 9.5px !important; }
+  .inv-items td { padding: 8px 12px !important; font-size: 11.5px !important; color: #374151 !important; }
+  .inv-items tr:nth-child(even) td { background: #fafbfc !important; }
+  .item-name { color: #111 !important; font-size: 11.5px !important; }
+  .item-desc { font-size: 10px !important; }
+  .item-amount { color: #0F4C8A !important; }
+
+  /* Totals */
+  .totals { margin-top: 10px !important; }
+  .totals-box { width: 240px !important; }
+  .total-row { font-size: 11.5px !important; padding: 5px 0 !important; color: #6b7280 !important; }
+  .total-final { background: #0F4C8A !important; border-radius: 7px !important; padding: 10px 14px !important; margin-top: 8px !important; }
+  .total-final .lbl { color: rgba(255,255,255,0.7) !important; font-size: 10px !important; }
+  .total-final .amt { color: #fff !important; font-size: 18px !important; }
+
+  /* Payment section */
+  .payment-section { margin-top: 12px !important; gap: 10px !important; }
+  .payment-card { background: #f8fafc !important; padding: 10px 13px !important; }
+  .payment-card-title { color: #0F4C8A !important; font-size: 9.5px !important; margin-bottom: 6px !important; }
+  .payment-card-body { font-size: 10.5px !important; line-height: 1.55 !important; color: #555 !important; }
+
+  /* Terms */
+  .terms-box { margin-top: 10px !important; padding: 10px 13px !important; background: #fffbeb !important; border-left: 3px solid #f59e0b !important; }
+  .terms-title { color: #b45309 !important; font-size: 9px !important; margin-bottom: 5px !important; }
+  .terms-body { color: #78350f !important; font-size: 10.5px !important; line-height: 1.55 !important; }
+
+  /* Footer */
+  .inv-footer {
+    background: #f8fafc !important; border-top: 1px solid #e5e7eb !important;
+    padding: 12px 28px !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    margin-top: auto !important;
+  }
+  .inv-footer-left { color: #9ca3af !important; font-size: 10px !important; line-height: 1.6 !important; }
+  .inv-footer-right { color: #0F4C8A !important; font-size: 10px !important; line-height: 1.6 !important; }
+
+  /* Status badges */
+  .status-PAID    { background: #dcfce7 !important; color: #166534 !important; }
+  .status-UNPAID  { background: #fff7ed !important; color: #c2410c !important; }
+  .status-OVERDUE { background: #fef2f2 !important; color: #b91c1c !important; }
+  .status-DRAFT   { background: #f1f5f9 !important; color: #475569 !important; }
+}
+</style>
+</head>
+<body>
+
+<div class="app">
+  <aside class="panel" id="sidebar">
+    <h3>Pengaturan Invoice</h3>
+    <div class="field"><label>Nomor Invoice</label><input type="text" id="invNo" value="INV-2025-0001"/></div>
+    <div class="row2">
+      <div class="field"><label>Tanggal Invoice</label><input type="date" id="invDate"/></div>
+      <div class="field"><label>Jatuh Tempo</label><input type="date" id="dueDate"/></div>
+    </div>
+    <div class="field"><label>Status</label>
+      <select id="status">
+        <option value="UNPAID">Unpaid</option>
+        <option value="PAID">Paid</option>
+        <option value="OVERDUE">Overdue</option>
+        <option value="DRAFT">Draft</option>
+      </select>
+    </div>
+    <div class="field"><label>Mata Uang</label>
+      <select id="currency">
+        <option value="USD">USD — US Dollar ($)</option>
+        <option value="IDR">IDR — Rupiah (Rp)</option>
+        <option value="EUR">EUR — Euro (€)</option>
+        <option value="SGD">SGD — Singapore Dollar (S$)</option>
+      </select>
+    </div>
+
+    <hr class="divider"/>
+    <h3>Info Perusahaan</h3>
+    <div class="field"><label>Nama Perusahaan</label><input type="text" id="fromCompany" value="NexaAPI Inc."/></div>
+    <div class="field"><label>Website</label><input type="text" id="fromWeb" value="nexaapi.com"/></div>
+    <div class="field"><label>Email</label><input type="text" id="fromEmail" value="billing@nexaapi.com"/></div>
+    <div class="field"><label>Telepon</label><input type="text" id="fromPhone" value="+62 21 5005-8888"/></div>
+    <div class="field"><label>Alamat</label><textarea id="fromAddr">Jl. Sudirman No. 88, Jakarta Selatan DKI Jakarta 12190, Indonesia</textarea></div>
+
+    <hr class="divider"/>
+    <h3>Info Klien (Bill To)</h3>
+    <div class="field"><label>Nama Perusahaan / Klien</label><input type="text" id="toCompany" value="PT Maju Bersama Digital"/></div>
+    <div class="field"><label>Nama Kontak</label><input type="text" id="toContact" value="Budi Santoso"/></div>
+    <div class="field"><label>Email</label><input type="text" id="toEmail" value="budi@majudigital.co.id"/></div>
+    <div class="field"><label>Telepon</label><input type="text" id="toPhone" value="+62 812-3456-7890"/></div>
+    <div class="field"><label>Alamat</label><textarea id="toAddr">Jl. Gatot Subroto Kav. 12
+Bandung 40111, Jawa Barat</textarea></div>
+
+    <hr class="divider"/>
+    <h3>Item / Layanan</h3>
+    <table class="items-table">
+      <thead>
+        <tr>
+          <th style="width:36%">Nama Item</th>
+          <th style="width:14%">Qty</th>
+          <th style="width:20%">Harga</th>
+          <th style="width:20%">Total</th>
+          <th style="width:10%"></th>
+        </tr>
+      </thead>
+      <tbody id="itemsBody"></tbody>
+    </table>
+    <button class="btn-add-item" id="btnAdd">+ Tambah Item</button>
+
+    <hr class="divider"/>
+    <h3>Pajak &amp; Diskon</h3>
+    <div class="row2">
+      <div class="field"><label>Diskon (%)</label><input type="number" id="discount" value="0" min="0" max="100" step="0.5"/></div>
+      <div class="field"><label>PPN (%)</label><input type="number" id="tax" value="11" min="0" max="100" step="0.5"/></div>
+    </div>
+
+    <hr class="divider"/>
+    <h3>Pembayaran</h3>
+    <div class="field"><label>Metode Pembayaran</label><input type="text" id="payMethod" value="Bank Transfer / PayPal"/></div>
+    <div class="field"><label>Detail Rekening / Akun</label>
+      <textarea id="payInfo">Bank BCA: 123-456-7890
+a/n NexaAPI Inc.
+PayPal: billing@nexaapi.com</textarea>
+    </div>
+
+    <hr class="divider"/>
+    <h3>Catatan &amp; Syarat</h3>
+    <div class="field"><label>Catatan</label>
+      <textarea id="notes">Terima kasih atas kepercayaan Anda menggunakan layanan NexaAPI. API key akan dikirimkan ke email setelah pembayaran dikonfirmasi dalam 1x24 jam.</textarea>
+    </div>
+    <div class="field"><label>Syarat &amp; Ketentuan</label>
+      <textarea id="terms">Pembayaran jatuh tempo dalam 14 hari. Keterlambatan dikenakan denda 1.5%/bulan. Layanan bersifat non-refundable setelah API key diaktifkan.</textarea>
+    </div>
+
+    <button class="btn-primary" id="btnExport">⬇ Ekspor / Simpan sebagai PDF</button>
+    <div style="margin-top:8px;padding:10px 12px;background:#f0f6ff;border-radius:8px;border-left:3px solid #0F4C8A;font-size:11px;color:#374151;line-height:1.6">
+      <strong style="color:#0F4C8A">Tip PDF:</strong> Di dialog print browser, aktifkan opsi
+      <strong>"Background graphics"</strong> (Chrome/Edge) atau <strong>"Print backgrounds"</strong> (Firefox) agar warna tampil sempurna.
+    </div>
+    <button class="btn-sec" id="btnRefresh">Perbarui Preview</button>
+  </aside>
+
+  <main id="invoiceArea"></main>
+</div>
+
+<script>
+var items = [
+  { name: "API Access — Starter Plan", desc: "500 API Hits / month · REST & WebSocket", qty: 1, price: 10 }
+];
+
+function g(id) {
+  var el = document.getElementById(id);
+  return el ? el.value : "";
+}
+
+function fmt(n) {
+  var cur = g("currency") || "USD";
+  var map = { USD: "en-US", IDR: "id-ID", EUR: "de-DE", SGD: "en-SG" };
+  return new Intl.NumberFormat(map[cur] || "en-US", {
+    style: "currency",
+    currency: cur,
+    maximumFractionDigits: cur === "IDR" ? 0 : 2
+  }).format(n);
+}
+
+function fmtDate(d) {
+  if (!d) return "—";
+  return new Date(d).toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" });
+}
+
+function calcTotals() {
+  var sub = 0;
+  for (var i = 0; i < items.length; i++) sub += items[i].qty * items[i].price;
+  var disc    = parseFloat(g("discount")) || 0;
+  var tax     = parseFloat(g("tax")) || 0;
+  var discAmt = Math.round(sub * disc / 100 * 100) / 100;
+  var after   = Math.round((sub - discAmt) * 100) / 100;
+  var taxAmt  = Math.round(after * tax / 100 * 100) / 100;
+  var total   = Math.round((after + taxAmt) * 100) / 100;
+  return { sub: sub, disc: disc, discAmt: discAmt, tax: tax, taxAmt: taxAmt, total: total };
+}
+
+function rebuildItemsTable() {
+  var tbody = document.getElementById("itemsBody");
+  var html = "";
+  for (var i = 0; i < items.length; i++) {
+    html += "<tr data-row=" + i + ">" +
+      "<td>" +
+        "<input class='iname' data-i=" + i + " value='" + items[i].name.replace(/'/g, "&#39;") + "' style='width:100%'/>" +
+        "<input class='idesc' data-i=" + i + " value='" + items[i].desc.replace(/'/g, "&#39;") + "' style='width:100%;font-size:11px;color:#9ca3af'/>" +
+      "</td>" +
+      "<td><input class='iqty' type='number' data-i=" + i + " value=" + items[i].qty + " min=1 style='width:48px'/></td>" +
+      "<td><input class='iprice' type='number' data-i=" + i + " value=" + items[i].price + " step=0.01 style='width:60px'/></td>" +
+      "<td style='font-size:12px;font-weight:600;color:#0F4C8A;padding:4px 6px;white-space:nowrap' class='irow-total'>" + fmt(items[i].qty * items[i].price) + "</td>" +
+      "<td><button class='btn-del idel' data-i=" + i + ">&times;</button></td>" +
+      "</tr>";
+  }
+  tbody.innerHTML = html;
+
+  tbody.querySelectorAll(".iname").forEach(function(el) {
+    el.addEventListener("input", function() { items[+this.dataset.i].name = this.value; renderInvoice(); });
+  });
+  tbody.querySelectorAll(".idesc").forEach(function(el) {
+    el.addEventListener("input", function() { items[+this.dataset.i].desc = this.value; renderInvoice(); });
+  });
+  tbody.querySelectorAll(".iqty").forEach(function(el) {
+    el.addEventListener("input", function() {
+      items[+this.dataset.i].qty = parseInt(this.value) || 1;
+      var cells = tbody.querySelectorAll(".irow-total");
+      cells[+this.dataset.i].textContent = fmt(items[+this.dataset.i].qty * items[+this.dataset.i].price);
+      renderInvoice();
+    });
+  });
+  tbody.querySelectorAll(".iprice").forEach(function(el) {
+    el.addEventListener("input", function() {
+      items[+this.dataset.i].price = parseFloat(this.value) || 0;
+      var cells = tbody.querySelectorAll(".irow-total");
+      cells[+this.dataset.i].textContent = fmt(items[+this.dataset.i].qty * items[+this.dataset.i].price);
+      renderInvoice();
+    });
+  });
+  tbody.querySelectorAll(".idel").forEach(function(el) {
+    el.addEventListener("click", function() {
+      if (items.length <= 1) { alert("Minimal harus ada 1 item."); return; }
+      items.splice(+this.dataset.i, 1);
+      rebuildItemsTable();
+      renderInvoice();
+    });
+  });
+}
+
+function renderInvoice() {
+  var invNo     = g("invNo") || "INV-2025-0001";
+  var status    = g("status") || "UNPAID";
+  var fromCo    = g("fromCompany") || "NexaAPI Inc.";
+  var fromWeb   = g("fromWeb");
+  var fromEmail = g("fromEmail");
+  var fromPhone = g("fromPhone");
+  var fromAddr  = g("fromAddr").replace(/\n/g, "<br>");
+  var fromTax   = g("fromTax");
+  var toCo      = g("toCompany");
+  var toContact = g("toContact");
+  var toEmail   = g("toEmail");
+  var toPhone   = g("toPhone");
+  var toAddr    = g("toAddr").replace(/\n/g, "<br>");
+  var payMethod = g("payMethod");
+  var payInfo   = g("payInfo").replace(/\n/g, "<br>");
+  var notes     = g("notes").replace(/\n/g, "<br>");
+  var terms     = g("terms").replace(/\n/g, "<br>");
+  var t         = calcTotals();
+
+  var statusLabel = { PAID: "Lunas", UNPAID: "Belum Bayar", OVERDUE: "Jatuh Tempo", DRAFT: "Draft" }[status] || status;
+
+  var rows = "";
+  for (var i = 0; i < items.length; i++) {
+    var bg = i % 2 === 1 ? " style='background:#fafbfc'" : "";
+    rows += "<tr" + bg + ">" +
+      "<td class='center' style='color:#9ca3af;font-size:12px'>" + (i + 1) + "</td>" +
+      "<td><div class='item-name'>" + items[i].name + "</div><div class='item-desc'>" + items[i].desc + "</div></td>" +
+      "<td class='center'>" + items[i].qty + "</td>" +
+      "<td class='right'>" + fmt(items[i].price) + "</td>" +
+      "<td class='right item-amount'>" + fmt(items[i].qty * items[i].price) + "</td>" +
+      "</tr>";
+  }
+
+  var area = document.getElementById("invoiceArea");
+  area.innerHTML =
+    "<div class='invoice-wrap'>" +
+      "<div class='inv-header'>" +
+        "<div class='logo-row'>" +
+          "<div class='logo-mark'>" +
+            "<div class='logo-icon'><svg width='24' height='24' viewBox='0 0 24 24' fill='none'><rect width='24' height='24' rx='6' fill='rgba(255,255,255,0.15)'/><path d='M8 3L4 12H11L9 21L19 10H12L15 3H8Z' fill='white'/></svg></div>" +
+            "<div class='logo-text'><div class='company'>" + fromCo + "</div><div class='tagline'>Power Your Products with Our API</div></div>" +
+          "</div>" +
+          "<span class='inv-badge'>INVOICE</span>" +
+        "</div>" +
+        "<div class='inv-meta'>" +
+          "<div>" +
+            "<div class='inv-meta-label'>Nomor Invoice</div>" +
+            "<div class='inv-num'>" + invNo + "</div>" +
+            "<div style='margin-top:12px'><span class='status-badge status-" + status + "'><span class='status-dot'></span>" + statusLabel + "</span></div>" +
+          "</div>" +
+          "<div class='inv-date-grid'>" +
+            "<div><div class='inv-meta-label'>Tanggal Invoice</div><div class='inv-meta-val'>" + fmtDate(g("invDate")) + "</div></div>" +
+            "<div><div class='inv-meta-label'>Jatuh Tempo</div><div class='inv-meta-val'>" + fmtDate(g("dueDate")) + "</div></div>" +
+          "</div>" +
+        "</div>" +
+      "</div>" +
+      "<div class='inv-body'>" +
+        "<div class='bill-section'>" +
+          "<div class='bill-card bill-card-from'>" +
+            "<div class='bill-card-inner is-from'>" +
+              "<div class='bill-label is-from'>Dari</div>" +
+              "<div class='bill-company'>" + fromCo + "</div>" +
+              "<div class='bill-detail'>" + fromAddr + "<br>" + fromPhone + "<br>" + fromEmail + "<br>" + fromWeb + "</div>" +
+            "</div>" +
+          "</div>" +
+          "<div class='bill-arrow'>" +
+            "<svg width='16' height='16' viewBox='0 0 16 16' fill='none'><path d='M3 8h10M9 4l4 4-4 4' stroke='#d1d5db' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/></svg>" +
+          "</div>" +
+          "<div class='bill-card bill-card-to'>" +
+            "<div class='bill-card-inner'>" +
+              "<div class='bill-label'>Tagihan Kepada</div>" +
+              "<div class='bill-company'>" + toCo + "</div>" +
+              "<div class='bill-detail'>" + toContact + "<br>" + toAddr + "<br>" + toPhone + "<br>" + toEmail + "</div>" +
+            "</div>" +
+          "</div>" +
+        "</div>" +
+        "<div class='section-title'>Detail Layanan</div>" +
+        "<table class='inv-items'>" +
+          "<thead><tr>" +
+            "<th class='center' style='width:44px'>#</th>" +
+            "<th>Deskripsi</th>" +
+            "<th class='center' style='width:80px'>Qty</th>" +
+            "<th class='right' style='width:110px'>Harga Satuan</th>" +
+            "<th class='right' style='width:120px'>Total</th>" +
+          "</tr></thead>" +
+          "<tbody>" + rows + "</tbody>" +
+        "</table>" +
+        "<div class='totals'><div class='totals-box'>" +
+          "<div class='total-row'><span>Subtotal</span><span>" + fmt(t.sub) + "</span></div>" +
+          (t.disc > 0 ? "<div class='total-row'><span>Diskon (" + t.disc + "%)</span><span style='color:#ef4444'>- " + fmt(t.discAmt) + "</span></div>" : "") +
+          (t.tax > 0  ? "<div class='total-row'><span>PPN (" + t.tax + "%)</span><span>" + fmt(t.taxAmt) + "</span></div>" : "") +
+          "<div class='total-final'><div class='lbl'>Total Tagihan</div><div class='amt'>" + fmt(t.total) + "</div></div>" +
+        "</div></div>" +
+        "<div class='payment-section'>" +
+          "<div class='payment-card'><div class='payment-card-title'>Instruksi Pembayaran</div><div class='payment-card-body'><strong>Metode:</strong> " + payMethod + "<br><br>" + payInfo + "</div></div>" +
+          "<div class='payment-card'><div class='payment-card-title'>Catatan</div><div class='payment-card-body'>" + notes + "</div></div>" +
+        "</div>" +
+        (terms ? "<div class='terms-box'><div class='terms-title'>Syarat &amp; Ketentuan</div><div class='terms-body'>" + terms + "</div></div>" : "") +
+      "</div>" +
+      "<div class='inv-footer'>" +
+        "<div class='inv-footer-left'><strong>" + fromCo + "</strong> &middot; " + fromWeb + "<br>" + fromEmail + " &middot; " + fromPhone + "<br><span style='font-size:10px;color:#d1d5db'>Dokumen ini dibuat secara otomatis dan sah tanpa tanda tangan basah.</span></div>" +
+        "<div class='inv-footer-right'><strong>" + invNo + "</strong><br><span style='color:#9ca3af'>Halaman 1 dari 1</span><br><span style='font-size:10px;color:#c8d5e8'>" + fromWeb + "</span></div>" +
+      "</div>" +
+    "</div>";
+}
+
+(function init() {
+  var today = new Date();
+  var due   = new Date(today);
+  due.setDate(due.getDate() + 14);
+  function toISO(d) { return d.toISOString().split("T")[0]; }
+  document.getElementById("invDate").value = toISO(today);
+  document.getElementById("dueDate").value = toISO(due);
+
+  rebuildItemsTable();
+  renderInvoice();
+
+  document.getElementById("btnAdd").addEventListener("click", function() {
+    items.push({ name: "Nama Layanan", desc: "Deskripsi layanan", qty: 1, price: 10 });
+    rebuildItemsTable();
+    renderInvoice();
+  });
+
+  document.getElementById("btnExport").addEventListener("click", function() {
+    window.print();
+  });
+
+  document.getElementById("btnRefresh").addEventListener("click", renderInvoice);
+
+  var ids = ["invNo","invDate","dueDate","status","currency",
+    "fromCompany","fromWeb","fromEmail","fromPhone","fromAddr","fromTax",
+    "toCompany","toContact","toEmail","toPhone","toAddr",
+    "discount","tax","payMethod","payInfo","notes","terms"];
+
+  ids.forEach(function(id) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener("input",  renderInvoice);
+    el.addEventListener("change", renderInvoice);
+  });
+})();
+</script>
+</body>
+</html>
