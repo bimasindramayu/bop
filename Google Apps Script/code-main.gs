@@ -124,6 +124,27 @@ function doPost(e) {
         // Delegate ke NIKAH module
         result = handleNikahAction(action, data);
         break;
+
+      //SUPERVISI
+      case 'getSupervisiFiles':
+        return ContentService
+          .createTextOutput(JSON.stringify(handleGetSupervisiFiles(data)))
+          .setMimeType(ContentService.MimeType.JSON);
+
+      case 'getSupervisiData':
+        return ContentService
+          .createTextOutput(JSON.stringify(handleGetSupervisiData(data)))
+          .setMimeType(ContentService.MimeType.JSON);
+
+      case 'getStokData':
+        return ContentService
+          .createTextOutput(JSON.stringify(handleGetStokData(data)))
+          .setMimeType(ContentService.MimeType.JSON);
+
+      case 'getDuplikatData':
+        return ContentService
+          .createTextOutput(JSON.stringify(handleGetDuplikatData(data)))
+          .setMimeType(ContentService.MimeType.JSON);
       
       default:
         Logger.log(`[ERROR] Unknown action: ${action}`);

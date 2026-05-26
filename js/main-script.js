@@ -121,6 +121,10 @@ function displayUserInfo() {
         if (menuKelolInfoKUA) {
             menuKelolInfoKUA.style.display = 'block';
         }
+        const menuSupervisi = document.getElementById('menuSupervisi');
+        if (menuSupervisi) {
+            menuSupervisi.style.display = 'block';
+        }
     }
     
     debugLog('MAIN', 'User info displayed', { name: currentUser.name, role: currentUser.role });

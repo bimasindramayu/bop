@@ -1,0 +1,939 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Supervisi Dashboard - Sistem Kemenag</title>
+    <link rel="icon" type="image/png" href="assets/kemenag.png">
+    <style>
+        *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 12px;
+        }
+
+        .container { max-width: 1600px; margin: 0 auto; }
+
+        /* ===== HEADER ===== */
+        .header {
+            background: white;
+            padding: 14px 20px;
+            border-radius: 12px;
+            margin-bottom: 14px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        .header-left h2 { color: #333; font-size: 18px; margin-bottom: 2px; }
+        .header-left p { color: #667eea; font-size: 12px; font-weight: 500; }
+        .header-right { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+        .user-info { text-align: right; margin-right: 8px; }
+        .user-info strong { display: block; color: #333; font-size: 13px; }
+        .user-info small { color: #666; font-size: 11px; }
+
+        /* ===== BUTTONS ===== */
+        .btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 7px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            touch-action: manipulation;
+        }
+        .btn:hover { transform: translateY(-1px); box-shadow: 0 3px 8px rgba(0,0,0,0.15); }
+        .btn:active { transform: translateY(0); box-shadow: none; }
+        .btn-primary { background: #667eea; color: white; }
+        .btn-primary:hover { background: #5568d3; }
+        .btn-success { background: #28a745; color: white; }
+        .btn-success:hover { background: #218838; }
+        .btn-secondary { background: #6c757d; color: white; }
+        .btn-secondary:hover { background: #5a6268; }
+        .btn-info { background: #17a2b8; color: white; }
+        .btn-info:hover { background: #138496; }
+        .btn-warning { background: #ffc107; color: #333; }
+        .btn-warning:hover { background: #e0a800; }
+        .btn-download { background: #20c997; color: white; }
+        .btn-download:hover { background: #17a88a; }
+        .btn-sm { padding: 6px 12px; font-size: 12px; }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow: none; }
+
+        /* ===== TABS ===== */
+        .tabs-wrapper {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+
+        .tab-nav {
+            display: flex;
+            border-bottom: 2px solid #e9ecef;
+            overflow-x: auto;
+            background: #f8f9fa;
+            -webkit-overflow-scrolling: touch;
+        }
+        .tab-nav::-webkit-scrollbar { height: 3px; }
+        .tab-nav::-webkit-scrollbar-thumb { background: #667eea; border-radius: 2px; }
+
+        .tab-btn {
+            padding: 12px 18px;
+            border: none;
+            background: none;
+            font-size: 13px;
+            font-weight: 600;
+            color: #666;
+            cursor: pointer;
+            white-space: nowrap;
+            border-bottom: 3px solid transparent;
+            margin-bottom: -2px;
+            transition: all 0.2s;
+            touch-action: manipulation;
+        }
+        .tab-btn:hover { color: #667eea; background: rgba(102,126,234,0.05); }
+        .tab-btn.active { color: #667eea; border-bottom-color: #667eea; background: white; }
+
+        .tab-indicator {
+            display: inline-block;
+            background: #667eea;
+            color: white;
+            font-size: 10px;
+            font-weight: 700;
+            padding: 2px 6px;
+            border-radius: 10px;
+            margin-left: 5px;
+        }
+
+        .tab-content { display: none; padding: 16px; }
+        .tab-content.active {
+            display: block;
+            animation: tabFadeIn 0.15s ease-out;
+        }
+        @keyframes tabFadeIn {
+            from { opacity: 0; transform: translateY(3px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+
+        /* ===== VIEW SELECTOR (Nikah Tab) ===== */
+        .view-selector-bar {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+            background: #f0f2ff;
+            border: 1px solid #c5cdf5;
+            border-radius: 10px;
+            padding: 10px 14px;
+            margin-bottom: 12px;
+        }
+        .view-selector-bar label {
+            font-size: 13px;
+            font-weight: 700;
+            color: #555;
+            white-space: nowrap;
+        }
+        .view-selector-bar select {
+            flex: 1;
+            min-width: 180px;
+            padding: 8px 12px;
+            border: 1px solid #c5cdf5;
+            border-radius: 7px;
+            font-size: 13px;
+            font-weight: 600;
+            color: #333;
+            background: white;
+            cursor: pointer;
+        }
+        .view-desc {
+            font-size: 11px;
+            color: #667eea;
+            font-style: italic;
+        }
+
+        /* ===== DASHBOARD GRID ===== */
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+            margin-bottom: 16px;
+        }
+        @media (max-width: 700px) { .dashboard-grid { grid-template-columns: 1fr; } }
+
+        .card {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 10px;
+            padding: 18px;
+        }
+        .card-title {
+            font-size: 16px;
+            font-weight: 700;
+            color: #333;
+            margin-bottom: 14px;
+            display: flex;
+            align-items: center;
+            gap: 7px;
+        }
+
+        .file-select-wrapper { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+        .file-select-wrapper select { flex: 1; min-width: 180px; padding: 8px 10px; border: 1px solid #ddd; border-radius: 7px; font-size: 13px; }
+
+        .stat-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+            gap: 10px;
+        }
+        .stat-card {
+            background: white;
+            border-radius: 8px;
+            padding: 16px 10px;
+            text-align: center;
+            border: 1px solid #e9ecef;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .stat-card:hover { border-color: #667eea; transform: translateY(-1px); box-shadow: 0 3px 8px rgba(102,126,234,0.15); }
+        .stat-card .stat-value { font-size: 32px; font-weight: 700; color: #667eea; margin-bottom: 5px; }
+        .stat-card .stat-label { font-size: 13px; color: #666; font-weight: 600; line-height: 1.4; }
+        .stat-card.green .stat-value { color: #28a745; }
+        .stat-card.orange .stat-value { color: #fd7e14; }
+        .stat-card.red .stat-value { color: #dc3545; }
+        .stat-card.teal .stat-value { color: #20c997; }
+
+        .loaded-info {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 14px;
+            background: #d4edda;
+            border: 1px solid #c3e6cb;
+            border-radius: 7px;
+            color: #155724;
+            font-size: 12px;
+            margin-top: 12px;
+        }
+        .loaded-info.hidden { display: none; }
+
+        /* ===== FILTER SECTION ===== */
+        .filter-section {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 10px;
+            padding: 14px;
+            margin-bottom: 12px;
+        }
+        .filter-title {
+            font-size: 13px;
+            font-weight: 700;
+            color: #333;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+        }
+        .filter-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+        .filter-group label {
+            display: block;
+            font-size: 11px;
+            font-weight: 600;
+            color: #555;
+            margin-bottom: 5px;
+            text-transform: uppercase;
+            letter-spacing: 0.4px;
+        }
+        .filter-group input,
+        .filter-group select {
+            width: 100%;
+            padding: 8px 10px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 13px;
+            transition: border-color 0.2s;
+        }
+        .filter-group input:focus,
+        .filter-group select:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 2px rgba(102,126,234,0.15);
+        }
+        .filter-buttons { display: flex; gap: 8px; flex-wrap: wrap; }
+
+        /* ===== MULTISELECT ===== */
+        .multiselect-wrapper { position: relative; }
+        .multiselect-trigger {
+            width: 100%;
+            padding: 8px 10px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            background: white;
+            font-size: 13px;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            text-align: left;
+            transition: border-color 0.2s;
+            white-space: nowrap;
+            overflow: hidden;
+        }
+        .multiselect-trigger:hover, .multiselect-trigger.open { border-color: #667eea; }
+        .multiselect-trigger .arrow { font-size: 10px; flex-shrink: 0; margin-left: 6px; transition: transform 0.2s; }
+        .multiselect-trigger.open .arrow { transform: rotate(180deg); }
+        .multiselect-dropdown {
+            display: none;
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            z-index: 100;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        .multiselect-dropdown.open { display: block; }
+        .multiselect-select-all, .multiselect-item {
+            padding: 8px 12px;
+            cursor: pointer;
+            font-size: 12px;
+            display: flex;
+            align-items: center;
+            gap: 7px;
+        }
+        .multiselect-select-all { border-bottom: 1px solid #eee; font-weight: 600; background: #f8f9fa; }
+        .multiselect-item:hover { background: #f0f2ff; }
+
+        /* ===== DATA INFO BAR ===== */
+        .data-info-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        .count-display { font-size: 13px; color: #555; font-weight: 500; }
+        .count-display span { color: #667eea; font-size: 16px; font-weight: 700; }
+        .action-btns { display: flex; gap: 7px; flex-wrap: wrap; }
+
+        /* ===== PAGINATION ===== */
+        .pagination-bar {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            padding: 10px 0 6px;
+            flex-wrap: wrap;
+        }
+        .pagination-bar button {
+            padding: 6px 11px;
+            border: 1px solid #dee2e6;
+            background: white;
+            border-radius: 6px;
+            font-size: 13px;
+            cursor: pointer;
+            transition: all 0.15s;
+            touch-action: manipulation;
+        }
+        .pagination-bar button:hover:not(:disabled) { background: #667eea; color: white; border-color: #667eea; }
+        .pagination-bar button:disabled { opacity: 0.4; cursor: not-allowed; }
+        .pagination-bar button.current { background: #667eea; color: white; border-color: #667eea; font-weight: 700; }
+        .page-info {
+            font-size: 12px;
+            color: #666;
+            padding: 0 4px;
+            white-space: nowrap;
+        }
+        .page-jump {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 12px;
+            color: #666;
+        }
+        .page-jump input {
+            width: 48px;
+            padding: 5px 7px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 12px;
+            text-align: center;
+        }
+
+        /* ===== TABLE ===== */
+        .table-container {
+            border: 1px solid #e9ecef;
+            border-radius: 8px;
+            overflow: auto;
+            max-height: 58vh;
+            -webkit-overflow-scrolling: touch;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 12px;
+            min-width: 600px;
+        }
+        table thead {
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+        table thead th {
+            padding: 9px 11px;
+            text-align: left;
+            font-weight: 700;
+            color: #333;
+            background: #f0f2ff;
+            border-bottom: 2px solid #c5cdf5;
+            white-space: nowrap;
+            cursor: pointer;
+            user-select: none;
+            transition: background 0.15s;
+        }
+        table thead th:hover { background: #e4e8ff; }
+        table thead th.sort-asc::after { content: ' ▲'; color: #667eea; font-size: 9px; }
+        table thead th.sort-desc::after { content: ' ▼'; color: #667eea; font-size: 9px; }
+        table thead th.col-orange-th {
+            background: #fff3e0;
+            border-bottom-color: #fd7e14;
+            color: #e65100;
+        }
+        table tbody td.col-orange-td {
+            background: #fff8f0;
+            color: #c45000;
+            font-weight: 600;
+        }
+        table tbody tr:nth-child(even) { background: #fafbff; }
+        table tbody tr:hover { background: #f0f2ff !important; }
+        table td {
+            padding: 7px 11px;
+            border-bottom: 1px solid #eef0f7;
+            color: #444;
+            white-space: nowrap;
+            max-width: 180px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        table tbody tr:hover td.col-orange-td { background: #ffe8cc; }
+
+        /* ===== IDDAH VIOLATION ROW ===== */
+        table tbody tr.row-iddah-violation td {
+            background: #fff0f0 !important;
+            border-bottom-color: #f5c6cb;
+        }
+        table tbody tr.row-iddah-violation:hover td {
+            background: #ffe4e4 !important;
+        }
+        table tbody tr.row-iddah-violation td.col-orange-td {
+            background: #ffd6d6 !important;
+        }
+        table tbody tr.row-iddah-violation:hover td.col-orange-td {
+            background: #ffc5c5 !important;
+        }
+        /* Label kecil "⚠ Langgar Iddah" di kolom No pada baris violation */
+        table tbody tr.row-iddah-violation td.col-no::after {
+            content: '⚠';
+            display: block;
+            font-size: 9px;
+            color: #c0392b;
+            margin-top: 2px;
+        }
+
+        .stat-card.pink .stat-value { color: #e83e8c; }
+        .stat-card.pink-dark .stat-value { color: #c0392b; }
+        /* Stat card iddah: value utama + sub-label pelanggaran */
+        .stat-card .stat-sublabel {
+            font-size: 11px;
+            color: #c0392b;
+            font-weight: 700;
+            margin-top: 3px;
+        }
+        .col-no { width: 40px; min-width: 40px; text-align: center; color: #999; font-size: 10px; }
+
+        /* ===== STATUS BADGE ===== */
+        .status-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 11px;
+            font-weight: 700;
+        }
+
+        /* ===== RENDERING STATE ===== */
+        .rendering-state {
+            text-align: center;
+            padding: 40px 20px;
+            font-size: 13px;
+            color: #667eea;
+            font-weight: 500;
+            animation: pulse 1s ease-in-out infinite alternate;
+        }
+        @keyframes pulse { from { opacity: 0.5; } to { opacity: 1; } }
+
+        /* ===== TAB LOADING STATE (animated spinner) ===== */
+        .tab-loading-state {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 60px 20px;
+            gap: 16px;
+        }
+        .tab-spinner-wrap {
+            position: relative;
+            width: 60px;
+            height: 60px;
+        }
+        .tab-spinner-outer {
+            position: absolute;
+            inset: 0;
+            border: 4px solid #e9ecef;
+            border-top-color: #667eea;
+            border-radius: 50%;
+            animation: tabSpin 0.85s linear infinite;
+        }
+        .tab-spinner-inner {
+            position: absolute;
+            inset: 9px;
+            border: 3px solid transparent;
+            border-top-color: #764ba2;
+            border-right-color: #764ba2;
+            border-radius: 50%;
+            animation: tabSpin 1.3s linear infinite reverse;
+        }
+        @keyframes tabSpin { to { transform: rotate(360deg); } }
+        .tab-loading-msg {
+            font-size: 14px;
+            font-weight: 600;
+            color: #667eea;
+            margin: 0;
+        }
+        .tab-loading-sub {
+            font-size: 12px;
+            color: #aaa;
+            margin: 0;
+        }
+
+        /* ===== EMPTY STATE ===== */
+        .empty-state {
+            text-align: center;
+            padding: 50px 20px;
+            color: #999;
+        }
+        .empty-state .empty-icon { font-size: 52px; margin-bottom: 12px; }
+        .empty-state h3 { font-size: 16px; color: #666; margin-bottom: 6px; }
+        .empty-state p { font-size: 12px; color: #aaa; }
+
+        /* ===== LOADING ===== */
+        .loading {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.5);
+            z-index: 3000;
+            align-items: center;
+            justify-content: center;
+        }
+        .loading.active { display: flex; }
+        .spinner-wrap { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+        .spinner {
+            width: 44px; height: 44px;
+            border: 4px solid rgba(255,255,255,0.3);
+            border-top: 4px solid white;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+        .spinner-text { color: white; font-size: 13px; font-weight: 500; text-align: center; max-width: 220px; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* ===== NOTIFICATION ===== */
+        .notification {
+            position: fixed;
+            top: 14px; right: 14px;
+            padding: 12px 16px;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 5px 16px rgba(0,0,0,0.15);
+            z-index: 2000;
+            display: none;
+            max-width: 300px;
+            font-size: 13px;
+        }
+        .notification.active { display: block; animation: slideIn 0.25s ease-out; }
+        @keyframes slideIn { from { transform: translateX(340px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+        .notification.error { border-left: 4px solid #dc3545; color: #721c24; }
+        .notification.success { border-left: 4px solid #28a745; color: #155724; }
+        .notification.warning { border-left: 4px solid #ffc107; color: #856404; }
+        .notification.info { border-left: 4px solid #17a2b8; color: #0c5460; }
+
+        /* ===== PROGRESS BAR ===== */
+        .progress-bar {
+            height: 3px;
+            background: #e9ecef;
+            border-radius: 2px;
+            overflow: hidden;
+            margin: 8px 0;
+            display: none;
+        }
+        .progress-bar.active { display: block; }
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea, #764ba2);
+            border-radius: 2px;
+            transition: width 0.3s;
+        }
+
+        /* ===== RESPONSIVE ===== */
+        @media (max-width: 600px) {
+            body { padding: 8px; }
+            .header { padding: 10px 14px; }
+            .header-left h2 { font-size: 15px; }
+            .tab-btn { padding: 10px 12px; font-size: 11px; }
+            .tab-content { padding: 12px; }
+            .filter-grid { grid-template-columns: 1fr; }
+            .stat-card .stat-value { font-size: 24px; }
+            .dashboard-grid { gap: 10px; }
+            .table-container { max-height: 50vh; }
+            table { font-size: 11px; }
+            table td, table thead th { padding: 6px 8px; }
+        }
+
+        /* ===== TAB REKAP PORFORASI — MATCHING STYLES ===== */
+
+        /* Summary bar (Total / Matched / Unmatched / %) */
+        .matching-summary-bar {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+            gap: 10px;
+            margin-bottom: 14px;
+        }
+        .msb-item {
+            background: white;
+            border: 1px solid #e9ecef;
+            border-radius: 10px;
+            padding: 14px 16px;
+            text-align: center;
+        }
+        .msb-num {
+            font-size: 26px;
+            font-weight: 700;
+            margin-bottom: 4px;
+            line-height: 1.1;
+        }
+        .msb-lbl { font-size: 12px; color: #666; font-weight: 600; }
+        .msb-total .msb-num    { color: #667eea; }
+        .msb-matched .msb-num  { color: #28a745; }
+        .msb-unmatched .msb-num { color: #dc3545; }
+
+        /* Progress bar inside summary */
+        .msb-pct-track {
+            height: 8px;
+            background: #e9ecef;
+            border-radius: 4px;
+            overflow: hidden;
+            margin-bottom: 6px;
+        }
+        .msb-pct-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #28a745, #20c997);
+            border-radius: 4px;
+            transition: width 0.4s;
+        }
+        .msb-pct .msb-lbl { color: #28a745; font-weight: 700; }
+
+        /* Status badges in rows */
+        .match-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 11px;
+            font-weight: 700;
+            white-space: nowrap;
+        }
+        .match-yes { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .match-no  { background: #fde2e4; color: #842029; border: 1px solid #f5c6cb; }
+
+        /* Row coloring */
+        table tbody tr.row-matched td    { background: #f6fff8; }
+        table tbody tr.row-unmatched td  { background: #fff8f8; }
+        table tbody tr.row-matched:hover td   { background: #e8f8eb !important; }
+        table tbody tr.row-unmatched:hover td { background: #ffe8e8 !important; }
+
+        /* No. Porforasi cell — monospace */
+        .cell-perforasi {
+            font-family: 'Consolas', 'Courier New', monospace;
+            font-size: 12px;
+            font-weight: 700;
+            color: #333;
+            letter-spacing: 0.3px;
+        }
+
+        /* Empty (unmatched) nikah cells */
+        .cell-empty { color: #bbb !important; font-style: italic; text-align: center; }
+
+        /* Column divider between Stok → Nikah sections */
+        .matching-divider-col {
+            border-left: 2px solid #667eea !important;
+            background: #f5f6ff !important;
+        }
+        table thead th.matching-divider-col {
+            background: #eceeff !important;
+            border-left: 2px solid #667eea !important;
+            color: #4455cc;
+        }
+
+        /* Group header row (Stok / Nikah label row) */
+        .matching-group-header th {
+            font-size: 11px;
+            font-weight: 700;
+            text-align: center;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+            padding: 5px 8px !important;
+            border-bottom: 1px solid #c5cdf5 !important;
+        }
+        .mgh-status { background: #f8f9fa !important; color: #555; }
+        .mgh-stok   { background: #e8f4fd !important; color: #0066aa; border-left: 2px solid #b8daff !important; }
+        .mgh-nikah  { background: #eceeff !important; color: #4455cc; border-left: 2px solid #667eea !important; }
+
+        /* ===== STOK VIEW TOGGLE ===== */
+        .stok-view-toggle {
+            display: flex;
+            gap: 0;
+            background: #f0f2ff;
+            border: 1px solid #c5cdf5;
+            border-radius: 10px;
+            padding: 4px;
+            margin-bottom: 14px;
+            width: fit-content;
+        }
+        .stok-toggle-btn {
+            padding: 8px 20px;
+            border: none;
+            border-radius: 7px;
+            font-size: 13px;
+            font-weight: 600;
+            color: #667eea;
+            background: transparent;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 7px;
+            touch-action: manipulation;
+        }
+        .stok-toggle-btn.active {
+            background: white;
+            color: #333;
+            box-shadow: 0 1px 5px rgba(0,0,0,0.12);
+        }
+        .stok-toggle-btn:hover:not(.active) {
+            background: rgba(255,255,255,0.55);
+        }
+
+        @media (max-width: 600px) {
+            .matching-summary-bar { grid-template-columns: 1fr 1fr; }
+            .msb-num { font-size: 20px; }
+            .stok-view-toggle { width: 100%; }
+            .stok-toggle-btn { flex: 1; justify-content: center; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="loading" id="loading">
+    <div class="spinner-wrap">
+        <div class="spinner"></div>
+        <div class="spinner-text" id="loadingText">Memuat data...</div>
+    </div>
+</div>
+
+<div class="notification" id="notification"></div>
+
+<div class="container">
+
+    <!-- Header -->
+    <div class="header">
+        <div class="header-left">
+            <h2>🔍 Supervisi Dashboard</h2>
+            <p>Monitoring & Analisis Data Pernikahan</p>
+        </div>
+        <div class="header-right">
+            <div class="user-info">
+                <strong id="userNameDisplay"></strong>
+                <small id="userRoleDisplay"></small>
+            </div>
+            <button class="btn btn-info btn-sm" onclick="backToMenu()">← Menu</button>
+            <button class="btn btn-secondary btn-sm" onclick="logout()">Keluar</button>
+        </div>
+    </div>
+
+    <!-- Tabs Wrapper -->
+    <div class="tabs-wrapper">
+
+        <!-- Tab Navigation -->
+        <div class="tab-nav" role="tablist">
+            <button class="tab-btn active" onclick="switchTab('tab-dashboard')" id="btn-tab-dashboard">
+                🏠 Dashboard
+            </button>
+            <button class="tab-btn" onclick="switchTab('tab-nikah')" id="btn-tab-nikah">
+                💍 Data Nikah
+                <span class="tab-indicator" id="badge-nikah">0</span>
+            </button>
+            <button class="tab-btn" onclick="switchTab('tab-matching')" id="btn-tab-matching">
+                📊 Rekap Porforasi
+                <span class="tab-indicator" id="badge-matching">0</span>
+            </button>
+        </div>
+
+        <!-- ====== TAB DASHBOARD ====== -->
+        <div class="tab-content active" id="tab-dashboard">
+
+            <div class="dashboard-grid">
+
+                <!-- File Selector -->
+                <div class="card">
+                    <div class="card-title">📂 Pilih File Laporan</div>
+                    <div class="filter-group" style="margin-bottom:10px;">
+                        <label>File Spreadsheet (Google Drive)</label>
+                        <div class="file-select-wrapper">
+                            <select id="fileSelect">
+                                <option value="">-- Pilih File --</option>
+                            </select>
+                            <button class="btn btn-secondary btn-sm" onclick="refreshFileList()" title="Refresh">🔄</button>
+                        </div>
+                    </div>
+                    <div class="progress-bar" id="loadProgressBar">
+                        <div class="progress-fill" id="loadProgressFill" style="width:0%"></div>
+                    </div>
+                    <div style="display:flex; gap:8px; margin-top:10px; flex-wrap:wrap;">
+                        <button class="btn btn-primary btn-sm" onclick="loadData()" id="btnLoadData" disabled>
+                            📊 Load Data
+                        </button>
+                        <button class="btn btn-secondary btn-sm" onclick="clearData()" id="btnClearData" style="display:none;">
+                            🗑️ Hapus Data
+                        </button>
+                    </div>
+                    <div class="loaded-info hidden" id="loadedInfo">
+                        <span>✅</span>
+                        <span id="loadedInfoText"></span>
+                    </div>
+                </div>
+
+                <!-- Stats -->
+                <div class="card">
+                    <div class="card-title">📈 Ringkasan Data</div>
+                    <div class="stat-cards">
+                        <div class="stat-card" onclick="jumpToView('semua')" title="Lihat Semua Data">
+                            <div class="stat-value" id="stat-total">0</div>
+                            <div class="stat-label">Total Data</div>
+                        </div>
+                        <div class="stat-card green" onclick="jumpToView('kantor')" title="Nikah Kantor KUA">
+                            <div class="stat-value" id="stat-kantor">0</div>
+                            <div class="stat-label">Kantor KUA</div>
+                        </div>
+                        <div class="stat-card orange" onclick="jumpToView('wna')" title="Nikah WNA">
+                            <div class="stat-value" id="stat-wna">0</div>
+                            <div class="stat-label">Nikah WNA</div>
+                        </div>
+                        <div class="stat-card red" onclick="jumpToView('kurang10')" title="Kurang 10 Hari">
+                            <div class="stat-value" id="stat-kurang10">0</div>
+                            <div class="stat-label">Kurang 10 Hari</div>
+                        </div>
+                        <div class="stat-card teal" onclick="jumpToView('ntpn')" title="Ada NTPN">
+                            <div class="stat-value" id="stat-ntpn">0</div>
+                            <div class="stat-label">Ada NTPN</div>
+                        </div>
+                        <div class="stat-card orange" onclick="jumpToView('bawah19')" title="Usia Suami atau Istri < 19 Tahun">
+                            <div class="stat-value" id="stat-bawah19">0</div>
+                            <div class="stat-label">Usia &lt; 19 Tahun</div>
+                        </div>
+                        <div class="stat-card pink" onclick="jumpToView('ceraihidup')" title="Istri Cerai Hidup — klik untuk lihat data, merah = langgar iddah">
+                            <div class="stat-value" id="stat-ceraihidup">0</div>
+                            <div class="stat-label">Cerai Hidup</div>
+                            <div class="stat-sublabel" id="stat-ceraihidup-langgar" style="display:none" title="Melanggar masa iddah"></div>
+                        </div>
+                        <div class="stat-card pink-dark" onclick="jumpToView('ceraimati')" title="Istri Cerai Mati — klik untuk lihat data, merah = langgar iddah">
+                            <div class="stat-value" id="stat-ceraimati">0</div>
+                            <div class="stat-label">Cerai Mati</div>
+                            <div class="stat-sublabel" id="stat-ceraimati-langgar" style="display:none" title="Melanggar masa iddah"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="empty-state" id="dashboardEmpty">
+                <div class="empty-icon">📋</div>
+                <h3>Belum Ada Data Dimuat</h3>
+                <p>Pilih file spreadsheet di atas, lalu klik "Load Data".</p>
+            </div>
+
+        </div>
+
+        <!-- ====== TAB DATA NIKAH (MERGED) ====== -->
+        <div class="tab-content" id="tab-nikah">
+
+            <!-- View Selector -->
+            <div class="view-selector-bar">
+                <label>📋 Tampilkan:</label>
+                <select id="nikahViewSelect" onchange="switchNikahView(this.value)">
+                    <option value="semua">📋 Semua Data</option>
+                    <option value="kantor">🏢 Nikah Kantor KUA</option>
+                    <option value="wna">🌍 Nikah WNA</option>
+                    <option value="kurang10">⏱️ Kurang 10 Hari</option>
+                    <option value="ntpn">🧾 NTPN</option>
+                    <option value="bawah19">🔶 Usia &lt; 19 Tahun</option>
+                    <option value="ceraihidup">💔 Cerai Hidup (Iddah 3 Bln 10 Hr)</option>
+                    <option value="ceraimati">🖤 Cerai Mati (Iddah 4 Bln 10 Hr)</option>
+                </select>
+                <span class="view-desc" id="nikahViewDesc">Semua data tanpa filter otomatis</span>
+            </div>
+
+            <!-- Filter Section -->
+            <div id="filter-nikah"></div>
+
+            <!-- Table -->
+            <div id="table-nikah"></div>
+
+        </div>
+
+        <!-- ====== TAB REKAP PORFORASI ====== -->
+        <div class="tab-content" id="tab-matching">
+            <div id="filter-matching"></div>
+            <div id="table-matching"></div>
+        </div>
+
+        <!-- Hidden stok placeholders (needed by supervisi-script.js internals) -->
+        <div style="display:none" id="tab-stok">
+            <div id="filter-stok"></div>
+            <div id="table-stok"></div>
+        </div>
+
+    </div><!-- /tabs-wrapper -->
+</div><!-- /container -->
+
+<!-- Scripts -->
+<script src="js/config.js"></script>
+<script src="js/config-enhanced.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="js/supervisi-script.js"></script>
+<script src="js/supervisi-matching.js"></script>
+</body>
+</html>
