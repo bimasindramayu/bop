@@ -12,7 +12,6 @@ let _editSourceBMN    = null;
 const bmnCache  = {
     statsLoaded:   false,   // Dashboard stats
     dataLoaded:    false,   // Data BMN table
-    laporanLoaded: false,   // Laporan dropdown options
     configLoaded:  false    // Konfigurasi / bmnConfig
 };
 let _lastStats = null; // cache stats object untuk re-render instan
@@ -52,10 +51,6 @@ async function initBMNDashboard() {
         preloadBMNData(),          // Tabel Data BMN (semua role)
         loadBMNSettings()          // Konfigurasi allowDataEntry (semua role)
     ];
-
-    if (isAdmin) {
-        initTasks.push(_preloadLaporanOptions()); // Dropdown KUA untuk Laporan (Admin only)
-    }
 
     await Promise.all(initTasks);
 }
@@ -109,23 +104,14 @@ async function _preloadStats() {
     } catch (e) { /* silent — akan dicoba lagi saat klik tab Dashboard */ }
 }
 
-// Preload dropdown KUA untuk Laporan (Admin only) — diam-diam saat init
-async function _preloadLaporanOptions() {
-    if (bmnCache.laporanLoaded) return;
-    _renderLaporanOptions();   // isi dropdown dari APP_CONFIG (tidak butuh API call)
-    bmnCache.laporanLoaded = true;
-}
-
 // ===== NAV MENU =====
 function renderNavMenu() {
     const navMenu = document.getElementById('navMenu');
     const isAdmin = currentUser.role === 'Admin';
-    const isKUA = currentUser.role.includes('KUA');
     const items = [
-        { id: 'dashboardPage',    label: '📊 Dashboard',    show: true              },
-        { id: 'dataBMNPage',      label: '📋 Data BMN',      show: true              },
-        { id: 'laporanBMNPage',   label: '📑 Laporan',       show: isAdmin || isKUA  },
-        { id: 'konfigurasiPage',  label: '⚙️ Konfigurasi',   show: isAdmin           }
+        { id: 'dashboardPage',    label: '📊 Dashboard',    show: true    },
+        { id: 'dataBMNPage',      label: '📋 Data BMN',      show: true    },
+        { id: 'konfigurasiPage',  label: '⚙️ Konfigurasi',   show: isAdmin }
     ];
     navMenu.innerHTML = `<ul>${
         items.filter(m => m.show).map(m =>
@@ -162,15 +148,7 @@ function navigateTo(pageId) {
 
     if      (pageId === 'dashboardPage')   { if (!bmnCache.statsLoaded)  loadBMNDashboardStats(); else displayDashboardStats(_lastStats); }
     else if (pageId === 'dataBMNPage')     { if (!bmnCache.dataLoaded) loadBMNData(); else applyFilters(); }
-    else if (pageId === 'laporanBMNPage')  {
-        if (isAdmin) {
-            if (!bmnCache.laporanLoaded) loadLaporanOptions();
-            _renderLaporanAdmin();
-        } else {
-            _renderLaporanKUA(); // KUA-specific laporan UI (no API call needed)
-        }
-    }
-    else if (pageId === 'konfigurasiPage') { _renderKonfigurasiPage(); /* render dari state, tidak fetch ulang */ }
+    else if (pageId === 'konfigurasiPage') { _renderKonfigurasiPage(); }
 }
 
 function controlColumnVisibility() {
@@ -297,6 +275,7 @@ function applyFilters() {
 
     currentBMNData = d;
     displayBMNData(d);
+    _updateExportButtons(d.length);
 }
 
 function searchBMN() { applyFilters(); }
@@ -961,211 +940,55 @@ async function toggleBMNSetting(key) {
     }
 }
 
-// ===== LAPORAN =====
+// ===== EXPORT DATA TABEL (sesuai hasil filter/search yang sedang tampil) =====
 
-// Pure render — isi dropdown dari APP_CONFIG (tidak butuh API call)
-function _renderLaporanOptions() {
-    const el = document.getElementById('exportKUA');
-    if (!el) return;
-    el.innerHTML =
-        '<option value="">— Pilih KUA —</option>' +
-        '<option value="ALL">📋 Semua KUA</option>' +
-        APP_CONFIG.KUA_LIST.slice().sort().map(k => `<option value="${k}">${k}</option>`).join('');
-    el.disabled = false;
+// Tampilkan / sembunyikan tombol export sesuai jumlah baris di tabel
+function _updateExportButtons(count) {
+    const show = count > 0;
+    const elXls = document.getElementById('btnExportExcel');
+    const elPdf = document.getElementById('btnExportPDF');
+    if (elXls) elXls.style.display = show ? 'inline-flex' : 'none';
+    if (elPdf) elPdf.style.display = show ? 'inline-flex' : 'none';
 }
 
-// Wrapper (dipakai navigateTo saat laporanLoaded masih false)
-async function loadLaporanOptions() {
-    _renderLaporanOptions();
-    bmnCache.laporanLoaded = true;
-}
-
-// ── Render laporan page untuk Admin (static HTML yang sudah ada di DOM)
-function _renderLaporanAdmin() {
-    const page = document.getElementById('laporanBMNPage');
-    if (!page) return;
-    page.innerHTML = `
-        <h2 style="margin-bottom: 20px;">Laporan BMN</h2>
-
-        <div class="summary-box">
-            <h3 style="margin-bottom: 15px; color: #28a745;">📊 Laporan Per KUA</h3>
-            <select id="exportKUA" style="margin-bottom: 10px;">
-                <option value="">— Pilih KUA —</option>
-                <option value="ALL">📋 Semua KUA</option>
-            </select>
-            <div style="display: flex; gap: 10px;">
-                <button class="btn btn-sm btn-success" onclick="exportLaporan('perKUA', 'excel')">📥 Excel</button>
-                <button class="btn btn-sm btn-success" onclick="exportLaporan('perKUA', 'pdf')">📄 PDF</button>
-            </div>
-        </div>
-
-        <div class="summary-box" style="margin-top: 20px;">
-            <h3 style="margin-bottom: 15px; color: #28a745;">📋 Laporan Per Jenis</h3>
-            <select id="exportJenis" style="margin-bottom: 10px;">
-                <option value="">Pilih Jenis</option>
-                <option value="Tanah">Tanah</option>
-                <option value="Gedung/Bangunan">Gedung/Bangunan</option>
-                <option value="Kendaraan">Kendaraan</option>
-                <option value="Peralatan &amp; Mesin">Peralatan &amp; Mesin</option>
-                <option value="Aset Lainnya">Aset Lainnya</option>
-            </select>
-            <div style="display: flex; gap: 10px;">
-                <button class="btn btn-sm btn-success" onclick="exportLaporan('perJenis', 'excel')">📥 Excel</button>
-                <button class="btn btn-sm btn-success" onclick="exportLaporan('perJenis', 'pdf')">📄 PDF</button>
-            </div>
-        </div>
-
-        <div class="summary-box" style="margin-top: 20px;">
-            <h3 style="margin-bottom: 15px; color: #28a745;">⚠️ Laporan Barang Rusak</h3>
-            <div style="display: flex; gap: 10px;">
-                <button class="btn btn-sm btn-success" onclick="exportLaporan('rusak', 'excel')">📥 Excel</button>
-                <button class="btn btn-sm btn-success" onclick="exportLaporan('rusak', 'pdf')">📄 PDF</button>
-            </div>
-        </div>`;
-
-    _renderLaporanOptions();
-}
-
-// ── Render laporan page khusus Operator KUA (hanya data KUA sendiri)
-function _renderLaporanKUA() {
-    const page = document.getElementById('laporanBMNPage');
-    if (!page) return;
-    const kua = currentUser.kua || '—';
-
-    page.innerHTML = `
-        <h2 style="margin-bottom: 6px;">Laporan BMN</h2>
-        <p style="color:#666;margin-bottom:24px;font-size:14px;">
-            Data BMN untuk <strong>${kua}</strong>
-        </p>
-
-        <!-- Laporan Semua BMN KUA -->
-        <div class="summary-box">
-            <h3 style="margin-bottom:8px;color:#28a745;">📋 Laporan Seluruh BMN KUA</h3>
-            <p style="font-size:13px;color:#555;margin-bottom:14px;">
-                Download seluruh data BMN milik <strong>${kua}</strong>.
-            </p>
-            <div style="display:flex;gap:10px;flex-wrap:wrap;">
-                <button class="btn btn-sm btn-success"
-                    onclick="exportLaporanKUA('semua','excel')">
-                    📥 Download Excel
-                </button>
-                <button class="btn btn-sm btn-success"
-                    onclick="exportLaporanKUA('semua','pdf')">
-                    📄 Download PDF
-                </button>
-            </div>
-        </div>
-
-        <!-- Laporan Per Jenis -->
-        <div class="summary-box" style="margin-top:20px;">
-            <h3 style="margin-bottom:8px;color:#28a745;">📦 Laporan Per Jenis Barang</h3>
-            <p style="font-size:13px;color:#555;margin-bottom:10px;">
-                Download laporan berdasarkan jenis BMN untuk <strong>${kua}</strong>.
-            </p>
-            <select id="exportJenisKUA" style="margin-bottom:12px;
-                    padding:8px 12px;border:1px solid #ddd;border-radius:6px;width:100%;max-width:280px;">
-                <option value="">— Pilih Jenis —</option>
-                <option value="Tanah">🏡 Tanah</option>
-                <option value="Gedung/Bangunan">🏢 Gedung/Bangunan</option>
-                <option value="Kendaraan">🚗 Kendaraan</option>
-                <option value="Peralatan &amp; Mesin">⚙️ Peralatan &amp; Mesin</option>
-                <option value="Aset Lainnya">📦 Aset Lainnya</option>
-            </select>
-            <div style="display:flex;gap:10px;flex-wrap:wrap;">
-                <button class="btn btn-sm btn-success"
-                    onclick="exportLaporanKUA('perJenis','excel')">
-                    📥 Download Excel
-                </button>
-                <button class="btn btn-sm btn-success"
-                    onclick="exportLaporanKUA('perJenis','pdf')">
-                    📄 Download PDF
-                </button>
-            </div>
-        </div>
-
-        <!-- Laporan Barang Rusak -->
-        <div class="summary-box" style="margin-top:20px;">
-            <h3 style="margin-bottom:8px;color:#dc3545;">⚠️ Laporan Barang Rusak</h3>
-            <p style="font-size:13px;color:#555;margin-bottom:14px;">
-                Download daftar BMN dengan kondisi <strong>Rusak Ringan</strong> atau
-                <strong>Rusak Berat</strong> milik ${kua}.
-            </p>
-            <div style="display:flex;gap:10px;flex-wrap:wrap;">
-                <button class="btn btn-sm btn-success"
-                    onclick="exportLaporanKUA('rusak','excel')">
-                    📥 Download Excel
-                </button>
-                <button class="btn btn-sm btn-success"
-                    onclick="exportLaporanKUA('rusak','pdf')">
-                    📄 Download PDF
-                </button>
-            </div>
-        </div>
-
-        <!-- Info box -->
-        <div style="margin-top:20px;background:#f0f4ff;border-radius:10px;
-                    padding:14px 18px;border-left:4px solid #667eea;
-                    font-size:13px;color:#555;line-height:1.7;">
-            💡 Laporan yang diunduh hanya mencakup data BMN <strong>${kua}</strong>.
-            Untuk laporan lintas KUA, hubungi Admin.
-        </div>`;
-}
-
-// ── Export laporan khusus Operator KUA
-async function exportLaporanKUA(type, format) {
-    const kua = currentUser.kua;
-    if (!kua) { showNotification('Data KUA tidak ditemukan', 'error'); return; }
-
-    const params = { format, kua, kuaLabel: kua };
-
-    if (type === 'semua') {
-        params.type = 'perKUA';
-    } else if (type === 'perJenis') {
-        const v = document.getElementById('exportJenisKUA')?.value;
-        if (!v) { showNotification('Pilih jenis barang terlebih dahulu', 'warning'); return; }
-        params.type  = 'perJenis';
-        params.jenis = v;
-        // Sertakan kua agar backend filter per KUA juga
-        params.kua   = kua;
-    } else if (type === 'rusak') {
-        params.type = 'rusak';
-        params.kua  = kua;
+// Kirim data tabel saat ini (currentBMNData) ke backend lalu trigger download
+async function exportCurrentData(format) {
+    if (!currentBMNData || !currentBMNData.length) {
+        showNotification('Tidak ada data untuk didownload', 'warning');
+        return;
     }
+
+    // Bangun label deskriptif untuk nama file
+    const fKUA     = document.getElementById('filterKUA')?.value     || '';
+    const fJenis   = document.getElementById('filterJenis')?.value   || '';
+    const fKondisi = document.getElementById('filterKondisi')?.value || '';
+    const fStatus  = document.getElementById('filterStatus')?.value  || '';
+    const q        = document.getElementById('searchBMN')?.value     || '';
+
+    const parts = [];
+    if (fKUA)     parts.push(fKUA);
+    else if (currentUser.role !== 'Admin') parts.push(currentUser.kua || '');
+    if (fJenis)   parts.push(fJenis);
+    if (fKondisi) parts.push(fKondisi);
+    if (fStatus)  parts.push(fStatus);
+    if (q)        parts.push(`"${q}"`);
+    const label = parts.length ? parts.join(' · ') : 'Semua Data';
 
     try {
         showLoading();
-        const result = await apiCall('exportLaporanBMN', params);
+        const result = await apiCall('exportLaporanBMN', {
+            type:       'customData',
+            format,
+            customData: currentBMNData,
+            label,
+            exportedBy: currentUser.name || currentUser.username
+        });
         hideLoading();
         _downloadBase64File(result);
-        showNotification('Laporan berhasil diunduh', 'success');
+        showNotification(`Berhasil mengunduh ${currentBMNData.length} data BMN`, 'success');
     } catch (err) {
         hideLoading();
-        showNotification(err.message || 'Gagal mengunduh laporan', 'error');
-    }
-}
-
-async function exportLaporan(type, format) {
-    try {
-        const params = { type, format };
-        if (type === 'perKUA') {
-            const v = document.getElementById('exportKUA')?.value;
-            if (!v) { showNotification('Pilih KUA terlebih dahulu', 'warning'); return; }
-            // 'ALL' → kirim kua:'' ke backend (artinya semua KUA)
-            params.kua      = v === 'ALL' ? '' : v;
-            params.kuaLabel = v === 'ALL' ? 'Semua KUA' : v;
-        } else if (type === 'perJenis') {
-            const v = document.getElementById('exportJenis')?.value;
-            if (!v) { showNotification('Pilih jenis terlebih dahulu', 'warning'); return; }
-            params.jenis = v;
-        }
-        showLoading();
-        const result = await apiCall('exportLaporanBMN', params);
-        hideLoading();
-        _downloadBase64File(result);
-        showNotification('Laporan berhasil diunduh', 'success');
-    } catch (err) {
-        hideLoading();
-        showNotification(err.message, 'error');
+        showNotification(err.message || 'Gagal mengunduh data', 'error');
     }
 }
 

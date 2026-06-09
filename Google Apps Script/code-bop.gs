@@ -474,6 +474,21 @@ function handleBOPAction(action, data) {
         } catch(_err) { result=errorResponse('Export Realisasi Detail gagal: '+_err.toString()); }
         break;
       }
+      case 'exportRPDDetailMonth':
+        result = exportRPDDetailMonth(data);
+        break;
+      case 'exportRealisasiDetailMonth':
+        result = exportRealisasiDetailMonth(data);
+        break;
+      case 'exportFallbackPerYear':
+        result = exportFallbackPerYear(data);
+        break;
+      case 'exportFallbackDetailYear':
+        result = exportFallbackDetailYear(data);
+        break;
+      case 'exportFallbackDetailMonth':
+        result = exportFallbackDetailMonth(data);
+        break;
       case 'uploadFile':
         result = uploadFile(data);
         break;
@@ -560,8 +575,7 @@ function calculateTotalRealisasi(kua, year) {
     
     for (let i = 1; i < rows.length; i++) {
       // Hitung realisasi yang sudah Approved atau Paid
-      const s = normalizeStatus(rows[i][8]);
-      if (rows[i][1] === kua && rows[i][4] == year && (s === 'Approved' || s === 'Paid')) {
+      if (rows[i][1] === kua && rows[i][4] == year && (normalizeStatus(rows[i][8]) === 'Approved' || normalizeStatus(rows[i][8]) === 'Paid')) {
         total += parseFloat(rows[i][5]) || 0;
       }
     }
@@ -1979,6 +1993,189 @@ function generateRPDDetailPage(rpdByKUA, kuaList, year, pageNum, totalPages) {
   return html;
 }
 
+// ===== EXPORT RPD DETAIL PER BULAN =====
+function exportRPDDetailMonth(data) {
+  Logger.log('[EXPORT_RPD_DETAIL_MONTH] Format: ' + data.format + ', Year: ' + data.year + ', Month: ' + data.month);
+  try {
+    var rpdSheet = getSheet(SHEETS.RPD);
+    var rpds = rpdSheet.getDataRange().getValues();
+    // RPD Sheet: A=ID(0), B=KUA(1), C=Bulan(2), D=Tahun(3), E=Total(4), F=Data(5)
+    var rpdByKUA = {};
+    var kuaSet = new Set();
+    for (var i = 1; i < rpds.length; i++) {
+      if (rpds[i][3] != data.year || rpds[i][2] !== data.month) continue;
+      var kua = rpds[i][1];
+      kuaSet.add(kua);
+      if (!rpdByKUA[kua]) rpdByKUA[kua] = {};
+      var rpdData = {};
+      try { rpdData = JSON.parse(rpds[i][5] || '{}'); } catch(e) {}
+      Object.keys(rpdData).forEach(function(code) {
+        if (!rpdByKUA[kua][code]) rpdByKUA[kua][code] = {};
+        Object.keys(rpdData[code]).forEach(function(item) {
+          if (!rpdByKUA[kua][code][item]) rpdByKUA[kua][code][item] = 0;
+          rpdByKUA[kua][code][item] += parseFloat(rpdData[code][item]) || 0;
+        });
+      });
+    }
+    var sortedKUAs = Array.from(kuaSet).sort();
+    if (sortedKUAs.length === 0) return errorResponse('Tidak ada data RPD untuk ' + data.month + ' ' + data.year);
+    var title = 'LAPORAN RPD DETAIL - ' + data.month.toUpperCase() + ' ' + data.year;
+    var slug  = 'RPD_Detail_' + data.month + '_' + data.year;
+    if (data.format === 'pdf') {
+      return _exportRPDDetailPDF(rpdByKUA, sortedKUAs, title, slug);
+    } else {
+      return _exportRPDDetailExcel(rpdByKUA, sortedKUAs, title, slug);
+    }
+  } catch(err) {
+    Logger.log('[EXPORT_RPD_DETAIL_MONTH ERROR] ' + err.toString());
+    return errorResponse('Gagal export: ' + err.toString());
+  }
+}
+
+function _exportRPDDetailExcel(rpdByKUA, kuaList, title, slug) {
+  var t = title + '\n\nNo\tKode\tUraian\t' + kuaList.join('\t') + '\tTotal\n';
+  var grand = {}, grandAll = 0;
+  kuaList.forEach(function(k) { grand[k] = 0; });
+  var n = 0;
+  Object.keys(BOP_CONFIG.RPD_PARAMETERS).forEach(function(code) {
+    var cfg = BOP_CONFIG.RPD_PARAMETERS[code], ctot = {}, cAll = 0;
+    kuaList.forEach(function(k) { ctot[k] = 0; });
+    cfg.items.forEach(function(item) {
+      kuaList.forEach(function(k) {
+        var v = (rpdByKUA[k] && rpdByKUA[k][code] && rpdByKUA[k][code][item]) ? parseFloat(rpdByKUA[k][code][item]) : 0;
+        ctot[k] += v; cAll += v;
+      });
+    });
+    n++;
+    t += n + '\t' + code + '\t' + cfg.name;
+    // ✅ FIX: only add grand per KUA here if no subitems
+    kuaList.forEach(function(k) {
+      if (cfg.hasSubItems) {
+        t += '\t';
+      } else {
+        t += '\t' + ctot[k];
+        grand[k] += ctot[k];
+      }
+    });
+    if (cfg.hasSubItems) {
+      t += '\t\n';
+    } else {
+      t += '\t' + cAll + '\n';
+      grandAll += cAll;
+    }
+    if (cfg.hasSubItems) {
+      cfg.items.forEach(function(item, idx) {
+        var pfx = String.fromCharCode(97 + idx), iAll = 0;
+        n++; t += n + '\t\t' + pfx + '. ' + item;
+        kuaList.forEach(function(k) {
+          var v = (rpdByKUA[k] && rpdByKUA[k][code] && rpdByKUA[k][code][item]) ? parseFloat(rpdByKUA[k][code][item]) : 0;
+          t += '\t' + v; iAll += v; grand[k] += v; grandAll += v;
+        });
+        t += '\t' + iAll + '\n';
+      });
+    }
+  });
+  t += '\t\tJUMLAH'; kuaList.forEach(function(k) { t += '\t' + grand[k]; }); t += '\t' + grandAll + '\n';
+  var blob = Utilities.newBlob(t, 'text/tab-separated-values');
+  return successResponse({ fileData: Utilities.base64Encode(blob.getBytes()), fileName: slug + '.xls', mimeType: 'application/vnd.ms-excel' });
+}
+
+function _exportRPDDetailPDF(rpdByKUA, kuaList, title, slug) {
+  var style = 'body{font-family:Arial;font-size:9px;}table{width:100%;border-collapse:collapse;margin-top:10px;}th,td{border:1px solid #000;padding:4px;text-align:center;}th{background:#dc3545;color:white;}.left{text-align:left;}';
+  var h = '<html><head><style>' + style + '</style></head><body><h3 style="text-align:center">' + title + '</h3><table><tr><th>No</th><th>Kode</th><th>Uraian</th>';
+  kuaList.forEach(function(k) { h += '<th>' + k + '</th>'; }); h += '<th>Total</th></tr>';
+  var grand = {}, grandAll = 0; kuaList.forEach(function(k) { grand[k] = 0; }); var n = 0;
+  Object.keys(BOP_CONFIG.RPD_PARAMETERS).forEach(function(code) {
+    var cfg = BOP_CONFIG.RPD_PARAMETERS[code], ctot = {}, cAll = 0;
+    kuaList.forEach(function(k) { ctot[k] = 0; });
+    cfg.items.forEach(function(item) { kuaList.forEach(function(k) { var v = (rpdByKUA[k]&&rpdByKUA[k][code]&&rpdByKUA[k][code][item])?parseFloat(rpdByKUA[k][code][item]):0; ctot[k]+=v; cAll+=v; }); });
+    n++; h += '<tr><td>' + n + '</td><td>' + code + '</td><td class="left">' + cfg.name + '</td>';
+    // ✅ FIX: only add grand per KUA here if no subitems
+    kuaList.forEach(function(k) {
+      if (cfg.hasSubItems) {
+        h += '<td>-</td>';
+      } else {
+        h += '<td>' + formatCurrency(ctot[k]) + '</td>';
+        grand[k] += ctot[k];
+      }
+    });
+    if (cfg.hasSubItems) {
+      h += '<td>-</td></tr>';
+    } else {
+      h += '<td>' + formatCurrency(cAll) + '</td></tr>';
+      grandAll += cAll;
+    }
+    if (cfg.hasSubItems) {
+      cfg.items.forEach(function(item, idx) {
+        var pfx = String.fromCharCode(97+idx), iAll = 0; n++;
+        h += '<tr><td>' + n + '</td><td></td><td class="left">' + pfx + '. ' + item + '</td>';
+        kuaList.forEach(function(k) { var v=(rpdByKUA[k]&&rpdByKUA[k][code]&&rpdByKUA[k][code][item])?parseFloat(rpdByKUA[k][code][item]):0; h+='<td>'+formatCurrency(v)+'</td>'; iAll+=v; grand[k]+=v; grandAll+=v; });
+        h += '<td>' + formatCurrency(iAll) + '</td></tr>';
+      });
+    }
+  });
+  h += '<tr><td colspan="3"><strong>JUMLAH</strong></td>';
+  kuaList.forEach(function(k) { h += '<td><strong>' + formatCurrency(grand[k]) + '</strong></td>'; });
+  h += '<td><strong>' + formatCurrency(grandAll) + '</strong></td></tr></table></body></html>';
+  var pdf = Utilities.newBlob(h, 'text/html').getAs('application/pdf');
+  return successResponse({ fileData: Utilities.base64Encode(pdf.getBytes()), fileName: slug + '.pdf', mimeType: 'application/pdf' });
+}
+
+// ===== EXPORT REALISASI DETAIL PER BULAN =====
+function exportRealisasiDetailMonth(data) {
+  Logger.log('[EXPORT_REALISASI_DETAIL_MONTH] Format: ' + data.format + ', Year: ' + data.year + ', Month: ' + data.month + ', apMode: ' + (data.apMode||'exclude'));
+  try {
+    var rSheet = getSheet(SHEETS.REALISASI);
+    var rows   = rSheet.getDataRange().getValues();
+    var apMode = data.apMode || 'exclude';
+    // Load AP config
+    var apCfg = {}, apNom = {};
+    try {
+      var cs = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEETS.AUTO_PAYMENT_CONFIG);
+      if (cs) { var cr = cs.getDataRange().getValues(); for (var ci=1;ci<cr.length;ci++){var ck=cr[ci][0];if(ck)apCfg[ck]={'522111':cr[ci][1]===true||cr[ci][1]==='TRUE','522112':cr[ci][2]===true||cr[ci][2]==='TRUE'};} }
+      var ns = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEETS.AUTO_PAYMENT_NOMINAL);
+      if (ns) { var nr = ns.getDataRange().getValues(); for (var ni=1;ni<nr.length;ni++){var nk=nr[ni][0],nm=nr[ni][1],ny=nr[ni][2];if(nk&&ny==data.year&&nm===data.month){if(!apNom[nk])apNom[nk]={};apNom[nk]={'522111':parseFloat(nr[ni][3])||0,'522112':parseFloat(nr[ni][4])||0};}} }
+    } catch(e) {}
+    // REALISASI: A=ID(0), B=KUA(1), C=Bulan(2), D=RPD_ID(3), E=Tahun(4), F=Total(5), G=Data(6), H=Files(7), I=Status(8)
+    var rByKUA = {}, kuaSet = new Set();
+    for (var i = 1; i < rows.length; i++) {
+      if (rows[i][4] != data.year || rows[i][2] !== data.month) continue;
+      var norm = normalizeStatus(rows[i][8]);
+      if (norm !== 'Approved' && norm !== 'Paid') continue;
+      var kua = rows[i][1]; kuaSet.add(kua);
+      if (!rByKUA[kua]) rByKUA[kua] = {};
+      var rawData = {}; try { rawData = JSON.parse(rows[i][6]||'{}'); } catch(e) {}
+      var kuaCfg = apCfg[kua]||null, hasAP = kuaCfg&&(kuaCfg['522111']||kuaCfg['522112']);
+      var nomM = apNom[kua]||{};
+      Object.keys(rawData).forEach(function(code) {
+        if (!rByKUA[kua][code]) rByKUA[kua][code] = {};
+        var isAP = hasAP && kuaCfg[code] === true;
+        Object.keys(rawData[code]).forEach(function(item) {
+          if (!rByKUA[kua][code][item]) rByKUA[kua][code][item] = 0;
+          var val = 0;
+          if (isAP) { if (apMode==='include') val = parseFloat(nomM[code]||0)/Math.max(1,Object.keys(rawData[code]).length); }
+          else { val = parseFloat(rawData[code][item])||0; }
+          rByKUA[kua][code][item] += val;
+        });
+      });
+    }
+    var sortedKUAs = Array.from(kuaSet).sort();
+    if (sortedKUAs.length === 0) return errorResponse('Tidak ada data realisasi untuk ' + data.month + ' ' + data.year);
+    var apLabel = apMode==='include'?'INCLUDE AUTO PAYMENT':'EXCLUDE AUTO PAYMENT';
+    var apSlug  = apMode==='include'?'include_ap':'exclude_ap';
+    var title = 'LAPORAN REALISASI DETAIL ' + apLabel + ' - ' + data.month.toUpperCase() + ' ' + data.year;
+    var slug  = 'Realisasi_Detail_' + apSlug + '_' + data.month + '_' + data.year;
+    if (data.format === 'pdf') {
+      return _exportRPDDetailPDF(rByKUA, sortedKUAs, title, slug);
+    } else {
+      return _exportRPDDetailExcel(rByKUA, sortedKUAs, title, slug);
+    }
+  } catch(err) {
+    Logger.log('[EXPORT_REALISASI_DETAIL_MONTH ERROR] ' + err.toString());
+    return errorResponse('Gagal export: ' + err.toString());
+  }
+}
+
 // 3. Export Realisasi per Year
 function exportRealisasiPerYear(data) {
   Logger.log('[EXPORT_REALISASI_PER_YEAR] Format: ' + data.format + ', KUA: ' + data.kua + ', Year: ' + data.year + ', apMode: ' + (data.apMode || 'exclude'));
@@ -3125,4 +3322,285 @@ function calculateAutoPaymentTotal(realisasis, apConfig, apNominalByKua, mode) {
     total += realTotal;
   });
   return total;
+}
+
+// =============================================================================
+// EXPORT FALLBACK: Realisasi (Approved/Paid) + Fallback ke RPD jika tdk ada
+// =============================================================================
+
+// ── HELPER: load AP config & nominal ──────────────────────────────────────────
+function _loadAPData(year) {
+  var apCfg = {}, apNom = {};
+  try {
+    var cs = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEETS.AUTO_PAYMENT_CONFIG);
+    if (cs) {
+      var cr = cs.getDataRange().getValues();
+      for (var i = 1; i < cr.length; i++) {
+        if (cr[i][0]) apCfg[cr[i][0]] = { '522111': cr[i][1]===true||cr[i][1]==='TRUE', '522112': cr[i][2]===true||cr[i][2]==='TRUE' };
+      }
+    }
+    var ns = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEETS.AUTO_PAYMENT_NOMINAL);
+    if (ns) {
+      var nr = ns.getDataRange().getValues();
+      for (var j = 1; j < nr.length; j++) {
+        var nk = nr[j][0], nm = nr[j][1], ny = nr[j][2];
+        if (nk && ny == year) {
+          if (!apNom[nk]) apNom[nk] = {};
+          apNom[nk][nm] = { '522111': parseFloat(nr[j][3])||0, '522112': parseFloat(nr[j][4])||0 };
+        }
+      }
+    }
+  } catch(e) { Logger.log('[_loadAPData ERR] ' + e); }
+  return { apCfg: apCfg, apNom: apNom };
+}
+
+// ── HELPER: hitung total nominal 1 row Realisasi (handle AP) ─────────────────
+function _calcRealisasiRowTotal(rRow, apCfg, apNom, apMode) {
+  var kua    = rRow[1], month = rRow[2];
+  var kuaCfg = apCfg[kua] || null;
+  var hasAP  = kuaCfg && (kuaCfg['522111'] || kuaCfg['522112']);
+  var total  = 0;
+  if (!hasAP || apMode === 'exclude') {
+    if (!hasAP) { return parseFloat(rRow[5]) || 0; }
+    var rd = {}; try { rd = JSON.parse(rRow[6]||'{}'); } catch(e) {}
+    Object.keys(rd).forEach(function(c) { if (kuaCfg[c]) return; Object.values(rd[c]).forEach(function(v){ total += parseFloat(v)||0; }); });
+  } else {
+    var rd2 = {}; try { rd2 = JSON.parse(rRow[6]||'{}'); } catch(e) {}
+    var nomM = (apNom[kua] && apNom[kua][month]) ? apNom[kua][month] : {};
+    Object.keys(rd2).forEach(function(c) {
+      if (kuaCfg[c]) { total += parseFloat(nomM[c]||0); }
+      else { Object.values(rd2[c]).forEach(function(v){ total += parseFloat(v)||0; }); }
+    });
+  }
+  return total;
+}
+
+// ── HELPER: agregat detail items 1 row Realisasi ke byKUA[kua][code][item] ────
+function _agregateRealisasiRowDetail(rRow, byKUA, apCfg, apNom, apMode) {
+  var kua = rRow[1], month = rRow[2];
+  if (!byKUA[kua]) byKUA[kua] = {};
+  var rd = {}; try { rd = JSON.parse(rRow[6]||'{}'); } catch(e) {}
+  var kuaCfg = apCfg[kua]||null, hasAP = kuaCfg&&(kuaCfg['522111']||kuaCfg['522112']);
+  var nomM = (apNom[kua]&&apNom[kua][month]) ? apNom[kua][month] : {};
+  Object.keys(rd).forEach(function(code) {
+    if (!byKUA[kua][code]) byKUA[kua][code] = {};
+    var isAP = hasAP && kuaCfg[code] === true;
+    Object.keys(rd[code]).forEach(function(item) {
+      if (!byKUA[kua][code][item]) byKUA[kua][code][item] = 0;
+      var val = 0;
+      if (isAP) { if (apMode==='include') val = parseFloat(nomM[code]||0) / Math.max(1, Object.keys(rd[code]).length); }
+      else { val = parseFloat(rd[code][item])||0; }
+      byKUA[kua][code][item] += val;
+    });
+  });
+}
+
+// ── HELPER: agregat detail items 1 row RPD ke byKUA[kua][code][item] ──────────
+function _agregateRPDRowDetail(rpdRow, byKUA) {
+  var kua = rpdRow[1];
+  if (!byKUA[kua]) byKUA[kua] = {};
+  var rpdData = {}; try { rpdData = JSON.parse(rpdRow[5]||'{}'); } catch(e) {}
+  Object.keys(rpdData).forEach(function(code) {
+    if (!byKUA[kua][code]) byKUA[kua][code] = {};
+    Object.keys(rpdData[code]).forEach(function(item) {
+      if (!byKUA[kua][code][item]) byKUA[kua][code][item] = 0;
+      byKUA[kua][code][item] += parseFloat(rpdData[code][item])||0;
+    });
+  });
+}
+
+// ── EXPORT FALLBACK PER TAHUN (mirip Realisasi per Tahun) ─────────────────────
+function exportFallbackPerYear(data) {
+  Logger.log('[FALLBACK_PER_YEAR] year='+data.year+' kua='+(data.kua||'all')+' format='+data.format+' apMode='+(data.apMode||'exclude'));
+  try {
+    var bRows   = getSheet(SHEETS.BUDGET).getDataRange().getValues();
+    var rRows   = getSheet(SHEETS.REALISASI).getDataRange().getValues();
+    var rpdRows = getSheet(SHEETS.RPD).getDataRange().getValues();
+    var apMode  = data.apMode || 'exclude';
+    var ap = _loadAPData(data.year);
+
+    // Budget per KUA
+    var budgetByKUA = {};
+    for (var bi=1; bi<bRows.length; bi++) {
+      if (bRows[bi][2] == data.year && (!data.kua || bRows[bi][1]===data.kua)) {
+        budgetByKUA[bRows[bi][1]] = parseFloat(bRows[bi][3])||0;
+      }
+    }
+
+    // Realisasi total per (kua, month)
+    var realMap = {}; // "kua|month" → total
+    for (var ri=1; ri<rRows.length; ri++) {
+      if (rRows[ri][4] != data.year) continue;
+      var norm = normalizeStatus(rRows[ri][8]);
+      if (norm!=='Approved'&&norm!=='Paid') continue;
+      var key = rRows[ri][1]+'|'+rRows[ri][2];
+      realMap[key] = (realMap[key]||0) + _calcRealisasiRowTotal(rRows[ri], ap.apCfg, ap.apNom, apMode);
+    }
+
+    // RPD total per (kua, month)
+    var rpdMap = {}; // "kua|month" → total
+    for (var rpi=1; rpi<rpdRows.length; rpi++) {
+      if (rpdRows[rpi][3] != data.year) continue;
+      var rpKey = rpdRows[rpi][1]+'|'+rpdRows[rpi][2];
+      rpdMap[rpKey] = (rpdMap[rpKey]||0) + (parseFloat(rpdRows[rpi][4])||0);
+    }
+
+    var kuaList = Object.keys(budgetByKUA).sort();
+    var apLabel = apMode==='include' ? 'INCLUDE AUTO PAYMENT' : 'EXCLUDE AUTO PAYMENT';
+    var title   = 'LAPORAN REALISASI + RPD FALLBACK - '+apLabel+' - TAHUN '+data.year;
+    var kuaNote = data.kua ? ' | KUA: '+data.kua : '';
+    var noteRow = 'Keterangan: R = Data Realisasi (Approved/Paid)  |  P = Dari RPD (tidak ada realisasi di bulan tersebut)';
+
+    if (data.format === 'pdf') {
+      var sty = 'body{font-family:Arial,sans-serif;font-size:7.5px;}h2{font-size:12px;text-align:center;margin:4px 0;}p.sub{text-align:center;font-size:9px;color:#444;margin:2px 0;}'
+              + 'table{width:100%;border-collapse:collapse;margin-top:8px;}th,td{border:1px solid #666;padding:2px 3px;text-align:center;}'
+              + 'th{background:#0e7490;color:#fff;font-size:7px;}.r{color:#065f46;font-weight:bold;}.p{color:#92400e;}.tot{background:#f0f4ff;font-weight:bold;}';
+      var html = '<html><head><style>'+sty+'</style></head><body>'
+               + '<h2>'+title+'</h2><p class="sub">'+kuaNote+noteRow+'</p>'
+               + '<table><tr><th>No</th><th>KUA</th><th>Budget</th>';
+      MONTHS.forEach(function(m){html+='<th>'+m+'</th>';});
+      html += '<th>Total</th><th>Sisa</th></tr>';
+      var grandBudget=0, grandTotal=0;
+      kuaList.forEach(function(kua, idx) {
+        var budget = budgetByKUA[kua]||0; grandBudget+=budget;
+        var rowTotal=0;
+        html += '<tr><td>'+(idx+1)+'</td><td style="text-align:left">'+kua+'</td><td>'+formatCurrency(budget)+'</td>';
+        MONTHS.forEach(function(m) {
+          var rKey=kua+'|'+m, val=0, src='';
+          if (realMap[rKey]!==undefined) { val=realMap[rKey]; src='R'; }
+          else if (rpdMap[rKey]) { val=rpdMap[rKey]; src='P'; }
+          rowTotal+=val;
+          var cls=src==='R'?' class="r"':src==='P'?' class="p"':'';
+          html+='<td'+cls+'>'+(val>0?formatCurrency(val)+' <sup>'+src+'</sup>':'-')+'</td>';
+        });
+        grandTotal+=rowTotal;
+        html+='<td class="tot">'+formatCurrency(rowTotal)+'</td><td class="tot">'+formatCurrency(budget-rowTotal)+'</td></tr>';
+      });
+      html+='<tr style="background:#dbeafe;font-weight:bold"><td colspan="2">GRAND TOTAL</td><td>'+formatCurrency(grandBudget)+'</td>';
+      MONTHS.forEach(function(){html+='<td></td>';});
+      html+='<td>'+formatCurrency(grandTotal)+'</td><td>'+formatCurrency(grandBudget-grandTotal)+'</td></tr>';
+      html+='</table></body></html>';
+      var blob = Utilities.newBlob(html,'text/html').getAs('application/pdf');
+      return successResponse({fileData:Utilities.base64Encode(blob.getBytes()),fileName:'Fallback_PerTahun_'+data.year+'.pdf',mimeType:'application/pdf'});
+    } else {
+      var tsv = title+'\n'+kuaNote+'\n'+noteRow+'\n\nNo\tKUA\tBudget\t'+MONTHS.join('\t')+'\tTotal\tSisa\n';
+      var gBudget=0, gTotal=0;
+      kuaList.forEach(function(kua, idx) {
+        var budget=budgetByKUA[kua]||0; gBudget+=budget;
+        var rowTotal=0, cols=[];
+        MONTHS.forEach(function(m) {
+          var rKey=kua+'|'+m, val=0, src='';
+          if (realMap[rKey]!==undefined){val=realMap[rKey];src='R';}
+          else if(rpdMap[rKey]){val=rpdMap[rKey];src='P';}
+          rowTotal+=val;
+          cols.push(val+(src?' ('+src+')':''));
+        });
+        gTotal+=rowTotal;
+        tsv+=(idx+1)+'\t'+kua+'\t'+budget+'\t'+cols.join('\t')+'\t'+rowTotal+'\t'+(budget-rowTotal)+'\n';
+      });
+      tsv+='GRAND TOTAL\t\t'+gBudget+'\t'+MONTHS.map(function(){return '';}).join('\t')+'\t'+gTotal+'\t'+(gBudget-gTotal)+'\n';
+      var xBlob = Utilities.newBlob(tsv,'text/tab-separated-values');
+      return successResponse({fileData:Utilities.base64Encode(xBlob.getBytes()),fileName:'Fallback_PerTahun_'+data.year+'.xls',mimeType:'application/vnd.ms-excel'});
+    }
+  } catch(err) {
+    Logger.log('[FALLBACK_PER_YEAR ERR] '+err.toString());
+    return errorResponse('Gagal export: '+err.toString());
+  }
+}
+
+// ── EXPORT FALLBACK DETAIL YEAR (mirip Realisasi Detail Semua KUA) ─────────────
+function exportFallbackDetailYear(data) {
+  Logger.log('[FALLBACK_DETAIL_YEAR] year='+data.year+' format='+data.format+' apMode='+(data.apMode||'exclude'));
+  try {
+    var rRows   = getSheet(SHEETS.REALISASI).getDataRange().getValues();
+    var rpdRows = getSheet(SHEETS.RPD).getDataRange().getValues();
+    var apMode  = data.apMode || 'exclude';
+    var ap      = _loadAPData(data.year);
+
+    // Set: "kua|month" yang punya Realisasi (Approved/Paid)
+    var hasReal = {};
+    for (var ri=1; ri<rRows.length; ri++) {
+      if (rRows[ri][4] != data.year) continue;
+      var norm = normalizeStatus(rRows[ri][8]);
+      if (norm!=='Approved'&&norm!=='Paid') continue;
+      hasReal[rRows[ri][1]+'|'+rRows[ri][2]] = true;
+    }
+
+    var byKUA = {}, kuaSet = new Set();
+    // Pass 1: Realisasi
+    for (var ri2=1; ri2<rRows.length; ri2++) {
+      if (rRows[ri2][4]!=data.year) continue;
+      var n2 = normalizeStatus(rRows[ri2][8]);
+      if (n2!=='Approved'&&n2!=='Paid') continue;
+      kuaSet.add(rRows[ri2][1]);
+      _agregateRealisasiRowDetail(rRows[ri2], byKUA, ap.apCfg, ap.apNom, apMode);
+    }
+    // Pass 2: RPD fallback untuk (kua, month) tanpa Realisasi
+    for (var rpi=1; rpi<rpdRows.length; rpi++) {
+      if (rpdRows[rpi][3]!=data.year) continue;
+      var rpKey = rpdRows[rpi][1]+'|'+rpdRows[rpi][2];
+      if (hasReal[rpKey]) continue;
+      kuaSet.add(rpdRows[rpi][1]);
+      _agregateRPDRowDetail(rpdRows[rpi], byKUA);
+    }
+
+    var sortedKUAs = Array.from(kuaSet).sort();
+    if (!sortedKUAs.length) return errorResponse('Tidak ada data untuk tahun '+data.year);
+    var apLabel = apMode==='include'?'INCLUDE AP':'EXCLUDE AP';
+    var title   = 'REALISASI+RPD FALLBACK DETAIL - '+apLabel+' - TAHUN '+data.year;
+    var slug    = 'Fallback_Detail_'+data.year+'_'+apMode;
+    if (data.format==='pdf') return _exportRPDDetailPDF(byKUA, sortedKUAs, title, slug);
+    return _exportRPDDetailExcel(byKUA, sortedKUAs, title, slug);
+  } catch(err) {
+    Logger.log('[FALLBACK_DETAIL_YEAR ERR] '+err.toString());
+    return errorResponse('Gagal export: '+err.toString());
+  }
+}
+
+// ── EXPORT FALLBACK DETAIL MONTH (mode Bulanan) ────────────────────────────────
+function exportFallbackDetailMonth(data) {
+  Logger.log('[FALLBACK_DETAIL_MONTH] year='+data.year+' month='+data.month+' format='+data.format+' apMode='+(data.apMode||'exclude'));
+  try {
+    var rRows   = getSheet(SHEETS.REALISASI).getDataRange().getValues();
+    var rpdRows = getSheet(SHEETS.RPD).getDataRange().getValues();
+    var apMode  = data.apMode || 'exclude';
+    var ap      = _loadAPData(data.year);
+
+    // Cek kua mana yang punya Realisasi di bulan ini
+    var hasReal = {};
+    for (var ri=1; ri<rRows.length; ri++) {
+      if (rRows[ri][4]!=data.year || rRows[ri][2]!=data.month) continue;
+      var norm = normalizeStatus(rRows[ri][8]);
+      if (norm!=='Approved'&&norm!=='Paid') continue;
+      hasReal[rRows[ri][1]] = true;
+    }
+
+    var byKUA = {}, kuaSet = new Set();
+    // Pass 1: Realisasi bulan ini
+    for (var ri2=1; ri2<rRows.length; ri2++) {
+      if (rRows[ri2][4]!=data.year || rRows[ri2][2]!=data.month) continue;
+      var n2 = normalizeStatus(rRows[ri2][8]);
+      if (n2!=='Approved'&&n2!=='Paid') continue;
+      kuaSet.add(rRows[ri2][1]);
+      _agregateRealisasiRowDetail(rRows[ri2], byKUA, ap.apCfg, ap.apNom, apMode);
+    }
+    // Pass 2: RPD fallback untuk KUA tanpa Realisasi bulan ini
+    for (var rpi=1; rpi<rpdRows.length; rpi++) {
+      if (rpdRows[rpi][3]!=data.year || rpdRows[rpi][2]!=data.month) continue;
+      if (hasReal[rpdRows[rpi][1]]) continue;
+      kuaSet.add(rpdRows[rpi][1]);
+      _agregateRPDRowDetail(rpdRows[rpi], byKUA);
+    }
+
+    var sortedKUAs = Array.from(kuaSet).sort();
+    if (!sortedKUAs.length) return errorResponse('Tidak ada data untuk '+data.month+' '+data.year);
+    var apLabel = apMode==='include'?'INCLUDE AP':'EXCLUDE AP';
+    var title   = 'REALISASI+RPD FALLBACK DETAIL - '+apLabel+' - '+data.month+' '+data.year;
+    var slug    = 'Fallback_Detail_'+data.year+'_'+data.month+'_'+apMode;
+    if (data.format==='pdf') return _exportRPDDetailPDF(byKUA, sortedKUAs, title, slug);
+    return _exportRPDDetailExcel(byKUA, sortedKUAs, title, slug);
+  } catch(err) {
+    Logger.log('[FALLBACK_DETAIL_MONTH ERR] '+err.toString());
+    return errorResponse('Gagal export: '+err.toString());
+  }
 }

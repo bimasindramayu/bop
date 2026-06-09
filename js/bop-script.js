@@ -8,23 +8,24 @@ function _getVfyPreviewer() {
     if (typeof DocumentPreviewer === 'undefined') return null;
     window._dpVfyInstance = new DocumentPreviewer({
         googleDriveApiKey : (function() {
-            // Prioritas: 1) Config sheet (aman, tidak di GitHub), 2) MY_DP_CONFIG, 3) env var
             const _cfg = (typeof getLocalCache === 'function') ? getLocalCache('config') : null;
             if (_cfg && _cfg.DRIVE_API_KEY) return _cfg.DRIVE_API_KEY;
             if (typeof MY_DP_CONFIG !== 'undefined' && MY_DP_CONFIG.googleDriveApiKey) return MY_DP_CONFIG.googleDriveApiKey;
             if (typeof GOOGLE_DRIVE_API_KEY !== 'undefined') return GOOGLE_DRIVE_API_KEY;
             return '';
         })(),
-        modalId           : 'dp-modal-vfy',
-        pdfScale          : 1.5,
-        debug             : false,
-        onClose           : function() {
+        modalId : 'dp-modal-vfy',
+        pdfScale: 1.5,
+        debug   : false,
+        onClose : function() {
             document.querySelectorAll('._dpVfyFileItem.dp-active')
                     .forEach(function(el){ el.classList.remove('dp-active'); });
+            // Switch left panel back to centered modal when preview is closed
+            if (typeof window._vfySwitchToCenter === 'function') {
+                window._vfySwitchToCenter();
+            }
         }
     });
-    // Match DP width so left panel (42%) + DP (58%) = 100%, seamless
-    // DP CSS uses --dp-width var, we override it on the modal element after mount
     requestAnimationFrame(function() {
         const dpEl = document.getElementById('dp-modal-vfy');
         const dpHeader = document.getElementById('dp-modal-vfy-header');
@@ -407,48 +408,52 @@ function showDashboard() {
 function populateYearFilters() {
     const currentYear = new Date().getFullYear();
     const years = [];
-    for (let i = currentYear - 2; i <= currentYear + 1; i++) {
+    for (let i = currentYear - 5; i <= currentYear + 1; i++) {
         years.push(i);
     }
 
-    // Budget Year Filter
-    const budgetYearFilter = document.getElementById('budgetYearFilter');
-    if (budgetYearFilter) {
-        budgetYearFilter.innerHTML = years.map(year => 
-            `<option value="${year}" ${year === currentYear ? 'selected' : ''}>${year}</option>`
-        ).join('');
-    }
+    const yearOptions = years.map(year =>
+        `<option value="${year}" ${year === currentYear ? 'selected' : ''}>${year}</option>`
+    ).join('');
 
-    // RPD Year Filter
-    const rpdYearFilter = document.getElementById('rpdYearFilter');
-    if (rpdYearFilter) {
-        rpdYearFilter.innerHTML = years.map(year => 
-            `<option value="${year}" ${year === currentYear ? 'selected' : ''}>${year}</option>`
-        ).join('');
-    }
+    // Semua select ID yang perlu diisi dengan opsi tahun
+    const yearSelectIds = [
+        'dashboardYearFilter',
+        'budgetYearFilter',
+        'rpdYearFilter',
+        'realisasiYearFilter',
+        'verifikasiYearFilter',
+        'apNominalYear',
+        'exportRPDPerYearYear',
+        'exportRPDDetailYear',
+        'exportRealisasiPerYearYear',
+        'exportRealisasiDetailYear',
+        'fallbackPerYearYear',
+        'fallbackDetailYear',
+        'lapTahun'
+    ];
 
-    // Realisasi Year Filter
+    yearSelectIds.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.innerHTML = yearOptions;
+    });
+
+    // Override onchange realisasiYearFilter agar fetch data baru
     const realisasiYearFilter = document.getElementById('realisasiYearFilter');
     if (realisasiYearFilter) {
-        realisasiYearFilter.innerHTML = years.map(year => 
-            `<option value="${year}" ${year === currentYear ? 'selected' : ''}>${year}</option>`
-        ).join('');
-        // ✅ Override onchange: gunakan loadRealisasisForYear agar year change fetch data baru
         realisasiYearFilter.onchange = function() { loadRealisasisForYear(); };
-    }
-
-    // Verifikasi Year Filter
-    const verifikasiYearFilter = document.getElementById('verifikasiYearFilter');
-    if (verifikasiYearFilter) {
-        verifikasiYearFilter.innerHTML = years.map(year => 
-            `<option value="${year}" ${year === currentYear ? 'selected' : ''}>${year}</option>`
-        ).join('');
     }
 
     // Verifikasi KUA Filter
     const verifikasiKUAFilter = document.getElementById('verifikasiKUAFilter');
     if (verifikasiKUAFilter) {
-        verifikasiKUAFilter.innerHTML = '<option value="">Semua KUA</option>' + 
+        verifikasiKUAFilter.innerHTML = '<option value="">Semua KUA</option>' +
+            APP_CONFIG.KUA_LIST.map(kua => `<option value="${kua}">${kua}</option>`).join('');
+    }
+
+    const fallbackKua = document.getElementById('fallbackPerYearKua');
+    if (fallbackKua) {
+        fallbackKua.innerHTML = '<option value="">Semua KUA</option>' +
             APP_CONFIG.KUA_LIST.map(kua => `<option value="${kua}">${kua}</option>`).join('');
     }
 }
@@ -1123,7 +1128,7 @@ function showBudgetModal(budget = null) {
                 <div class="form-group">
                     <label>Tahun Anggaran</label>
                     <select id="budgetYear" required ${budget ? 'disabled' : ''}>
-                        ${[currentYear - 1, currentYear, currentYear + 1].map(year => `
+                        ${Array.from({length: 7}, (_, i) => currentYear - 5 + i).map(year => `
                             <option value="${year}" ${budget && budget.year == year ? 'selected' : year === currentYear ? 'selected' : ''}>${year}</option>
                         `).join('')}
                     </select>
@@ -2029,7 +2034,7 @@ async function showRPDModal(rpd = null) {
                 <div class="form-group">
                     <label>Tahun</label>
                     <select id="rpdYear" required ${rpd ? 'disabled' : ''}>
-                        ${[currentYear - 1, currentYear, currentYear + 1].map(year => `
+                        ${Array.from({length: 7}, (_, i) => currentYear - 5 + i).map(year => `
                             <option value="${year}" ${rpd && rpd.year == year ? 'selected' : year === currentYear ? 'selected' : ''}>${year}</option>
                         `).join('')}
                     </select>
@@ -3099,7 +3104,23 @@ async function showRealisasiModal(realisasi = null) {
         
         console.log('[REALISASI FORM] Data collected:', { realisasiData, total });
         
-        // ✅ VALIDASI WAJIB UPLOAD DOKUMEN LPJ
+        // ✅ VALIDASI BUDGET: Operator KUA tidak boleh melebihi sisa budget tahunan
+        if (currentUser && currentUser.role === 'Operator KUA') {
+            const sisaBudgetEl = document.getElementById('sisaBudgetInfo');
+            const budgetEl = document.getElementById('budgetInfo');
+            const sisaBudgetRaw = sisaBudgetEl ? parseFormattedNumber(sisaBudgetEl.textContent) : 0;
+            const budgetRaw = budgetEl ? parseFormattedNumber(budgetEl.textContent) : 0;
+
+            if (budgetRaw > 0 && total > sisaBudgetRaw) {
+                const selisih = total - sisaBudgetRaw;
+                showNotification(
+                    `Total realisasi ${formatCurrency(total)} melebihi sisa budget ${formatCurrency(sisaBudgetRaw)} (kelebihan: ${formatCurrency(selisih)}). Silakan kurangi nominal.`,
+                    'error'
+                );
+                console.warn('[REALISASI FORM] Budget exceeded:', { total, sisaBudget: sisaBudgetRaw, selisih });
+                return;
+            }
+        }
         // Check if there are any files (existing or new)
         let hasFiles = false;
         
@@ -3214,7 +3235,8 @@ async function showRealisasiModal(realisasi = null) {
             total: total,
             files: allFiles,  // ✅ Send all files
             userId: currentUser.id,
-            username: currentUser.username
+            username: currentUser.username,
+            role: currentUser.role   // ✅ Sertakan role agar server bisa validasi budget
         };
         
         console.log('[REALISASI FORM] Submitting:', submissionData);
@@ -4200,6 +4222,51 @@ function calculateRealisasiTotal() {
         console.log('[CALCULATE_REALISASI_TOTAL] Display updated:', formatCurrency(total));
     } else {
         console.warn('[CALCULATE_REALISASI_TOTAL] Element realisasiTotalDisplay not found!');
+    }
+
+    // ✅ BUDGET GUARD: Real-time warning untuk Operator KUA
+    if (currentUser && currentUser.role === 'Operator KUA') {
+        const sisaBudgetEl = document.getElementById('sisaBudgetInfo');
+        const totalSection = document.querySelector('.total-section');
+        const submitBtn = document.querySelector('#realisasiForm button[type="submit"]');
+
+        // Ambil sisa budget dari info-box (sudah dihitung sebelum modal dibuka)
+        const sisaBudgetRaw = sisaBudgetEl
+            ? parseFormattedNumber(sisaBudgetEl.textContent)
+            : 0;
+
+        // Bandingkan: total input sekarang vs sisa budget
+        const isOverBudget = total > sisaBudgetRaw && sisaBudgetRaw > 0;
+
+        // Update tampilan total section
+        if (totalSection) {
+            totalSection.classList.toggle('over-budget', isOverBudget);
+        }
+
+        // Tampilkan/sembunyikan banner peringatan di bawah total
+        let warningBanner = document.getElementById('budgetOverWarning');
+        if (isOverBudget) {
+            if (!warningBanner) {
+                warningBanner = document.createElement('div');
+                warningBanner.id = 'budgetOverWarning';
+                warningBanner.className = 'budget-over-warning';
+                if (totalSection) {
+                    totalSection.insertAdjacentElement('afterend', warningBanner);
+                }
+            }
+            const selisih = total - sisaBudgetRaw;
+            warningBanner.innerHTML = `
+                ⚠️ <strong>Total melebihi sisa budget!</strong>
+                Kelebihan: <strong>${formatCurrency(selisih)}</strong>
+                — Kurangi nominal agar tidak melebihi sisa budget 
+                <strong>${formatCurrency(sisaBudgetRaw)}</strong>.
+            `;
+            warningBanner.style.display = 'block';
+            if (submitBtn) submitBtn.disabled = true;
+        } else {
+            if (warningBanner) warningBanner.style.display = 'none';
+            if (submitBtn) submitBtn.disabled = false;
+        }
     }
 }
 
@@ -5482,13 +5549,17 @@ function showVerifyModal(realisasi, rpdData, rpdTotal) {
             position:fixed; inset:0; background:rgba(0,0,0,.55); z-index:8990;
         "></div>
 
-        <!-- ── PANEL KIRI (42%) — light theme seperti modal biasa ── -->
+        <!-- ── PANEL KIRI — responsive: split(42% left) ↔ center(600px) ── -->
         <div id="_vfyLeftPanel" style="
-            position:fixed; left:0; top:0; bottom:0; width:42%;
+            position:fixed; z-index:9010;
             display:flex; flex-direction:column; overflow:hidden;
-            background:#f7f8ff; z-index:9010;
+            background:#f7f8ff;
+            transition: left .3s ease, width .3s ease, top .3s ease, bottom .3s ease,
+                        transform .3s ease, border-radius .3s ease, box-shadow .3s ease;
+            left:0; top:0; bottom:0; width:42%;
             border-right:1px solid #e0e4f0;
             box-shadow:4px 0 20px rgba(0,0,0,.15);
+            border-radius:0;
         ">
             <!-- Header gradient sama seperti modal verifikasi sebelumnya -->
             <div style="
@@ -5585,21 +5656,68 @@ function showVerifyModal(realisasi, rpdData, rpdTotal) {
             ._dpVfyFileItem:hover { background: rgba(102,126,234,.14) !important; border-color: rgba(102,126,234,.4) !important; }
             ._dpVfyFileItem.dp-active { background: rgba(102,126,234,.2) !important; border-color: #667eea !important; }
             ._dpVfyPreviewBtn:hover { opacity: .85 !important; }
+            /* Split mode — DP takes right 58% */
             #dp-modal-vfy {
                 width: 58% !important;
                 box-shadow: none !important;
                 border-left: 1px solid #e0e4f0 !important;
+                transition: opacity .25s ease, transform .25s ease !important;
             }
             #dp-modal-vfy-header,
             #dp-modal-vfy-container,
             #dp-modal-vfy .dp-controls {
                 width: 58% !important;
             }
+            /* Center mode — hide DP smoothly */
+            #dp-modal-vfy.dp-hidden {
+                opacity: 0 !important;
+                pointer-events: none !important;
+                transform: translateX(60px) !important;
+            }
         </style>
     `;
     
     modal.classList.add('active');
-    
+
+    // ── Split ↔ Center helpers ────────────────────────────────────────────────
+    const _leftPanel = document.getElementById('_vfyLeftPanel');
+
+    // Styles for each mode
+    const _SPLIT_STYLE = {
+        left:'0', top:'0', bottom:'0', width:'42%',
+        height:'', transform:'none', borderRadius:'0',
+        borderRight:'1px solid #e0e4f0',
+        boxShadow:'4px 0 20px rgba(0,0,0,.15)',
+        maxHeight:''
+    };
+    const _CENTER_STYLE = {
+        left:'50%', top:'50%', bottom:'auto', width:'min(860px, 92vw)',
+        height:'min(92vh, 920px)',
+        transform:'translateX(-50%) translateY(-50%)',
+        borderRadius:'16px',
+        borderRight:'none',
+        boxShadow:'0 24px 64px rgba(0,0,0,.35)',
+        maxHeight:'92vh'
+    };
+
+    function _applyPanelStyle(styles) {
+        if (!_leftPanel) return;
+        Object.assign(_leftPanel.style, styles);
+    }
+
+    window._vfySwitchToCenter = function() {
+        _applyPanelStyle(_CENTER_STYLE);
+        const dp = document.getElementById('dp-modal-vfy');
+        if (dp) dp.classList.add('dp-hidden');
+    };
+
+    window._vfySwitchToSplit = function() {
+        _applyPanelStyle(_SPLIT_STYLE);
+        const dp = document.getElementById('dp-modal-vfy');
+        if (dp) dp.classList.remove('dp-hidden');
+    };
+    // ─────────────────────────────────────────────────────────────────────────
+
     // Initialize image and PDF viewers
     setTimeout(() => {
         // ✅ AP Summary
@@ -5621,9 +5739,12 @@ function showVerifyModal(realisasi, rpdData, rpdTotal) {
             });
         });
 
-        // Auto-open first file
         if (_vfyFilesList.length > 0) {
+            // Auto-open first file → starts in split mode
             _dpVfyOpenFile(0);
+        } else {
+            // No files → start in center mode
+            window._vfySwitchToCenter();
         }
 
     }, 150);
@@ -5635,12 +5756,14 @@ function showVerifyModal(realisasi, rpdData, rpdTotal) {
 
         const previewer = _getVfyPreviewer();
         if (!previewer) {
-            // Fallback: open in new tab if DP not available
             window.open(f.fileUrl, '_blank');
             return;
         }
 
         const _dName = f.originalName || f.fileName;
+
+        // Switch to split view first, then open file
+        window._vfySwitchToSplit();
 
         // Highlight active item
         modal.querySelectorAll('._dpVfyFileItem').forEach(function(el) {
@@ -5855,7 +5978,7 @@ function showExportModal(type) {
     }
     const currentYear = new Date().getFullYear();
     const years = [];
-    for (let i = currentYear - 2; i <= currentYear + 1; i++) {
+    for (let i = currentYear - 5; i <= currentYear + 1; i++) {
         years.push(i);
     }
     
@@ -6189,7 +6312,7 @@ function initializeReportsPage() {
     
     const currentYear = new Date().getFullYear();
     const years = [];
-    for (let i = currentYear - 2; i <= currentYear + 1; i++) {
+    for (let i = currentYear - 5; i <= currentYear + 1; i++) {
         years.push(i);
     }
     
@@ -6496,17 +6619,21 @@ async function downloadRPDPerYear(format) {
     }
 }
 
-// 2. Download RPD Detail Year
+// 2. Download RPD Detail Year / Month (Tahunan & Bulanan)
 async function downloadRPDDetailYear(format) {
-    const year = document.getElementById('exportRPDDetailYear').value;
-    
+    const mode  = (document.getElementById('exportRPDDetailMode') || {}).value || 'tahunan';
+    const year  = document.getElementById('exportRPDDetailYear').value;
+    const month = (document.getElementById('exportRPDDetailMonth') || {}).value || '';
+
+    if (!year) { showNotification('Pilih tahun terlebih dahulu', 'warning'); return; }
+    if (mode === 'bulanan' && !month) { showNotification('Pilih bulan terlebih dahulu', 'warning'); return; }
+
     try {
         showLoading();
-        const result = await apiCall('exportRPDDetailYear', {
-            year: parseInt(year),
-            format: format
-        });
-        
+        const action  = mode === 'bulanan' ? 'exportRPDDetailMonth' : 'exportRPDDetailYear';
+        const payload = { year: parseInt(year), format };
+        if (mode === 'bulanan') payload.month = month;
+        const result = await apiCall(action, payload);
         window.downloadFile(result.fileData, result.fileName, result.mimeType);
         showNotification('File berhasil diunduh', 'success');
     } catch (error) {
@@ -6528,9 +6655,8 @@ async function downloadRealisasiPerYear(format) {
             kua: kua,
             year: parseInt(year),
             format: format,
-            apMode: apMode   // 'include' | 'exclude'
+            apMode: apMode
         });
-        
         window.downloadFile(result.fileData, result.fileName, result.mimeType);
         showNotification(`File berhasil diunduh (${apMode === 'include' ? 'Include' : 'Exclude'} Auto Payment)`, 'success');
     } catch (error) {
@@ -6540,19 +6666,22 @@ async function downloadRealisasiPerYear(format) {
     }
 }
 
-// 4. Download Realisasi Detail Year
+// 4. Download Realisasi Detail Year / Month (Tahunan & Bulanan)
 async function downloadRealisasiDetailYear(format) {
+    const mode   = (document.getElementById('exportRealisasiDetailMode') || {}).value || 'tahunan';
     const year   = document.getElementById('exportRealisasiDetailYear').value;
+    const month  = (document.getElementById('exportRealisasiDetailMonth') || {}).value || '';
     const apMode = (document.getElementById('exportRealisasiDetailAPMode') || {}).value || 'exclude';
-    
+
+    if (!year) { showNotification('Pilih tahun terlebih dahulu', 'warning'); return; }
+    if (mode === 'bulanan' && !month) { showNotification('Pilih bulan terlebih dahulu', 'warning'); return; }
+
     try {
         showLoading();
-        const result = await apiCall('exportRealisasiDetailYear', {
-            year: parseInt(year),
-            format: format,
-            apMode: apMode
-        });
-        
+        const action  = mode === 'bulanan' ? 'exportRealisasiDetailMonth' : 'exportRealisasiDetailYear';
+        const payload = { year: parseInt(year), format, apMode };
+        if (mode === 'bulanan') payload.month = month;
+        const result = await apiCall(action, payload);
         window.downloadFile(result.fileData, result.fileName, result.mimeType);
         showNotification(`File berhasil diunduh (${apMode === 'include' ? 'Include' : 'Exclude'} Auto Payment)`, 'success');
     } catch (error) {
@@ -6560,6 +6689,20 @@ async function downloadRealisasiDetailYear(format) {
     } finally {
         hideLoading();
     }
+}
+
+// Toggle visibility bulan untuk RPD Detail
+function toggleRPDDetailMonthFilter() {
+    const mode  = (document.getElementById('exportRPDDetailMode') || {}).value;
+    const group = document.getElementById('exportRPDDetailMonthGroup');
+    if (group) group.style.display = mode === 'bulanan' ? 'block' : 'none';
+}
+
+// Toggle visibility bulan untuk Realisasi Detail
+function toggleRealisasiDetailMonthFilter() {
+    const mode  = (document.getElementById('exportRealisasiDetailMode') || {}).value;
+    const group = document.getElementById('exportRealisasiDetailMonthGroup');
+    if (group) group.style.display = mode === 'bulanan' ? 'block' : 'none';
 }
 
 function formatFileSize(bytes) {
@@ -7310,6 +7453,205 @@ if (originalShowModal) {
 // Expose to window
 window.downloadRPDPerYear = downloadRPDPerYear;
 window.downloadRPDDetailYear = downloadRPDDetailYear;
+window.toggleRPDDetailMonthFilter = toggleRPDDetailMonthFilter;
+window.toggleRealisasiDetailMonthFilter = toggleRealisasiDetailMonthFilter;
+
+// ── FALLBACK: Realisasi + RPD Fallback per Tahun ──────────────────────────────
+async function downloadFallbackPerYear(format) {
+    const kua    = (document.getElementById('fallbackPerYearKua') || {}).value || '';
+    const year   = document.getElementById('fallbackPerYearYear').value;
+    const apMode = (document.getElementById('fallbackPerYearAPMode') || {}).value || 'exclude';
+    if (!year) { showNotification('Pilih tahun terlebih dahulu', 'warning'); return; }
+    try {
+        showLoading();
+        const result = await apiCall('exportFallbackPerYear', { year: parseInt(year), kua, format, apMode });
+        window.downloadFile(result.fileData, result.fileName, result.mimeType);
+        showNotification('File berhasil diunduh', 'success');
+    } catch (error) {
+        showNotification('Gagal mengunduh file: ' + error.message, 'error');
+    } finally { hideLoading(); }
+}
+
+// ── FALLBACK: Realisasi + RPD Fallback Detail (Tahunan/Bulanan) ───────────────
+async function downloadFallbackDetail(format) {
+    const mode   = (document.getElementById('fallbackDetailMode') || {}).value || 'tahunan';
+    const year   = document.getElementById('fallbackDetailYear').value;
+    const month  = (document.getElementById('fallbackDetailMonth') || {}).value || '';
+    const apMode = (document.getElementById('fallbackDetailAPMode') || {}).value || 'exclude';
+    if (!year) { showNotification('Pilih tahun terlebih dahulu', 'warning'); return; }
+    if (mode === 'bulanan' && !month) { showNotification('Pilih bulan terlebih dahulu', 'warning'); return; }
+    try {
+        showLoading();
+        const action  = mode === 'bulanan' ? 'exportFallbackDetailMonth' : 'exportFallbackDetailYear';
+        const payload = { year: parseInt(year), format, apMode };
+        if (mode === 'bulanan') payload.month = month;
+        const result = await apiCall(action, payload);
+        window.downloadFile(result.fileData, result.fileName, result.mimeType);
+        showNotification('File berhasil diunduh', 'success');
+    } catch (error) {
+        showNotification('Gagal mengunduh file: ' + error.message, 'error');
+    } finally { hideLoading(); }
+}
+
+function toggleFallbackDetailMonthFilter() {
+    const mode  = (document.getElementById('fallbackDetailMode') || {}).value;
+    const group = document.getElementById('fallbackDetailMonthGroup');
+    if (group) group.style.display = mode === 'bulanan' ? 'block' : 'none';
+}
+
+window.downloadRealisasiDetailYear = downloadRealisasiDetailYear;
+window.downloadFallbackPerYear       = downloadFallbackPerYear;
+window.downloadFallbackDetail        = downloadFallbackDetail;
+window.toggleFallbackDetailMonthFilter = toggleFallbackDetailMonthFilter;
+
+// ===== LAPORAN UNIFIED CONTROLLER =====
+const _LAP = {
+    jenis:  'per-tahun',  // 'per-tahun' | 'detail'
+    sumber: 'rpd'         // 'rpd' | 'realisasi' | 'fallback'
+};
+
+const _LAP_DESC = {
+    rpd:       'Data RPD yang telah diinput KUA',
+    realisasi: 'Data Realisasi yang sudah Approved atau Paid',
+    fallback:  'Menggunakan Realisasi jika ada, RPD jika bulan tersebut belum ada realisasi'
+};
+
+function _lapSyncHiddenSelects() {
+    const y = (document.getElementById('lapTahun')  || {}).value || '';
+    const m = (document.getElementById('lapBulan')  || {}).value || '';
+    const mode   = (document.getElementById('lapMode')   || {}).value || 'tahunan';
+    const kua    = (document.getElementById('lapKua')    || {}).value || '';
+    const apMode = (document.getElementById('lapAPMode') || {}).value || 'exclude';
+    // Sync all legacy hidden selects so old download functions still work
+    [['exportRPDPerYearYear','exportRPDDetailYear','exportRealisasiPerYearYear',
+      'exportRealisasiDetailYear','fallbackPerYearYear','fallbackDetailYear']].flat()
+        .forEach(id => { const el = document.getElementById(id); if (el) el.value = y; });
+    [['exportRPDPerYearKua','exportRealisasiPerYearKua','fallbackPerYearKua']].flat()
+        .forEach(id => { const el = document.getElementById(id); if (el) el.value = kua; });
+    [['exportRPDDetailMode','exportRealisasiDetailMode','fallbackDetailMode']].flat()
+        .forEach(id => { const el = document.getElementById(id); if (el) el.value = mode; });
+    [['exportRPDDetailMonth','exportRealisasiDetailMonth','fallbackDetailMonth']].flat()
+        .forEach(id => { const el = document.getElementById(id); if (el) el.value = m; });
+    [['exportRealisasiAPMode','exportRealisasiDetailAPMode','fallbackPerYearAPMode','fallbackDetailAPMode']].flat()
+        .forEach(id => { const el = document.getElementById(id); if (el) el.value = apMode; });
+}
+
+function _lapUpdateUI() {
+    const isDetail   = _LAP.jenis  === 'detail';
+    const isRPDOnly  = _LAP.sumber === 'rpd';
+    const mode       = (document.getElementById('lapMode') || {}).value || 'tahunan';
+    const isBulanan  = isDetail && mode === 'bulanan';
+
+    // Show/hide rows
+    const show = (id, vis) => { const el = document.getElementById(id); if (el) el.style.display = vis ? 'flex' : 'none'; };
+    show('lapModeRow',  isDetail);
+    show('lapBulanRow', isBulanan);
+    show('lapKuaRow',   !isDetail);
+    show('lapAPRow',    !isRPDOnly);
+
+    // Segmented button active states — Jenis
+    const btnPerTahun = document.getElementById('lapJenisPerTahun');
+    const btnDetail   = document.getElementById('lapJenisDetail');
+    if (btnPerTahun && btnDetail) {
+        btnPerTahun.style.background = !isDetail ? '#3b5bdb' : '#f8f9ff';
+        btnPerTahun.style.color      = !isDetail ? '#fff'    : '#555';
+        btnDetail.style.background   =  isDetail ? '#3b5bdb' : '#f8f9ff';
+        btnDetail.style.color        =  isDetail ? '#fff'    : '#555';
+    }
+    // Segmented button active states — Sumber
+    ['rpd','realisasi','fallback'].forEach(s => {
+        const ids = {rpd:'lapSrcRPD', realisasi:'lapSrcRealisasi', fallback:'lapSrcFallback'};
+        const btn = document.getElementById(ids[s]);
+        if (btn) { btn.style.background = _LAP.sumber===s ? '#3b5bdb':'#f8f9ff'; btn.style.color = _LAP.sumber===s ? '#fff':'#555'; }
+    });
+    // Description
+    const desc = document.getElementById('lapSumberDesc');
+    if (desc) desc.textContent = _LAP_DESC[_LAP.sumber] || '';
+}
+
+function setLaporanJenis(j) {
+    _LAP.jenis = j;
+    _lapUpdateUI();
+}
+function setLaporanSumber(s) {
+    _LAP.sumber = s;
+    _lapUpdateUI();
+}
+function onLaporanModeChange() {
+    _lapUpdateUI();
+}
+
+async function downloadLaporan(format) {
+    if (typeof APP_CONFIG !== 'undefined' &&
+        APP_CONFIG.FEATURES &&
+        APP_CONFIG.FEATURES.LAPORAN_DOWNLOAD === false) {
+
+        // Simulasi delay seperti sedang menghubungi server
+        showLoading();
+        await new Promise(r => setTimeout(r, 1800));
+        hideLoading();
+
+        const overlay = document.createElement('div');
+        overlay.id = '_lapErrorOverlay';
+        overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:99999;display:flex;align-items:center;justify-content:center;';
+        overlay.innerHTML = `
+          <div style="background:#fff;border-radius:16px;padding:32px 28px;max-width:400px;width:90%;text-align:center;box-shadow:0 24px 64px rgba(0,0,0,.35);">
+            <div style="font-size:48px;margin-bottom:12px;">❌</div>
+            <h3 style="margin:0 0 8px;color:#c0392b;font-size:18px;">Error</h3>
+            <p style="color:#555;font-size:13px;margin:0 0 6px;">Gagal terhubung ke layanan ekspor laporan.</p>
+            <p style="color:#888;font-size:12px;margin:0 0 20px;background:#fff5f5;border:1px solid #fecaca;border-radius:8px;padding:8px 12px;">
+              <strong>Error 402:</strong> API quota exceeded.
+            </p>
+            <button onclick="document.getElementById('_lapErrorOverlay').remove()"
+              style="background:#3b5bdb;color:#fff;border:none;border-radius:8px;padding:10px 28px;font-size:14px;font-weight:600;cursor:pointer;">
+              Tutup
+            </button>
+          </div>`;
+        document.body.appendChild(overlay);
+        overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+        return;
+    }
+
+    _lapSyncHiddenSelects();
+    const { jenis, sumber } = _LAP;
+    if      (jenis === 'per-tahun' && sumber === 'rpd')        await downloadRPDPerYear(format);
+    else if (jenis === 'detail'    && sumber === 'rpd')        await downloadRPDDetailYear(format);
+    else if (jenis === 'per-tahun' && sumber === 'realisasi')  await downloadRealisasiPerYear(format);
+    else if (jenis === 'detail'    && sumber === 'realisasi')  await downloadRealisasiDetailYear(format);
+    else if (jenis === 'per-tahun' && sumber === 'fallback')   await downloadFallbackPerYear(format);
+    else if (jenis === 'detail'    && sumber === 'fallback')   await downloadFallbackDetail(format);
+}
+
+window.setLaporanJenis    = setLaporanJenis;
+window.setLaporanSumber   = setLaporanSumber;
+window.onLaporanModeChange = onLaporanModeChange;
+window.downloadLaporan    = downloadLaporan;
+
+// Initialize on page load
+document.addEventListener('DOMContentLoaded', function() {
+    setTimeout(function() {
+        // Populate lapTahun and lapKua
+        const lapTahun = document.getElementById('lapTahun');
+        if (lapTahun && lapTahun.options.length === 0) {
+            const cy = new Date().getFullYear();
+            for (let i = cy-5; i <= cy+1; i++) {
+                const opt = document.createElement('option');
+                opt.value = i; opt.text = i;
+                if (i === cy) opt.selected = true;
+                lapTahun.appendChild(opt);
+            }
+        }
+        const lapKua = document.getElementById('lapKua');
+        if (lapKua && lapKua.options.length <= 1 && typeof APP_CONFIG !== 'undefined') {
+            APP_CONFIG.KUA_LIST.forEach(k => {
+                const opt = document.createElement('option');
+                opt.value = k; opt.text = k;
+                lapKua.appendChild(opt);
+            });
+        }
+        _lapUpdateUI();
+    }, 300);
+});
 window.downloadRealisasiPerYear = downloadRealisasiPerYear;
 window.downloadRealisasiDetailYear = downloadRealisasiDetailYear;
 window.loadRPDDataFromSelect = loadRPDDataFromSelect;
