@@ -231,17 +231,17 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:#f0f2f5;color:#1a1a1
     <div class="field"><label>Nama Perusahaan</label><input type="text" id="fromCompany" value="NexaAPI Inc."/></div>
     <div class="field"><label>Website</label><input type="text" id="fromWeb" value="nexaapi.com"/></div>
     <div class="field"><label>Email</label><input type="text" id="fromEmail" value="billing@nexaapi.com"/></div>
-    <div class="field"><label>Telepon</label><input type="text" id="fromPhone" value="+62 21 5005-8888"/></div>
+    <!-- <div class="field"><label>Telepon</label><input type="text" id="fromPhone" value="+62 21 5005-8888"/></div> -->
     <div class="field"><label>Alamat</label><textarea id="fromAddr">Jl. Sudirman No. 88, Jakarta Selatan DKI Jakarta 12190, Indonesia</textarea></div>
 
     <hr class="divider"/>
     <h3>Info Klien (Bill To)</h3>
-    <div class="field"><label>Nama Perusahaan / Klien</label><input type="text" id="toCompany" value="PT Maju Bersama Digital"/></div>
-    <div class="field"><label>Nama Kontak</label><input type="text" id="toContact" value="Budi Santoso"/></div>
-    <div class="field"><label>Email</label><input type="text" id="toEmail" value="budi@majudigital.co.id"/></div>
-    <div class="field"><label>Telepon</label><input type="text" id="toPhone" value="+62 812-3456-7890"/></div>
-    <div class="field"><label>Alamat</label><textarea id="toAddr">Jl. Gatot Subroto Kav. 12
-Bandung 40111, Jawa Barat</textarea></div>
+    <div class="field"><label>Nama Perusahaan / Klien</label><input type="text" id="toCompany" value="Bimas Islam Indramayu"/></div>
+    <div class="field"><label>Nama Kontak</label><input type="text" id="toContact" value="Bimas Islam"/></div>
+    <div class="field"><label>Email</label><input type="text" id="toEmail" value="bimasindramayu@gmail.com"/></div>
+    <div class="field"><label>Telepon</label><input type="text" id="toPhone" value="+62812-3456-7890"/></div>
+    <div class="field"><label>Alamat</label><textarea id="toAddr">Jl. Olahraga No. 3, Karanganyar, Kec. Indramayu, Kabupaten
+Indramayu, Jawa Barat</textarea></div>
 
     <hr class="divider"/>
     <h3>Item / Layanan</h3>
@@ -268,10 +268,9 @@ Bandung 40111, Jawa Barat</textarea></div>
 
     <hr class="divider"/>
     <h3>Pembayaran</h3>
-    <div class="field"><label>Metode Pembayaran</label><input type="text" id="payMethod" value="Bank Transfer / PayPal"/></div>
+    <div class="field"><label>Metode Pembayaran</label><input type="text" id="payMethod" value="PayPal"/></div>
     <div class="field"><label>Detail Rekening / Akun</label>
-      <textarea id="payInfo">Bank BCA: 123-456-7890
-a/n NexaAPI Inc.
+      <textarea id="payInfo">a/n NexaAPI Inc.
 PayPal: billing@nexaapi.com</textarea>
     </div>
 
@@ -297,7 +296,7 @@ PayPal: billing@nexaapi.com</textarea>
 
 <script>
 var items = [
-  { name: "API Access — Starter Plan", desc: "500 API Hits / month · REST & WebSocket", qty: 1, price: 10 }
+  { name: "API Access — Basic Plan", desc: "500 API Hits / month · REST & WebSocket", qty: 1, price: 10 }
 ];
 
 function g(id) {

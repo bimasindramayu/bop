@@ -4,7 +4,7 @@
 
 const APP_CONFIG = {
     // API Configuration
-    SCRIPT_URL: 'https://script.google.com/macros/s/AKfycbyIpZ0p2wcbnkG5w2tE16m00Nxqd1575fTPBJBdslu-TeUYmrRW0t1iR0zBJfv2uDZp/exec',
+    SCRIPT_URL: 'https://script.google.com/macros/s/AKfycbxhvSlIhbnbM6D65XhNIaXTDkQvSAjAJDDDRq7f4Tm7YJMV2nhat_Dinb9zmiWpRRm9/exec',
 
     // KUA List
     KUA_LIST: [
@@ -104,7 +104,7 @@ const APP_CONFIG = {
 
     // Feature Flags
     FEATURES: {
-        LAPORAN_DOWNLOAD: false   // ← ganti T jika sudah membayar API
+        LAPORAN_DOWNLOAD: true,
     },
 
     // CAPTCHA Configuration
