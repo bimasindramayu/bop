@@ -3104,7 +3104,23 @@ async function showRealisasiModal(realisasi = null) {
         
         console.log('[REALISASI FORM] Data collected:', { realisasiData, total });
         
-        // ✅ VALIDASI WAJIB UPLOAD DOKUMEN LPJ
+        // ✅ VALIDASI BUDGET: Operator KUA tidak boleh melebihi sisa budget tahunan
+        if (currentUser && currentUser.role === 'Operator KUA') {
+            const sisaBudgetEl = document.getElementById('sisaBudgetInfo');
+            const budgetEl = document.getElementById('budgetInfo');
+            const sisaBudgetRaw = sisaBudgetEl ? parseFormattedNumber(sisaBudgetEl.textContent) : 0;
+            const budgetRaw = budgetEl ? parseFormattedNumber(budgetEl.textContent) : 0;
+
+            if (budgetRaw > 0 && total > sisaBudgetRaw) {
+                const selisih = total - sisaBudgetRaw;
+                showNotification(
+                    `Total realisasi ${formatCurrency(total)} melebihi sisa budget ${formatCurrency(sisaBudgetRaw)} (kelebihan: ${formatCurrency(selisih)}). Silakan kurangi nominal.`,
+                    'error'
+                );
+                console.warn('[REALISASI FORM] Budget exceeded:', { total, sisaBudget: sisaBudgetRaw, selisih });
+                return;
+            }
+        }
         // Check if there are any files (existing or new)
         let hasFiles = false;
         
@@ -3219,7 +3235,8 @@ async function showRealisasiModal(realisasi = null) {
             total: total,
             files: allFiles,  // ✅ Send all files
             userId: currentUser.id,
-            username: currentUser.username
+            username: currentUser.username,
+            role: currentUser.role   // ✅ Sertakan role agar server bisa validasi budget
         };
         
         console.log('[REALISASI FORM] Submitting:', submissionData);
@@ -4205,6 +4222,51 @@ function calculateRealisasiTotal() {
         console.log('[CALCULATE_REALISASI_TOTAL] Display updated:', formatCurrency(total));
     } else {
         console.warn('[CALCULATE_REALISASI_TOTAL] Element realisasiTotalDisplay not found!');
+    }
+
+    // ✅ BUDGET GUARD: Real-time warning untuk Operator KUA
+    if (currentUser && currentUser.role === 'Operator KUA') {
+        const sisaBudgetEl = document.getElementById('sisaBudgetInfo');
+        const totalSection = document.querySelector('.total-section');
+        const submitBtn = document.querySelector('#realisasiForm button[type="submit"]');
+
+        // Ambil sisa budget dari info-box (sudah dihitung sebelum modal dibuka)
+        const sisaBudgetRaw = sisaBudgetEl
+            ? parseFormattedNumber(sisaBudgetEl.textContent)
+            : 0;
+
+        // Bandingkan: total input sekarang vs sisa budget
+        const isOverBudget = total > sisaBudgetRaw && sisaBudgetRaw > 0;
+
+        // Update tampilan total section
+        if (totalSection) {
+            totalSection.classList.toggle('over-budget', isOverBudget);
+        }
+
+        // Tampilkan/sembunyikan banner peringatan di bawah total
+        let warningBanner = document.getElementById('budgetOverWarning');
+        if (isOverBudget) {
+            if (!warningBanner) {
+                warningBanner = document.createElement('div');
+                warningBanner.id = 'budgetOverWarning';
+                warningBanner.className = 'budget-over-warning';
+                if (totalSection) {
+                    totalSection.insertAdjacentElement('afterend', warningBanner);
+                }
+            }
+            const selisih = total - sisaBudgetRaw;
+            warningBanner.innerHTML = `
+                ⚠️ <strong>Total melebihi sisa budget!</strong>
+                Kelebihan: <strong>${formatCurrency(selisih)}</strong>
+                — Kurangi nominal agar tidak melebihi sisa budget 
+                <strong>${formatCurrency(sisaBudgetRaw)}</strong>.
+            `;
+            warningBanner.style.display = 'block';
+            if (submitBtn) submitBtn.disabled = true;
+        } else {
+            if (warningBanner) warningBanner.style.display = 'none';
+            if (submitBtn) submitBtn.disabled = false;
+        }
     }
 }
 
