@@ -45,6 +45,25 @@ function doPost(e) {
         result = updateRPDConfig(data);
         break;
       
+      // ── Quota Management ──────────────────────────────────────────
+      case 'getApiQuota':
+        result = getApiQuota(data);
+        break;
+
+      // ── Quota-tracked BOP Actions (decrement quota before executing)
+      case 'saveRealisasi':
+        result = withQuotaCheck(action, data, function() { return handleBOPAction(action, data); });
+        break;
+      case 'updateRealisasiStatus':   // ← verifikasi realisasi memakai action ini
+        result = withQuotaCheck(action, data, function() { return handleBOPAction(action, data); });
+        break;
+      case 'verifyRealisasi':
+        result = withQuotaCheck(action, data, function() { return handleBOPAction(action, data); });
+        break;
+      case 'deleteRealisasi':
+        result = withQuotaCheck(action, data, function() { return handleBOPAction(action, data); });
+        break;
+
       // BOP Actions
       case 'getBudgets':
       case 'saveBudget':
@@ -55,10 +74,6 @@ function doPost(e) {
       case 'saveRPD':
       case 'deleteRPD':
       case 'getRealisasis':
-      case 'saveRealisasi':
-      case 'deleteRealisasi':
-      case 'verifyRealisasi':
-      case 'updateRealisasiStatus':
       case 'uploadFile':
       case 'getDashboardStats':
       case 'exportBudget':
@@ -80,6 +95,11 @@ function doPost(e) {
       case 'exportRealisasiPerYear':
       case 'exportRealisasiDetailYear':
       case 'exportRealisasiDetailAllYear':
+      case 'exportRPDDetailMonth':
+      case 'exportRealisasiDetailMonth':
+      case 'exportFallbackPerYear':
+      case 'exportFallbackDetailYear':
+      case 'exportFallbackDetailMonth':
       case 'getAutoPaymentConfig':
       case 'saveAutoPaymentConfig':
       case 'getAutoPaymentNominal':

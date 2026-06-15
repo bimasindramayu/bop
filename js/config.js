@@ -4,7 +4,7 @@
 
 const APP_CONFIG = {
     // API Configuration
-    SCRIPT_URL: 'https://script.google.com/macros/s/AKfycbyIpZ0p2wcbnkG5w2tE16m00Nxqd1575fTPBJBdslu-TeUYmrRW0t1iR0zBJfv2uDZp/exec',
+    SCRIPT_URL: 'https://script.google.com/macros/s/AKfycbxzDAKxjxd99OyiX1Zxl69f4pIPdGUG_pRBWR9KobJsaulqmZk2JLnYdpUVF6tjaObQ/exec',
 
     // KUA List
     KUA_LIST: [
@@ -101,7 +101,12 @@ const APP_CONFIG = {
     
     // Debug Mode
     DEBUG_MODE: true,
-    
+
+    // Feature Flags
+    FEATURES: {
+        LAPORAN_DOWNLOAD: true,
+    },
+
     // CAPTCHA Configuration
     CAPTCHA: {
         ENABLED: true,  // Set false untuk menonaktifkan CAPTCHA
