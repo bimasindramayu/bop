@@ -258,6 +258,38 @@ function saveRealisasiEnhanced(data) {
           }
         }
         
+        // ✅ Validate: Nominal tidak boleh melebihi sisa budget tahunan (khusus Operator KUA)
+        if (data.role === 'Operator KUA' || !data.role || data.role !== 'Admin') {
+          try {
+            const budgetSheet  = getSheet(SHEETS.BUDGET);
+            const budgetRows   = budgetSheet.getDataRange().getValues();
+            let annualBudget   = 0;
+            for (let i = 1; i < budgetRows.length; i++) {
+              if (budgetRows[i][1] === data.kua && budgetRows[i][2] == data.year) {
+                annualBudget = parseFloat(budgetRows[i][3]) || 0;
+                break;
+              }
+            }
+            if (annualBudget > 0) {
+              const totalApprovedPaid = calculateTotalRealisasi(data.kua, data.year);
+              const sisaBudget        = annualBudget - totalApprovedPaid;
+              const incomingTotal     = parseFloat(data.total) || 0;
+              if (incomingTotal > sisaBudget) {
+                const selisih = incomingTotal - sisaBudget;
+                Logger.log('[SAVE_REALISASI_ENHANCED] ⛔ Budget exceeded: total=' + incomingTotal +
+                           ', sisa=' + sisaBudget + ', selisih=' + selisih);
+                return errorResponse(
+                  'Total realisasi (Rp ' + incomingTotal.toLocaleString('id-ID') + ') melebihi sisa budget tahunan ' +
+                  '(Rp ' + sisaBudget.toLocaleString('id-ID') + '). ' +
+                  'Kelebihan: Rp ' + selisih.toLocaleString('id-ID') + '.'
+                );
+              }
+            }
+          } catch (budgetErr) {
+            Logger.log('[SAVE_REALISASI_ENHANCED] Budget check error (non-fatal): ' + budgetErr.toString());
+          }
+        }
+        
         const id = 'REA-' + Date.now();
         
         // ✅ CORRECT COLUMN ORDER:
