@@ -1343,8 +1343,11 @@ function _updateExportButtons(count) {
 }
 
 /**
- * Download data yang sedang tampil di tabel (currentBMNData)
- * sebagai Excel atau PDF, dengan nama file sesuai filter aktif.
+ * Download data yang sedang tampil di tabel sebagai Excel atau PDF.
+ *
+ * PENTING: Tidak lagi mengirim array customData ke backend (rentan Logger overflow di GAS).
+ * Sebagai gantinya, kirim filter params saja → GAS query + filter dari sheet.
+ * Ini lebih andal, payload jauh lebih kecil, dan hasilnya konsisten dengan tampilan tabel.
  */
 async function exportCurrentData(format) {
     if (!currentBMNData || !currentBMNData.length) {
@@ -1355,12 +1358,30 @@ async function exportCurrentData(format) {
     const { label } = _buildActiveFilterDesc();
     const jumlah    = currentBMNData.length;
 
+    // Ambil nilai filter aktif saat ini
+    const fKUA     = document.getElementById('filterKUA')?.value     || '';
+    const fJenis   = document.getElementById('filterJenis')?.value   || '';
+    const fKondisi = document.getElementById('filterKondisi')?.value || '';
+    const fStatus  = document.getElementById('filterStatus')?.value  || '';
+    const q        = (document.getElementById('searchBMN')?.value || '').trim();
+
+    // Untuk user non-Admin, KUA-nya wajib masuk ke filter meski filterKUA tidak terlihat
+    const effectiveKUA = fKUA || (currentUser.role !== 'Admin' ? (currentUser.kua || '') : '');
+
     try {
         showLoading();
+        // ✅ Kirim FILTER PARAMS — bukan array data.
+        // GAS akan query ulang dari sheet dan menerapkan filter yang sama persis.
         const result = await apiCall('exportLaporanBMN', {
-            type:       'customData',
+            type:   'filtered',
             format,
-            customData: currentBMNData,
+            filters: {
+                kua:     effectiveKUA,
+                jenis:   fJenis,
+                kondisi: fKondisi,
+                status:  fStatus,
+                search:  q
+            },
             label,
             exportedBy: currentUser.name || currentUser.username
         });

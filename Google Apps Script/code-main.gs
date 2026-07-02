@@ -19,7 +19,15 @@ function doPost(e) {
     const action = data.action;
     
     Logger.log(`[${new Date().toISOString()}] Action: ${action}`);
-    Logger.log(`Data: ${JSON.stringify(data)}`);
+    // ✅ FIX: Jangan log seluruh payload — Logger GAS melempar Exception jika > ~8KB
+    // Akibatnya doPost gagal dan export mengembalikan semua data dari sheet
+    var _logSafe = { action: data.action };
+    if (data.type)    _logSafe.type    = data.type;
+    if (data.filters) _logSafe.filters = data.filters;
+    if (data.customData) _logSafe.customData_count = Array.isArray(data.customData) ? data.customData.length : '?';
+    if (data.kua)     _logSafe.kua     = data.kua;
+    if (data.format)  _logSafe.format  = data.format;
+    Logger.log('Payload summary: ' + JSON.stringify(_logSafe));
     
     let result;
     

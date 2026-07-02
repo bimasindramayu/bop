@@ -317,33 +317,77 @@ function uploadBMNPhoto(data) {
 
 // ===== EXPORT LAPORAN =====
 function exportLaporanBMN(data) {
-  Logger.log('[EXPORT_BMN] type=' + data.type + ' format=' + data.format + ' kua=' + (data.kua||'ALL'));
+  Logger.log('[EXPORT_BMN] type=' + data.type + ' format=' + data.format);
   try {
     var rows  = [];
-    var label = '';
+    var label = data.label || 'Data BMN';
 
-    // ── customData: data sudah dikirim dari frontend (hasil filter tabel)
-    if (data.type === 'customData') {
-      rows  = (data.customData || []).map(function(item) {
-        return { kua:item.kua, kodeBarang:item.kodeBarang, namaBarang:item.namaBarang,
-                 jenis:item.jenis, tahunPerolehan:item.tahunPerolehan,
-                 kondisi:item.kondisi, status:item.status, lokasiBarang:item.lokasiBarang };
-      });
-      label = data.label || 'Data BMN';
-
-    } else {
-      // ── Ambil dari sheet lalu filter
+    // ── TIPE 1: 'filtered' — filter param dikirim dari frontend, GAS query dari sheet ──
+    // Ini adalah pendekatan yang BENAR dan AMAN.
+    // Tidak ada array besar yang lewat HTTP, tidak ada risiko payload/Logger overflow.
+    if (data.type === 'filtered') {
+      var f      = data.filters || {};
       var sheet  = getSheet(BMN_SHEETS.BMN_DATA);
       var values = sheet.getDataRange().getValues();
+
       for (var i = 1; i < values.length; i++) {
-        var row = values[i]; var ok = true;
-        // perKUA: jika data.kua kosong → semua KUA; jika ada value → filter
-        if (data.type === 'perKUA'   && data.kua   && row[1] !== data.kua)   ok = false;
-        if (data.type === 'perJenis' && data.jenis  && row[4] !== data.jenis) ok = false;
-        if (data.type === 'rusak' && row[8] !== 'Rusak Ringan' && row[8] !== 'Rusak Berat') ok = false;
+        var row = values[i];
+        if (!row[0]) continue;  // skip baris kosong
+        var ok = true;
+
+        // Filter KUA — wajib jika ada (termasuk user non-Admin yang kuanya diset di frontend)
+        if (f.kua     && String(row[1]).trim() !== f.kua)     ok = false;
+        // Filter Jenis
+        if (f.jenis   && String(row[4]).trim() !== f.jenis)   ok = false;
+        // Filter Kondisi
+        if (f.kondisi && String(row[8]).trim() !== f.kondisi) ok = false;
+        // Filter Status
+        if (f.status  && String(row[9]).trim() !== f.status)  ok = false;
+        // Free-text search (kode barang atau nama barang)
+        if (f.search) {
+          var srch  = f.search.toLowerCase();
+          var kodeM = String(row[2]).toLowerCase().indexOf(srch) >= 0;
+          var namaM = String(row[3]).toLowerCase().indexOf(srch) >= 0;
+          if (!kodeM && !namaM) ok = false;
+        }
+
         if (!ok) continue;
-        rows.push({ kua:row[1],kodeBarang:row[2],namaBarang:row[3],jenis:row[4],
-                    tahunPerolehan:row[5],kondisi:row[8],status:row[9],lokasiBarang:row[10] });
+        rows.push({ kua:row[1], kodeBarang:row[2], namaBarang:row[3], jenis:row[4],
+                    tahunPerolehan:row[5], kondisi:row[8], status:row[9], lokasiBarang:row[10] });
+      }
+      Logger.log('[EXPORT_BMN] filtered rows: ' + rows.length + ' from ' + (values.length - 1) + ' total');
+
+    // ── TIPE 2: 'customData' — data array dikirim dari frontend (legacy / fallback) ──
+    // Masih didukung untuk backward compat, TAPI dipastikan ada safeguard.
+    } else if (data.type === 'customData') {
+      if (!Array.isArray(data.customData) || data.customData.length === 0) {
+        Logger.log('[EXPORT_BMN] WARNING: customData kosong atau bukan array — abort');
+        return errorResponse('Tidak ada data untuk diexport. Gunakan type "filtered".');
+      }
+      rows = data.customData.map(function(item) {
+        return { kua:         item.kua         || '',
+                 kodeBarang:  item.kodeBarang  || '',
+                 namaBarang:  item.namaBarang  || '',
+                 jenis:       item.jenis        || '',
+                 tahunPerolehan: item.tahunPerolehan || '',
+                 kondisi:     item.kondisi      || '',
+                 status:      item.status       || '',
+                 lokasiBarang:item.lokasiBarang || '' };
+      });
+      Logger.log('[EXPORT_BMN] customData rows: ' + rows.length);
+
+    // ── TIPE LAMA: perKUA / perJenis / rusak (dari fitur export sebelumnya) ──
+    } else {
+      var sheet2  = getSheet(BMN_SHEETS.BMN_DATA);
+      var values2 = sheet2.getDataRange().getValues();
+      for (var j = 1; j < values2.length; j++) {
+        var row2 = values2[j]; var ok2 = true;
+        if (data.type === 'perKUA'   && data.kua   && row2[1] !== data.kua)   ok2 = false;
+        if (data.type === 'perJenis' && data.jenis  && row2[4] !== data.jenis) ok2 = false;
+        if (data.type === 'rusak' && row2[8] !== 'Rusak Ringan' && row2[8] !== 'Rusak Berat') ok2 = false;
+        if (!ok2) continue;
+        rows.push({ kua:row2[1], kodeBarang:row2[2], namaBarang:row2[3], jenis:row2[4],
+                    tahunPerolehan:row2[5], kondisi:row2[8], status:row2[9], lokasiBarang:row2[10] });
       }
       label = data.kuaLabel || (data.kua ? data.kua : 'Semua KUA');
       if (data.type === 'perJenis') label = data.jenis || 'Semua Jenis';
@@ -351,7 +395,10 @@ function exportLaporanBMN(data) {
     }
 
     return data.format === 'pdf' ? exportBMNPDF(rows, data, label) : exportBMNExcel(rows, data, label);
-  } catch (e) { return errorResponse(e.toString()); }
+  } catch (e) {
+    Logger.log('[EXPORT_BMN ERROR] ' + e.toString());
+    return errorResponse(e.toString());
+  }
 }
 
 function exportBMNExcel(data, params, label) {
