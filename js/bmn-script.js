@@ -136,6 +136,9 @@ function navigateTo(pageId) {
         const table   = document.querySelector('#dataBMNPage .table-container');
         if (toolbar) toolbar.style.display = '';
         if (table)   table.style.display   = '';
+        // Sembunyikan info bar export saat di luar tab Data BMN
+        const infoEl = document.getElementById('exportFilterInfo');
+        if (infoEl) infoEl.style.display = 'none';
     }
 
     controlColumnVisibility();
@@ -175,10 +178,13 @@ function navigateTo(pageId) {
         if (!bmnCache.dataLoaded) {
             loadBMNData().then(() => {
                 if (isAdmin && _kuaSummaryActive) renderKUASummary();
+                else _updateExportButtons(currentBMNData.length); // refresh info bar
             });
         } else {
             if (isAdmin && _kuaSummaryActive) renderKUASummary();
-            else applyFilters();
+            else {
+                applyFilters(); // re-filter + update info bar
+            }
         }
     }
     else if (pageId === 'konfigurasiPage') { _renderKonfigurasiPage(); }
@@ -397,6 +403,10 @@ function renderKUASummary() {
     const table   = document.querySelector('#dataBMNPage .table-container');
     if (toolbar) toolbar.style.display = 'none';
     if (table)   table.style.display   = 'none';
+
+    // Sembunyikan export info bar saat masuk summary
+    const infoEl = document.getElementById('exportFilterInfo');
+    if (infoEl) infoEl.style.display = 'none';
 
     // Buat / tampilkan container summary
     let summaryEl = document.getElementById('kuaSummaryContainer');
@@ -617,7 +627,7 @@ function backToDataBMNTable() {
     const filterKUAEl = document.getElementById('filterKUA');
     if (filterKUAEl) filterKUAEl.value = '';
 
-    applyFilters();
+    applyFilters(); // ini akan memanggil _updateExportButtons dengan data & filter terkini
 }
 
 // ===== KODE BARANG =====
@@ -1250,37 +1260,100 @@ async function toggleBMNSetting(key) {
 
 // ===== EXPORT DATA TABEL (sesuai hasil filter/search yang sedang tampil) =====
 
-// Tampilkan / sembunyikan tombol export sesuai jumlah baris di tabel
-function _updateExportButtons(count) {
-    const show = count > 0;
-    const elXls = document.getElementById('btnExportExcel');
-    const elPdf = document.getElementById('btnExportPDF');
-    if (elXls) elXls.style.display = show ? 'inline-flex' : 'none';
-    if (elPdf) elPdf.style.display = show ? 'inline-flex' : 'none';
+/**
+ * Bangun deskripsi filter yang sedang aktif.
+ * Dipakai untuk: label info bar, nama file download, notifikasi.
+ * Return: { label: string, parts: string[] }
+ */
+function _buildActiveFilterDesc() {
+    const fKUA     = document.getElementById('filterKUA')?.value     || '';
+    const fJenis   = document.getElementById('filterJenis')?.value   || '';
+    const fKondisi = document.getElementById('filterKondisi')?.value || '';
+    const fStatus  = document.getElementById('filterStatus')?.value  || '';
+    const q        = document.getElementById('searchBMN')?.value?.trim() || '';
+
+    const parts = [];
+    if (fKUA)                                    parts.push(`KUA: ${fKUA}`);
+    else if (currentUser.role !== 'Admin')       parts.push(`KUA: ${currentUser.kua || ''}`);
+    if (fJenis)                                  parts.push(`Jenis: ${fJenis}`);
+    if (fKondisi)                                parts.push(`Kondisi: ${fKondisi}`);
+    if (fStatus)                                 parts.push(`Status: ${fStatus}`);
+    if (q)                                       parts.push(`Cari: "${q}"`);
+
+    return {
+        parts,
+        label: parts.length ? parts.join(' · ') : 'Semua Data'
+    };
 }
 
-// Kirim data tabel saat ini (currentBMNData) ke backend lalu trigger download
+/**
+ * Tampilkan / sembunyikan tombol export + info bar filter aktif.
+ * Dipanggil setiap kali applyFilters() selesai.
+ */
+function _updateExportButtons(count) {
+    const elXls  = document.getElementById('btnExportExcel');
+    const elPdf  = document.getElementById('btnExportPDF');
+    let   infoEl = document.getElementById('exportFilterInfo');
+
+    // Sembunyikan semua jika sedang di mode summary KUA
+    if (_kuaSummaryActive) {
+        if (elXls)  elXls.style.display  = 'none';
+        if (elPdf)  elPdf.style.display  = 'none';
+        if (infoEl) infoEl.style.display = 'none';
+        return;
+    }
+
+    const show = count > 0;
+    if (elXls) elXls.style.display = show ? 'inline-flex' : 'none';
+    if (elPdf) elPdf.style.display = show ? 'inline-flex' : 'none';
+
+    if (!show) {
+        if (infoEl) infoEl.style.display = 'none';
+        return;
+    }
+
+    // Buat info bar jika belum ada
+    if (!infoEl) {
+        infoEl = document.createElement('div');
+        infoEl.id = 'exportFilterInfo';
+        infoEl.style.cssText = [
+            'display:flex', 'align-items:center', 'gap:8px', 'flex-wrap:wrap',
+            'font-size:12px', 'color:#555',
+            'background:#f0f4ff', 'border:1px solid #c5cae9', 'border-radius:8px',
+            'padding:7px 12px', 'margin-top:8px'
+        ].join(';');
+        // Sisipkan setelah toolbar
+        const toolbar = document.querySelector('#dataBMNPage .toolbar');
+        if (toolbar) toolbar.after(infoEl);
+    }
+
+    const { label, parts } = _buildActiveFilterDesc();
+    const filterStr = parts.length
+        ? parts.map(p => `<span style="background:#fff;border:1px solid #c5cae9;border-radius:4px;
+                                       padding:2px 7px;font-weight:600;color:#3949ab;">${p}</span>`).join(' ')
+        : `<span style="color:#777;">Tidak ada filter — menampilkan semua data</span>`;
+
+    infoEl.innerHTML = `
+        <span>📥 Download akan menyertakan</span>
+        <strong style="color:#3949ab;">${count} item</strong>
+        <span style="color:#aaa;">·</span>
+        <span>Filter aktif:</span>
+        ${filterStr}`;
+    infoEl.style.display = 'flex';
+}
+
+/**
+ * Download data yang sedang tampil di tabel (currentBMNData)
+ * sebagai Excel atau PDF, dengan nama file sesuai filter aktif.
+ */
 async function exportCurrentData(format) {
     if (!currentBMNData || !currentBMNData.length) {
         showNotification('Tidak ada data untuk didownload', 'warning');
         return;
     }
 
-    // Bangun label deskriptif untuk nama file
-    const fKUA     = document.getElementById('filterKUA')?.value     || '';
-    const fJenis   = document.getElementById('filterJenis')?.value   || '';
-    const fKondisi = document.getElementById('filterKondisi')?.value || '';
-    const fStatus  = document.getElementById('filterStatus')?.value  || '';
-    const q        = document.getElementById('searchBMN')?.value     || '';
-
-    const parts = [];
-    if (fKUA)     parts.push(fKUA);
-    else if (currentUser.role !== 'Admin') parts.push(currentUser.kua || '');
-    if (fJenis)   parts.push(fJenis);
-    if (fKondisi) parts.push(fKondisi);
-    if (fStatus)  parts.push(fStatus);
-    if (q)        parts.push(`"${q}"`);
-    const label = parts.length ? parts.join(' · ') : 'Semua Data';
+    const { label } = _buildActiveFilterDesc();
+    const jumlah    = currentBMNData.length;
 
     try {
         showLoading();
@@ -1293,7 +1366,11 @@ async function exportCurrentData(format) {
         });
         hideLoading();
         _downloadBase64File(result);
-        showNotification(`Berhasil mengunduh ${currentBMNData.length} data BMN`, 'success');
+        showNotification(
+            `Berhasil mengunduh ${jumlah} data BMN` +
+            (label !== 'Semua Data' ? ` (${label})` : ''),
+            'success'
+        );
     } catch (err) {
         hideLoading();
         showNotification(err.message || 'Gagal mengunduh data', 'error');
