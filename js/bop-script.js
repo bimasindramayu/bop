@@ -40,6 +40,45 @@ function _getVfyPreviewer() {
 }
 // ─────────────────────────────────────────────────────────────────────────────
 
+// Inisialisasi previewer khusus untuk modal "Lihat" Realisasi (Operator KUA).
+// Instance terpisah dari _dpVfyInstance supaya tidak saling bentrok konfigurasi/DOM.
+function _getViewPreviewer() {
+    if (window._dpViewInstance) return window._dpViewInstance;
+    if (typeof DocumentPreviewer === 'undefined') return null;
+    window._dpViewInstance = new DocumentPreviewer({
+        googleDriveApiKey : (function() {
+            const _cfg = (typeof getLocalCache === 'function') ? getLocalCache('config') : null;
+            if (_cfg && _cfg.DRIVE_API_KEY) return _cfg.DRIVE_API_KEY;
+            if (typeof MY_DP_CONFIG !== 'undefined' && MY_DP_CONFIG.googleDriveApiKey) return MY_DP_CONFIG.googleDriveApiKey;
+            if (typeof GOOGLE_DRIVE_API_KEY !== 'undefined') return GOOGLE_DRIVE_API_KEY;
+            return '';
+        })(),
+        modalId : 'dp-modal-view',
+        pdfScale: 1.5,
+        debug   : false,
+        onClose : function() {
+            document.querySelectorAll('._dpViewFileItem.dp-active')
+                    .forEach(function(el){ el.classList.remove('dp-active'); });
+            // Switch left panel back to centered modal when preview is closed
+            if (typeof window._viewRlsSwitchToCenter === 'function') {
+                window._viewRlsSwitchToCenter();
+            }
+        }
+    });
+    requestAnimationFrame(function() {
+        const dpEl = document.getElementById('dp-modal-view');
+        const dpHeader = document.getElementById('dp-modal-view-header');
+        const dpContainer = document.getElementById('dp-modal-view-container');
+        const dpControls = dpEl ? dpEl.querySelector('.dp-controls') : null;
+        [dpEl, dpHeader, dpContainer, dpControls].forEach(function(el) {
+            if (el) el.style.setProperty('--dp-width', '58%', 'important');
+        });
+    });
+    window._dpViewInstance.mount();
+    return window._dpViewInstance;
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 // File: bop-script.js
 // Untuk: bop-dashboard.html
 // Config & utilities dari config.js
@@ -528,6 +567,14 @@ let realisasiStatusPoller = null;
 
 // ✅ FIX: Store for realisasi objects to avoid embedding large data in HTML attributes
 const realisasiDataStore = new Map();
+
+// ✅ FIX: Same pattern as realisasiDataStore — avoids embedding raw JSON (with fields like
+// filenames containing apostrophes, e.g. "BOP JUNI'26.pdf") directly inside onclick='...'
+// attributes, which breaks the single-quoted attribute and throws
+// "Uncaught SyntaxError: Invalid or unexpected token" when the button is clicked.
+const rpdDataStore = new Map();
+const budgetDataStore = new Map();
+const userDataStore = new Map();
 
 // ✅ FIX: Sanitize filename to prevent special characters issues
 // Removes/replaces characters that can cause problems in HTML/JS
@@ -1074,6 +1121,10 @@ function displayBudgets(budgets) {
         const totalRealisasi = parseFloat(budget.totalRealisasi) || parseFloat(budget.realisasi) || 0;
         const sisaBudget = budgetTotal - totalRealisasi;
         
+        // ✅ FIX: Store budget in Map and pass only ID to avoid token errors
+        const budgetId = budget.id || `temp-budget-${Date.now()}-${index}`;
+        budgetDataStore.set(budgetId, budget);
+        
         return `
         <tr>
             <td>${index + 1}</td>
@@ -1085,7 +1136,7 @@ function displayBudgets(budgets) {
             <td>${formatCurrency(sisaBudget)}</td>
             <td>
                 <div class="action-buttons">
-                    <button class="btn btn-sm" onclick='editBudget(${JSON.stringify(budget)})'>Edit</button>
+                    <button class="btn btn-sm" onclick="editBudget('${budgetId}')">Edit</button>
                 </div>
             </td>
         </tr>
@@ -1193,7 +1244,16 @@ function showBudgetModal(budget = null) {
     });
 }
 
-function editBudget(budget) {
+function editBudget(budgetId) {
+    // ✅ FIX: Retrieve budget from Map by ID (see displayBudgets)
+    const budget = budgetDataStore.get(budgetId);
+    
+    if (!budget) {
+        console.error('[BUDGET] Budget not found in store:', budgetId);
+        showNotification('Data budget tidak ditemukan', 'error');
+        return;
+    }
+    
     showBudgetModal(budget);
 }
 
@@ -1220,7 +1280,13 @@ async function loadUsers(forceRefresh = false) {
 
 function displayUsers(users) {
     const tbody = document.querySelector('#userTable tbody');
-    tbody.innerHTML = users.map((user, index) => `
+    tbody.innerHTML = users.map((user, index) => {
+        // ✅ FIX: Store user in Map and pass only ID to avoid token errors
+        // (e.g. names containing an apostrophe, common in Arabic-transliterated names)
+        const userId = user.id || `temp-user-${Date.now()}-${index}`;
+        userDataStore.set(userId, user);
+        
+        return `
         <tr>
             <td>${index + 1}</td>
             <td>${user.username}</td>
@@ -1230,12 +1296,13 @@ function displayUsers(users) {
             <td><span class="badge badge-${user.status === 'Active' ? 'success' : 'danger'}">${user.status}</span></td>
             <td>
                 <div class="action-buttons">
-                    <button class="btn btn-sm" onclick='editUser(${JSON.stringify(user)})'>Edit</button>
+                    <button class="btn btn-sm" onclick="editUser('${userId}')">Edit</button>
                     ${user.status === 'Active' ? `<button class="btn btn-danger btn-sm" onclick="deleteUserConfirm('${user.id}')">Nonaktifkan</button>` : ''}
                 </div>
             </td>
         </tr>
-    `).join('');
+        `;
+    }).join('');
 }
 
 function showUserModal(user = null) {
@@ -1426,7 +1493,16 @@ async function saveUser(data) {
     }
 }
 
-function editUser(user) {
+function editUser(userId) {
+    // ✅ FIX: Retrieve user from Map by ID (see displayUsers)
+    const user = userDataStore.get(userId);
+    
+    if (!user) {
+        console.error('[USER] User not found in store:', userId);
+        showNotification('Data pengguna tidak ditemukan', 'error');
+        return;
+    }
+    
     showUserModal(user);
 }
 
@@ -1654,7 +1730,10 @@ function displayRPDs(rpds) {
     const rows = filteredData.map((rpd, index) => {
         totalNominal += parseFloat(rpd.total || 0);
         
-        const rpdEscaped = JSON.stringify(rpd).replace(/"/g, '&quot;');
+        // ✅ FIX: Store rpd in Map and pass only ID to avoid token errors
+        // (raw JSON in onclick breaks if any text field contains an apostrophe)
+        const rpdId = rpd.id || `temp-rpd-${Date.now()}-${index}`;
+        rpdDataStore.set(rpdId, rpd);
         
         // ✅ KUA column visibility based on role
         const kuaColumn = currentUser.role === 'Admin' ? 
@@ -1675,8 +1754,8 @@ function displayRPDs(rpds) {
             <td>${rpd.createdAt ? formatDate(rpd.createdAt) : '-'}</td>
             <td>
                 <div class="action-buttons">
-                    <button class="btn btn-sm" onclick='viewRPD(${rpdEscaped})'>Lihat</button>
-                    ${_canEdit ? `<button class="btn btn-sm" onclick='editRPD(${rpdEscaped})'>Edit</button>` : ''}
+                    <button class="btn btn-sm" onclick="viewRPD('${rpdId}')">Lihat</button>
+                    ${_canEdit ? `<button class="btn btn-sm" onclick="editRPD('${rpdId}')">Edit</button>` : ''}
                 </div>
             </td>
         </tr>
@@ -2368,7 +2447,16 @@ function updateRPDSummaryBox(currentTotal) {
     }
 }
 
-function viewRPD(rpd) {
+function viewRPD(rpdId) {
+    // ✅ FIX: Retrieve rpd from Map by ID (see displayRPDs / displayRPDsFiltered)
+    const rpd = rpdDataStore.get(rpdId);
+    
+    if (!rpd) {
+        console.error('[RPD] RPD not found in store:', rpdId);
+        showNotification('Data RPD tidak ditemukan', 'error');
+        return;
+    }
+    
     console.log('[RPD] Viewing RPD:', rpd);
     
     let modal = document.getElementById('modal');
@@ -2452,7 +2540,16 @@ function viewRPD(rpd) {
     modal.classList.add('active');
 }
 
-function editRPD(rpd) {
+function editRPD(rpdId) {
+    // ✅ FIX: Retrieve rpd from Map by ID (see displayRPDs / displayRPDsFiltered)
+    const rpd = rpdDataStore.get(rpdId);
+    
+    if (!rpd) {
+        console.error('[RPD] RPD not found in store:', rpdId);
+        showNotification('Data RPD tidak ditemukan', 'error');
+        return;
+    }
+    
     showRPDModal(rpd);
 }
 
@@ -2584,9 +2681,13 @@ function displayRealisasis(realisasis) {
         let statusClass = getStatusBadgeClass(real.status);
         let statusText = getStatusLabel(real.status);
         
-        const realEscaped = JSON.stringify(real).replace(/"/g, '&quot;');
+        // ✅ FIX: Store realisasi in Map and pass only ID to avoid token errors
+        // (same pattern as displayVerifikasi / realisasiDataStore)
+        const realisasiId = real.id || `temp-${Date.now()}-${index}`;
+        realisasiDataStore.set(realisasiId, real);
         
         console.log('[DISPLAY_REALISASIS] Row', index + 1, ':', {
+            id: realisasiId,
             month: real.month,
             year: real.year,
             total: real.total,
@@ -2605,9 +2706,9 @@ function displayRealisasis(realisasis) {
             <td>${real.createdAt ? formatDate(real.createdAt) : '-'}</td>
             <td>
                 <div class="action-buttons">
-                    <button class="btn btn-sm" onclick='viewRealisasi(${realEscaped})'>Lihat</button>
+                    <button class="btn btn-sm" onclick="viewRealisasi('${realisasiId}')">Lihat</button>
                     ${(normalizeStatus(real.status) === STATUS.WAITING || normalizeStatus(real.status) === STATUS.REJECTED) && currentUser.role !== 'Admin' ? 
-                        `<button class="btn btn-sm" onclick='editRealisasi(${realEscaped})'>Edit</button>` : ''}
+                        `<button class="btn btn-sm" onclick="editRealisasi('${realisasiId}')">Edit</button>` : ''}
                 </div>
             </td>
         </tr>
@@ -4494,7 +4595,16 @@ function removeFile(index) {
     console.log('[FILE] ========== REMOVE FILE END ==========');
 }
 
-function viewRealisasi(realisasi) {
+function viewRealisasi(realisasiId) {
+    // ✅ FIX: Retrieve realisasi from Map by ID (see displayRealisasis)
+    const realisasi = realisasiDataStore.get(realisasiId);
+    
+    if (!realisasi) {
+        console.error('[VIEW_REALISASI] Realisasi not found in store:', realisasiId);
+        showNotification('Data realisasi tidak ditemukan', 'error');
+        return;
+    }
+    
     console.log('[VIEW_REALISASI] Opening detail view');
     console.log('[VIEW_REALISASI] Realisasi data:', realisasi);
     console.log('[VIEW_REALISASI] Files:', realisasi.files);
@@ -4611,139 +4721,255 @@ function viewRealisasi(realisasi) {
     
     console.log('[VIEW_REALISASI] Files array length:', files.length);
     
-    // ✅ FIX BUG #2: Build files HTML dengan style yang sama seperti Detail Verifikasi
-    let filesHTML = '';
-    if (Array.isArray(files) && files.length > 0) {
-        console.log('[VIEW_REALISASI] Processing files for display:', files.length);
-        
-        filesHTML = `
-            <div class="rpd-item">
-                <h4>📎 Dokumen Pendukung (${files.length} file)</h4>
-                ${files.map((file, index) => {
-                    console.log(`[VIEW_REALISASI] File ${index + 1}:`, file);
-                    
-                    if (!file || !file.fileName) {
-                        return `<div class="file-item">
-                            <span>⚠️ File tidak valid</span>
-                        </div>`;
-                    }
-                    
-                    const isImage = file.mimeType && file.mimeType.startsWith('image/');
-                    const isPDF = file.mimeType === 'application/pdf';
-                    const previewUrl = getDrivePreviewUrl(file.fileUrl, file.mimeType);
-                    const fileId = file.fileId || file.fileUrl.match(/[-\w]{25,}/)?.[0];
-                    
-                    console.log(`[VIEW_REALISASI] Preview URL for ${file.fileName}:`, previewUrl);
-                    
-                    return `
-                        <div class="file-item" style="flex-direction: column; align-items: flex-start; padding: 15px; margin-bottom: 10px;">
-                            <div style="display: flex; justify-content: space-between; width: 100%; margin-bottom: 10px;">
-                                <span style="font-weight: 500;">📎 ${file.fileName}</span>
-                                <span class="file-size">(${formatFileSize(file.size)})</span>
-                                <div style="display: flex; gap: 5px;">
-                                    <button type="button" class="btn btn-sm" onclick="window.open('${file.fileUrl}', '_blank')">Buka</button>
-                                    <button type="button" class="btn btn-sm btn-info" onclick="downloadDriveFile('${file.fileUrl}', '${file.fileName}')">Download</button>
-                                </div>
-                            </div>
-                            ${isImage ? `
-                                <div style="width: 100%; text-align: center;">
-                                    <img src="${previewUrl}" 
-                                        alt="${file.fileName}" 
-                                        style="max-width: 100%; max-height: 400px; border-radius: 8px; margin-top: 10px; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.1);"
-                                        onclick="window.open('${file.fileUrl}', '_blank')"
-                                        onerror="this.onerror=null; this.src='https://drive.google.com/uc?export=view&id=${fileId}'; if(this.complete && this.naturalHeight === 0) { this.style.display='none'; this.nextElementSibling.style.display='block'; }">
-                                    <div style="display: none; margin-top: 10px; padding: 15px; background: #e3f2fd; border-radius: 8px; text-align: center;">
-                                        <p style="color: #1976d2; margin: 0 0 10px 0;">🖼️ Gambar sedang dimuat atau tidak dapat ditampilkan</p>
-                                        <button type="button" class="btn btn-sm btn-info" onclick="window.open('${file.fileUrl}', '_blank')">Buka di Google Drive</button>
-                                    </div>
-                                </div>
-                            ` : isPDF ? `
-                                <div style="width: 100%; margin-top: 10px;">
-                                    <iframe src="${previewUrl}" 
-                                            style="width: 100%; height: 500px; border: 1px solid #ddd; border-radius: 8px;"
-                                            onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
-                                    </iframe>
-                                    <div style="display: none; background: #f8f9fa; padding: 15px; border-radius: 8px; text-align: center;">
-                                        <p style="color: #666; margin: 0 0 10px 0;">📄 File PDF</p>
-                                        <p style="color: #999; font-size: 12px; margin: 0 0 15px 0;">Jika preview tidak muncul, silakan buka di tab baru</p>
-                                        <button type="button" class="btn btn-sm" onclick="window.open('${file.fileUrl}', '_blank')">Buka PDF di Tab Baru</button>
-                                    </div>
-                                </div>
-                            ` : `
-                                <p style="color: #666; font-style: italic; margin-top: 10px;">
-                                    📄 Preview tidak tersedia untuk tipe file ini. 
-                                    <button type="button" class="btn btn-sm" onclick="window.open('${file.fileUrl}', '_blank')">Buka file</button>
-                                </p>
-                            `}
-                        </div>
-                    `;
-                }).join('')}
-            </div>
-        `;
-    } else {
-        console.log('[VIEW_REALISASI] No files to display');
-        filesHTML = `
-            <div class="rpd-item">
-                <h4>📎 Dokumen Pendukung</h4>
-                <p style="color: #999; font-style: italic; padding: 15px; background: #f8f9fa; border-radius: 6px;">
-                    Tidak ada dokumen pendukung
-                </p>
-            </div>
-        `;
+    // ✅ Preview dokumen sekarang pakai DocumentPreviewer yang sama dengan Admin
+    // (zoom/pan/rotate via pdf.js) — bukan iframe/img manual lagi.
+    // Daftar file ditampilkan di kiri, klik untuk membuka preview di panel kanan.
+    const _viewFilesList = files;
+    const _viewHasFiles = _viewFilesList.length > 0;
+
+    function _viewFileIcon(mime) {
+        if (!mime) return '📎';
+        if (mime.startsWith('image/')) return '🖼️';
+        if (mime === 'application/pdf') return '📄';
+        return '📎';
     }
+
+    const _viewFilesListHTML = _viewHasFiles
+        ? _viewFilesList.map(function(f, idx) {
+            const _name = f.originalName || f.fileName || f.uniqueName;
+            const _icon = _viewFileIcon(f.mimeType);
+            const _size = f.size ? ' · ' + formatFileSize(f.size) : '';
+            return '<div class="_dpViewFileItem" data-idx="' + idx + '" style="' +
+                'display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:8px;' +
+                'cursor:pointer;margin-bottom:6px;">' +
+                '<span style="font-size:18px;flex-shrink:0;">' + _icon + '</span>' +
+                '<div style="flex:1;min-width:0;">' +
+                    '<div style="font-weight:600;font-size:12px;color:#333;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + _name + '">' + _name + '</div>' +
+                    '<div style="font-size:10px;color:#999;margin-top:2px;">' + (f.mimeType || 'file') + _size + '</div>' +
+                '</div>' +
+                '<button class="_dpViewPreviewBtn" data-idx="' + idx + '" ' +
+                    'style="background:#667eea;color:white;border:none;padding:4px 10px;border-radius:6px;font-size:11px;cursor:pointer;flex-shrink:0;white-space:nowrap;">👁️ Preview</button>' +
+            '</div>';
+        }).join('')
+        : '<div style="color:#999;font-size:12px;font-style:italic;padding:8px;">Tidak ada dokumen pendukung</div>';
     
     modal.innerHTML = `
-        <div class="modal-content" style="max-width: 900px; max-height: 90vh; overflow-y: auto;">
-            <div class="modal-header">
-                <h3>Detail Realisasi - ${realisasi.month || 'Unknown'} ${realisasi.year || ''}</h3>
-                <button class="close-btn" onclick="closeModal()">&times;</button>
+        <!-- ╔══════════════════════════════════════════╗
+             ║  VIEW MODAL — split view (Operator KUA)   ║
+             ║  Kiri 42% (info) · Kanan 58% (DP panel)  ║
+             ╚══════════════════════════════════════════╝ -->
+
+        <!-- ── OVERLAY PENUH ── -->
+        <div id="_viewRlsOverlay" style="
+            position:fixed; inset:0; background:rgba(0,0,0,.55); z-index:8990;
+        "></div>
+
+        <!-- ── PANEL KIRI — responsive: split(42% left) ↔ center(600px) ── -->
+        <div id="_viewRlsLeftPanel" style="
+            position:fixed; z-index:9010;
+            display:flex; flex-direction:column; overflow:hidden;
+            background:#f7f8ff;
+            transition: left .3s ease, width .3s ease, top .3s ease, bottom .3s ease,
+                        transform .3s ease, border-radius .3s ease, box-shadow .3s ease;
+            left:0; top:0; bottom:0; width:42%;
+            border-right:1px solid #e0e4f0;
+            box-shadow:4px 0 20px rgba(0,0,0,.15);
+            border-radius:0;
+        ">
+            <!-- Header gradient -->
+            <div style="
+                flex:0 0 auto; padding:12px 16px;
+                background:linear-gradient(135deg,#667eea,#764ba2);
+                display:flex; align-items:center; justify-content:space-between; gap:10px;
+            ">
+                <div style="min-width:0;">
+                    <div style="font-size:17px;font-weight:700;color:white;line-height:1.3;">📄 Detail Realisasi</div>
+                    <div style="font-size:14px;color:rgba(255,255,255,.85);margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+                        🏢 ${realisasi.kua || '-'} &nbsp;·&nbsp; 📅 ${realisasi.month || 'Unknown'} ${realisasi.year || ''}
+                    </div>
+                </div>
+                <button class="close-btn" onclick="closeModal()" style="
+                    flex-shrink:0; width:30px; height:30px; border-radius:50%;
+                    background:rgba(255,255,255,.2); border:none;
+                    color:white; font-size:18px; cursor:pointer; line-height:1;
+                ">&times;</button>
             </div>
-            
-            <div class="summary-box">
-                <div class="summary-item">
-                    <span>Status:</span>
-                    <span class="badge badge-${statusClass}">${getStatusLabel(realisasi.status)}</span>
+
+            <!-- Scrollable body -->
+            <div style="flex:1 1 0; overflow-y:auto; padding:14px 16px; display:flex; flex-direction:column; gap:12px;
+                 scrollbar-width:thin; scrollbar-color:#c1c9e0 #f7f8ff;">
+
+                <!-- Status & info -->
+                <div class="summary-box" style="margin:0;">
+                    <div class="summary-item">
+                        <span>Status:</span>
+                        <span class="badge badge-${statusClass}">${getStatusLabel(realisasi.status)}</span>
+                    </div>
+                    ${realisasi.verifiedBy ? `
+                    <div class="summary-item">
+                        <span>Diverifikasi Oleh:</span>
+                        <span>${realisasi.verifiedBy}</span>
+                    </div>
+                    ` : ''}
+                    ${realisasi.verifiedAt ? `
+                    <div class="summary-item">
+                        <span>Tanggal Verifikasi:</span>
+                        <span>${formatDate(realisasi.verifiedAt)}</span>
+                    </div>
+                    ` : ''}
+                    ${realisasi.notes ? `
+                    <div class="summary-item" style="flex-direction: column; align-items: flex-start;">
+                        <span style="margin-bottom: 5px;">Catatan:</span>
+                        <span style="padding: 10px; background: #f8f9fa; border-radius: 6px; width: 100%;">${realisasi.notes}</span>
+                    </div>
+                    ` : ''}
                 </div>
-                <div class="summary-item">
-                    <span>KUA:</span>
-                    <strong>${realisasi.kua || '-'}</strong>
+
+                <!-- Data Pos & Nominal -->
+                <div class="rpd-item">
+                    <h4>📊 Data Pos &amp; Nominal</h4>
                 </div>
-                ${realisasi.verifiedBy ? `
-                <div class="summary-item">
-                    <span>Diverifikasi Oleh:</span>
-                    <span>${realisasi.verifiedBy}</span>
+                ${detailHTML}
+
+                <!-- Total -->
+                <div class="rpd-item">
+                    <div class="rpd-subitem">
+                        <span>Total Realisasi</span>
+                        <strong style="color:#667eea;">${formatCurrency(realisasi.total)}</strong>
+                    </div>
                 </div>
-                ` : ''}
-                ${realisasi.verifiedAt ? `
-                <div class="summary-item">
-                    <span>Tanggal Verifikasi:</span>
-                    <span>${formatDate(realisasi.verifiedAt)}</span>
+
+                <!-- AP Summary (diisi async) -->
+                <div id="viewRpdApDetail"></div>
+
+                <!-- Dokumen Pendukung -->
+                <div class="rpd-item">
+                    <h4>📁 Dokumen Pendukung${_viewHasFiles ? ' (' + _viewFilesList.length + ')' : ''}</h4>
+                    ${_viewFilesListHTML}
                 </div>
-                ` : ''}
-                ${realisasi.notes ? `
-                <div class="summary-item" style="flex-direction: column; align-items: flex-start;">
-                    <span style="margin-bottom: 5px;">Catatan:</span>
-                    <span style="padding: 10px; background: #f8f9fa; border-radius: 6px; width: 100%;">${realisasi.notes}</span>
-                </div>
-                ` : ''}
+
+                <div style="height:16px;"></div>
             </div>
-            
-            ${detailHTML}
-            ${filesHTML}
-            
-            <div class="summary-box" style="margin-top: 15px;">
-                <div class="summary-item">
-                    <span>Total Realisasi:</span>
-                    <strong>${formatCurrency(realisasi.total)}</strong>
-                </div>
-            </div>
-            <!-- RPD & AP detail diisi async setelah modal terbuka -->
-            <div id="viewRpdApDetail"></div>
         </div>
+
+        <style>
+            ._dpViewFileItem {
+                background: rgba(102,126,234,.06) !important;
+                border-color: rgba(102,126,234,.2) !important;
+                transition: background .15s, border-color .15s !important;
+            }
+            ._dpViewFileItem:hover { background: rgba(102,126,234,.14) !important; border-color: rgba(102,126,234,.4) !important; }
+            ._dpViewFileItem.dp-active { background: rgba(102,126,234,.2) !important; border-color: #667eea !important; }
+            ._dpViewPreviewBtn:hover { opacity: .85 !important; }
+            /* Split mode — DP takes right 58% */
+            #dp-modal-view {
+                width: 58% !important;
+                box-shadow: none !important;
+                border-left: 1px solid #e0e4f0 !important;
+                transition: opacity .25s ease, transform .25s ease !important;
+            }
+            #dp-modal-view-header,
+            #dp-modal-view-container,
+            #dp-modal-view .dp-controls {
+                width: 58% !important;
+            }
+            /* Center mode — hide DP smoothly */
+            #dp-modal-view.dp-hidden {
+                opacity: 0 !important;
+                pointer-events: none !important;
+                transform: translateX(60px) !important;
+            }
+        </style>
     `;
-    
+
     modal.classList.add('active');
-    
+
+    // ── Split ↔ Center helpers ────────────────────────────────────────────────
+    const _viewLeftPanel = document.getElementById('_viewRlsLeftPanel');
+
+    const _VIEW_SPLIT_STYLE = {
+        left:'0', top:'0', bottom:'0', width:'42%',
+        height:'', transform:'none', borderRadius:'0',
+        borderRight:'1px solid #e0e4f0',
+        boxShadow:'4px 0 20px rgba(0,0,0,.15)',
+        maxHeight:''
+    };
+    const _VIEW_CENTER_STYLE = {
+        left:'50%', top:'50%', bottom:'auto', width:'min(860px, 92vw)',
+        height:'min(92vh, 920px)',
+        transform:'translateX(-50%) translateY(-50%)',
+        borderRadius:'16px',
+        borderRight:'none',
+        boxShadow:'0 24px 64px rgba(0,0,0,.35)',
+        maxHeight:'92vh'
+    };
+
+    function _applyViewPanelStyle(styles) {
+        if (!_viewLeftPanel) return;
+        Object.assign(_viewLeftPanel.style, styles);
+    }
+
+    window._viewRlsSwitchToCenter = function() {
+        _applyViewPanelStyle(_VIEW_CENTER_STYLE);
+        const dp = document.getElementById('dp-modal-view');
+        if (dp) dp.classList.add('dp-hidden');
+    };
+
+    window._viewRlsSwitchToSplit = function() {
+        _applyViewPanelStyle(_VIEW_SPLIT_STYLE);
+        const dp = document.getElementById('dp-modal-view');
+        if (dp) dp.classList.remove('dp-hidden');
+    };
+    // ─────────────────────────────────────────────────────────────────────────
+
+    function _dpViewOpenFile(idx) {
+        const f = _viewFilesList[idx];
+        if (!f) return;
+
+        const previewer = _getViewPreviewer();
+        if (!previewer) {
+            window.open(f.fileUrl, '_blank');
+            return;
+        }
+
+        const _dName = f.originalName || f.fileName;
+
+        // Switch to split view first, then open file
+        window._viewRlsSwitchToSplit();
+
+        // Highlight active item
+        modal.querySelectorAll('._dpViewFileItem').forEach(function(el) {
+            el.classList.toggle('dp-active', parseInt(el.getAttribute('data-idx')) === idx);
+        });
+
+        previewer.open(f.fileUrl, _dName);
+    }
+
+    // Bind preview buttons/cards + auto-open first file
+    setTimeout(() => {
+        modal.querySelectorAll('._dpViewPreviewBtn').forEach(function(btn) {
+            btn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                const idx = parseInt(this.getAttribute('data-idx'));
+                _dpViewOpenFile(idx);
+            });
+        });
+        modal.querySelectorAll('._dpViewFileItem').forEach(function(item) {
+            item.addEventListener('click', function() {
+                const idx = parseInt(this.getAttribute('data-idx'));
+                _dpViewOpenFile(idx);
+            });
+        });
+
+        if (_viewFilesList.length > 0) {
+            // Auto-open first file → starts in split mode
+            _dpViewOpenFile(0);
+        } else {
+            // No files → start in center mode
+            window._viewRlsSwitchToCenter();
+        }
+    }, 150);
+
     // Async: inject RPD detail + AP summary
     setTimeout(() => {
         _injectViewRealisasiExtras(realisasi).catch(() => {});
@@ -4890,7 +5116,16 @@ async function _injectViewRealisasiExtras(realisasi) {
         </div>
     </div>`;
 }
-function editRealisasi(realisasi) {
+function editRealisasi(realisasiId) {
+    // ✅ FIX: Retrieve realisasi from Map by ID (see displayRealisasis)
+    const realisasi = realisasiDataStore.get(realisasiId);
+    
+    if (!realisasi) {
+        console.error('[EDIT_REALISASI] Realisasi not found in store:', realisasiId);
+        showNotification('Data realisasi tidak ditemukan', 'error');
+        return;
+    }
+    
     showRealisasiModal(realisasi);
 }
 
@@ -6206,9 +6441,12 @@ function closeModal(skipConfirmation = false) {
     modal.classList.remove('active');
     modal.innerHTML = '';
     modalHasChanges = false;
-    // Also close DP previewer if open
+    // Also close DP previewer if open (Admin Verifikasi / Operator Lihat Realisasi)
     if (window._dpVfyInstance && window._dpVfyInstance._isOpen()) {
         window._dpVfyInstance.close();
+    }
+    if (window._dpViewInstance && window._dpViewInstance._isOpen()) {
+        window._dpViewInstance.close();
     }
     
     // ✅ Restart polling jika masih di halaman realisasi
@@ -7975,7 +8213,9 @@ function displayRPDsFiltered() {
     const rows = filteredData.map((rpd, index) => {
         totalNominal += parseFloat(rpd.total || 0);
         
-        const rpdEscaped = JSON.stringify(rpd).replace(/"/g, '&quot;');
+        // ✅ FIX: Store rpd in Map and pass only ID to avoid token errors
+        const rpdId = rpd.id || `temp-rpd-${Date.now()}-${index}`;
+        rpdDataStore.set(rpdId, rpd);
         const kuaColumn = currentUser.role === 'Admin' ? `<td>${rpd.kua || '-'}</td>` : '';
 
         const _rpdMonthIdx2 = APP_CONFIG.MONTHS.indexOf(rpd.month);
@@ -7995,8 +8235,8 @@ function displayRPDsFiltered() {
             <td>${rpd.createdAt ? formatDate(rpd.createdAt) : '-'}</td>
             <td>
                 <div class="action-buttons">
-                    <button class="btn btn-sm" onclick='viewRPD(${rpdEscaped})'>Lihat</button>
-                    ${_canEdit2 ? `<button class="btn btn-sm" onclick='editRPD(${rpdEscaped})'>Edit</button>` : ''}
+                    <button class="btn btn-sm" onclick="viewRPD('${rpdId}')">Lihat</button>
+                    ${_canEdit2 ? `<button class="btn btn-sm" onclick="editRPD('${rpdId}')">Edit</button>` : ''}
                 </div>
             </td>
         </tr>
