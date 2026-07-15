@@ -5520,6 +5520,12 @@ function showVerifyModal(realisasi, rpdData, rpdTotal) {
     const _vNomData = _apNominals[`${realisasi.month}_${realisasi.year}`] || {};
     const _vNom = (_vNomData && _vNomData[realisasi.kua]) ? _vNomData[realisasi.kua] : {};
 
+    // ✅ FIX: "Total Realisasi" & "Selisih" di panel kiri harus pakai nilai Include AP.
+    // realisasi.total (dari Sheet) adalah nilai Exclude AP — pos yang statusnya
+    // auto-payment tidak ikut dijumlah manual, jadi harus ditambah nominal SAKTI-nya
+    // dulu (apCalcTotals) supaya perbandingan dengan Total RPD apple-to-apple.
+    const _vfyTotalRealisasi = apCalcTotals([realisasi], _apConfig, { [realisasi.kua]: _vNom }).include;
+
     let detailHTML = '';
     Object.entries(realisasi.data).forEach(([code, items]) => {
         const param = APP_CONFIG.BOP.RPD_PARAMETERS[code];
@@ -5833,12 +5839,12 @@ function showVerifyModal(realisasi, rpdData, rpdTotal) {
                     </div>
                     <div class="rpd-subitem">
                         <span>Total Realisasi</span>
-                        <strong style="color:#667eea;">${formatCurrency(realisasi.total)}</strong>
+                        <strong style="color:#667eea;">${formatCurrency(_vfyTotalRealisasi)}</strong>
                     </div>
                     ${rpdData ? `<div class="rpd-subitem">
                         <span>Selisih (RPD − Realisasi)</span>
-                        <strong style="color:${rpdTotal >= realisasi.total ? '#28a745' : '#dc3545'};">
-                            ${formatCurrency(rpdTotal - realisasi.total)}
+                        <strong style="color:${rpdTotal >= _vfyTotalRealisasi ? '#28a745' : '#dc3545'};">
+                            ${formatCurrency(rpdTotal - _vfyTotalRealisasi)}
                         </strong>
                     </div>` : ''}
                 </div>
