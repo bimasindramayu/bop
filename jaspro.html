@@ -2289,13 +2289,28 @@ async function downloadWorkbook(wb, filename) {
     return s;
   }
 
-  function buildDisbursementRows(processedRows, kind) {
+  function buildDisbursementRows(processedRows, masterList, kind) {
+    var masterByRekening = {};
+    (masterList || []).forEach(function (m) { if (m.noRekening) masterByRekening[m.noRekening] = m; });
+
     var groups = {};
     var order = [];
     processedRows.forEach(function (row) {
-      var key = normalizeCoreName(row.nama) || row.nama;
+      // Group by the resolved account number whenever we have one — that's the
+      // actual recipient identity. Two rows can carry differently-formatted or
+      // typo'd source names (e.g. "RIDWAN, S.Sos" vs "RIDWAN. S.Sos") yet still
+      // point to the same rekening once matched/confirmed, and must be paid as
+      // a single combined line, not two. Only fall back to name-based grouping
+      // when a row has no rekening at all to key on.
+      var key = row.rekening ? ('REK:' + row.rekening) : ('NAMA:' + (normalizeCoreName(row.nama) || row.nama));
       if (!groups[key]) {
-        groups[key] = { nama: row.nama, namaPemilik: row.namaPemilik || '', rekening: row.rekening || '', total: 0 };
+        var masterEntry = row.rekening ? masterByRekening[row.rekening] : null;
+        groups[key] = {
+          nama: masterEntry ? masterEntry.nama : row.nama,
+          namaPemilik: row.namaPemilik || (masterEntry ? masterEntry.namaPemilik : ''),
+          rekening: row.rekening || '',
+          total: 0,
+        };
         order.push(key);
       }
       var g = groups[key];
@@ -2343,7 +2358,7 @@ async function downloadWorkbook(wb, filename) {
 
   function doGenerateCsv(kind) {
     var s = state.settings;
-    var rows = buildDisbursementRows(state.processedRows, kind);
+    var rows = buildDisbursementRows(state.processedRows, state.master, kind);
     var content = buildCsvContent(rows);
     var label = kind === 'jaspro' ? 'JASPRO' : 'TRANSPORT';
     var filename = s.bulan + '_CSV_' + label + '_' + s.tahun + '.csv';
