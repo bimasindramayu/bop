@@ -2282,10 +2282,15 @@ async function downloadWorkbook(wb, filename) {
     updateProcessButtonState();
   }
 
-  // ---- CSV disbursement list (grouped by penghulu; same name -> summed into one row) ----
-  function csvEscape(val) {
+  // ---- CSV disbursement list ----
+  // Sanitizes a single field for inclusion inside a whole-line-quoted CSV row:
+  // escapes embedded double-quotes, and strips characters that would corrupt
+  // line/field boundaries under that scheme (newlines, literal pipes).
+  function csvFieldSafe(val) {
     var s = String(val == null ? '' : val);
-    if (/[|\r\n"]/.test(s)) s = '"' + s.replace(/"/g, '""') + '"';
+    s = s.replace(/[\r\n]+/g, ' ');
+    s = s.replace(/\|/g, '/');
+    s = s.replace(/"/g, '""');
     return s;
   }
 
@@ -2310,6 +2315,7 @@ async function downloadWorkbook(wb, filename) {
           namaPemilik: row.namaPemilik || (masterEntry ? masterEntry.namaPemilik : ''),
           rekening: row.rekening || '',
           total: 0,
+          hasTransaction: true,
         };
         order.push(key);
       }
@@ -2318,16 +2324,36 @@ async function downloadWorkbook(wb, filename) {
       if (!g.namaPemilik && row.namaPemilik) g.namaPemilik = row.namaPemilik;
       g.total += (kind === 'jaspro' ? row.jasproDiterima : row.transpoDiterima);
     });
+
+    // Every account in Master Rekening is listed even if it had no transaction
+    // this period, so the CSV is a complete roster — those get '-' for the amount.
+    var usedRekening = {};
+    order.forEach(function (k) { if (groups[k].rekening) usedRekening[groups[k].rekening] = true; });
+    (masterList || []).forEach(function (m) {
+      if (!m.noRekening || usedRekening[m.noRekening]) return;
+      var key = 'REK:' + m.noRekening;
+      groups[key] = { nama: m.nama, namaPemilik: m.namaPemilik, rekening: m.noRekening, total: 0, hasTransaction: false };
+      order.push(key);
+    });
+
+    order.sort(function (a, b) { return groups[a].nama.localeCompare(groups[b].nama, 'id'); });
+
     return order.map(function (key, i) {
       var g = groups[key];
-      return { no: i + 1, nama: g.nama, namaPemilik: g.namaPemilik || g.nama, rekening: g.rekening, total: Math.round(g.total) };
+      return {
+        no: i + 1, nama: g.nama, namaPemilik: g.namaPemilik || g.nama, rekening: g.rekening,
+        total: g.hasTransaction ? Math.round(g.total) : null,
+      };
     });
   }
 
   function buildCsvContent(rows) {
-    var lines = ['NO|NAMA_SUPPLIER|NAMA_PEMILIK_REKENING|NO_REKENING|JUMLAH_UANG'];
+    var headerLine = ['NO', 'NAMA_SUPPLIER', 'NAMA_PEMILIK_REKENING', 'NO_REKENING', 'JUMLAH_UANG'].join('|');
+    var lines = ['"' + headerLine + '"'];
     rows.forEach(function (r) {
-      lines.push([r.no, csvEscape(r.nama), csvEscape(r.namaPemilik), csvEscape(r.rekening), r.total].join('|'));
+      var jumlahStr = r.total == null ? '-' : String(r.total);
+      var fields = [r.no, csvFieldSafe(r.nama), csvFieldSafe(r.namaPemilik), csvFieldSafe(r.rekening), jumlahStr];
+      lines.push('"' + fields.join('|') + '"');
     });
     return lines.join('\r\n');
   }
