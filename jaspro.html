@@ -1285,23 +1285,25 @@ function buildReportSheet(ws, opts) {
   var title = opts.title, rows = opts.rows, kind = opts.kind, settings = opts.settings, footer = opts.footer;
   var isJaspro = kind === 'jaspro';
 
-  var COL = { no: 2, nama: 3, kua: 4, nip: 5, gol: 6, rekcsv: 7, rek: 8, jumlah: 9, tarif: 10, subtotal: 11 };
-  if (isJaspro) { COL.pph = 12; COL.diterima = 13; } else { COL.diterima = 12; }
+  // Column A (blank spacer) and the second, always-empty "NO. REKENING" column
+  // have been removed — "NO. REKENING CSV" is now the sheet's only rekening column.
+  var COL = { no: 1, nama: 2, kua: 3, nip: 4, gol: 5, rekcsv: 6, jumlah: 7, tarif: 8, subtotal: 9 };
+  if (isJaspro) { COL.pph = 10; COL.diterima = 11; } else { COL.diterima = 10; }
   var lastColNum = COL.diterima;
 
-  var widths = { 1: 3.7, 2: 6.9, 3: 40, 4: 24.5, 5: 22.5, 6: 9.5, 7: 19.5, 8: 19, 9: 8.5, 10: 11.7, 11: 15.1, 12: 15.5, 13: 19.3 };
+  var widths = { 1: 6.9, 2: 40, 3: 24.5, 4: 22.5, 5: 9.5, 6: 19.5, 7: 8.5, 8: 11.7, 9: 15.1, 10: 15.5, 11: 19.3 };
   Object.keys(widths).forEach(function (c) { ws.getColumn(Number(c)).width = widths[c]; });
 
-  ws.mergeCells(2, 3, 2, lastColNum);
-  var t = ws.getCell(2, 3);
+  ws.mergeCells(2, COL.nama, 2, lastColNum);
+  var t = ws.getCell(2, COL.nama);
   t.value = title;
   t.font = { name: REPORT_FONT, size: 14, bold: true };
   t.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
   ws.getRow(2).height = 24;
 
   var headers = isJaspro
-    ? ['No', 'NAMA', 'KUA', 'NIP', 'GOL', 'NO. REKENING CSV', 'NO. REKENING', 'JUMLAH', 'TARIF', 'JUMLAH', 'PPH', 'JUMLAH DITERIMA']
-    : ['No', 'NAMA', 'KUA', 'NIP', 'GOL', 'NO. REKENING CSV', 'NO. REKENING', 'JUMLAH', 'TARIF', 'JUMLAH', 'JUMLAH DITERIMA'];
+    ? ['No', 'NAMA', 'KUA', 'NIP', 'GOL', 'NO. REKENING CSV', 'JUMLAH', 'TARIF', 'JUMLAH', 'PPH', 'JUMLAH DITERIMA']
+    : ['No', 'NAMA', 'KUA', 'NIP', 'GOL', 'NO. REKENING CSV', 'JUMLAH', 'TARIF', 'JUMLAH', 'JUMLAH DITERIMA'];
   headers.forEach(function (h, i) {
     var cell = ws.getCell(4, COL.no + i);
     cell.value = h;
@@ -1323,7 +1325,6 @@ function buildReportSheet(ws, opts) {
     var cNip = R.getCell(COL.nip); cNip.value = row.nip; cNip.numFmt = '@'; cNip.alignment = { horizontal: 'center', vertical: 'center' }; cNip.border = BORDER_ALL; cNip.font = { name: REPORT_FONT, size: 11 };
     var cGol = R.getCell(COL.gol); cGol.value = row.golongan; cGol.alignment = { horizontal: 'center', vertical: 'center' }; cGol.border = BORDER_ALL; cGol.font = { name: REPORT_FONT, size: 11 };
     var cRekCsv = R.getCell(COL.rekcsv); cRekCsv.value = row.rekening || ''; cRekCsv.numFmt = '@'; cRekCsv.alignment = { horizontal: 'center', vertical: 'center' }; cRekCsv.border = BORDER_ALL; cRekCsv.font = { name: REPORT_FONT, size: 11 };
-    var cRek = R.getCell(COL.rek); cRek.value = ''; cRek.numFmt = '@'; cRek.alignment = { horizontal: 'center', vertical: 'center' }; cRek.border = BORDER_ALL; cRek.font = { name: REPORT_FONT, size: 11 };
 
     var cJumlah = R.getCell(COL.jumlah); cJumlah.value = row.jumlahPeristiwa; cJumlah.numFmt = '0'; cJumlah.alignment = { horizontal: 'center', vertical: 'center' }; cJumlah.border = BORDER_ALL; cJumlah.font = { name: REPORT_FONT, size: 11 };
 
@@ -1362,7 +1363,7 @@ function buildReportSheet(ws, opts) {
   labelCell.font = { name: REPORT_FONT, size: 11, bold: true };
   labelCell.alignment = { horizontal: 'right', vertical: 'center' };
   labelCell.border = { top: THIN, bottom: THIN, left: THIN };
-  ws.getCell(totalRow, COL.rek).border = { top: THIN, bottom: THIN, right: THIN };
+  ws.getCell(totalRow, COL.rekcsv).border = { top: THIN, bottom: THIN, right: THIN };
 
   function sumCol(colNum) {
     var cl = colLetter(colNum);
@@ -1388,21 +1389,23 @@ function buildReportSheet(ws, opts) {
   sumCol(COL.diterima);
   ws.getRow(totalRow).height = 18;
 
-  // Footer / signature block
+  // Footer / signature block — text at 12pt, with extra blank rows left for the
+  // physical signature/stamp between the "jabatan" line and the printed name.
+  var SIGNATURE_FONT_SIZE = 12;
   var fr = totalRow + 3;
   function mergeSet(row, colFrom, colTo, value, opts) {
     opts = opts || {};
     if (colTo > colFrom) ws.mergeCells(row, colFrom, row, colTo);
     var c = ws.getCell(row, colFrom);
     c.value = value;
-    var f = { name: REPORT_FONT, size: 11, bold: true };
+    var f = { name: REPORT_FONT, size: SIGNATURE_FONT_SIZE, bold: true };
     if (opts.font) for (var k in opts.font) f[k] = opts.font[k];
     c.font = f;
     c.alignment = { horizontal: opts.h || 'left', vertical: opts.v || 'top', wrapText: false };
     return c;
   }
   var leftFrom = COL.nama, leftTo = COL.kua;
-  var midFrom = COL.gol, midTo = COL.rek;
+  var midFrom = COL.gol, midTo = COL.rekcsv;
   var rightFrom = isJaspro ? COL.pph : COL.tarif, rightTo = COL.diterima;
 
   mergeSet(fr, leftFrom, leftTo, 'Mengetahui,');
@@ -1412,7 +1415,10 @@ function buildReportSheet(ws, opts) {
   mergeSet(fr + 1, midFrom, midTo, footer.ppkJabatan, { h: 'center' });
   mergeSet(fr + 1, rightFrom, rightTo, footer.bendaharaJabatan, { h: 'right' });
 
-  var nameRow = fr + 5;
+  // 2 extra blank rows of signing space vs. the previous layout (gap of 5 rows
+  // now, was 3): fr+1 is the jabatan line, fr+2..fr+6 are blank for a pen
+  // signature/stamp, fr+7 is where the printed name resumes.
+  var nameRow = fr + 7;
   mergeSet(nameRow, leftFrom, leftTo, footer.kpaNama, { font: { underline: true } });
   mergeSet(nameRow, midFrom, midTo, footer.ppkNama, { h: 'center', font: { underline: true } });
   mergeSet(nameRow, rightFrom, rightTo, footer.bendaharaNama, { h: 'right', font: { underline: true } });
