@@ -807,3 +807,96 @@ textarea.verify-notes:focus {
     color: #dc3545 !important;
     font-weight: 700;
 }
+
+/* ===== SEARCHABLE CHECKLIST (mis. pilih bulan dibuka utk edit RPD) ===== */
+.search-checklist {
+    border: 1px solid #e2e5e9;
+    border-radius: 14px;
+    background: #fff;
+    overflow: hidden;
+    max-width: 420px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+.search-checklist-search {
+    width: 100%;
+    border: none;
+    outline: none;
+    padding: 14px 16px;
+    font-size: 15px;
+    border-bottom: 1px solid #eceef1;
+    box-sizing: border-box;
+    border-radius: 14px 14px 0 0;
+}
+
+.search-checklist-search::placeholder {
+    color: #9aa0a6;
+}
+
+.search-checklist-list {
+    max-height: 260px;
+    overflow-y: auto;
+}
+
+.search-checklist-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 16px;
+    cursor: pointer;
+    user-select: none;
+}
+
+.search-checklist-row:hover {
+    background: #e4e7ec;
+}
+
+.search-checklist-row input[type="checkbox"] {
+    position: absolute;
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.search-checklist-box {
+    width: 20px;
+    height: 20px;
+    border: 2px solid #c7cbd1;
+    border-radius: 5px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #fff;
+    transition: all 0.15s;
+}
+
+.search-checklist-row input[type="checkbox"]:checked + .search-checklist-box {
+    background: #2563eb;
+    border-color: #2563eb;
+}
+
+.search-checklist-row input[type="checkbox"]:checked + .search-checklist-box::after {
+    content: '';
+    width: 5px;
+    height: 9px;
+    border: solid #fff;
+    border-width: 0 2px 2px 0;
+    transform: rotate(45deg) translate(-1px, -1px);
+}
+
+.search-checklist-row input[type="checkbox"]:focus-visible + .search-checklist-box {
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.25);
+}
+
+.search-checklist-label {
+    font-size: 16px;
+    color: #1f2328;
+}
+
+.search-checklist-empty {
+    padding: 16px;
+    color: #9aa0a6;
+    font-size: 14px;
+    text-align: center;
+}

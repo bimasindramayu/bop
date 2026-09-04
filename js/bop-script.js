@@ -1530,6 +1530,10 @@ async function deleteUserConfirm(userId) {
 }
 
 // ===== RPD APP_CONFIG =====
+// ✅ BARU — status centang checklist "Bulan Dibuka utk Edit RPD", diakses dari
+// atribut onchange inline pada #rpdEditMonthsGrid (lihat displayRPDConfig / saveConfig).
+let _rpdEditMonthsChecked = {};
+
 async function loadRPDConfig(forceRefresh = false) {
     console.log('[CONFIG] Loading RPD & Realisasi config', { forceRefresh });
     
@@ -1596,18 +1600,38 @@ function displayRPDConfig(config) {
         console.error('[CONFIG] realisasiMaxFiles element not found!');
     }
 
-    // ✅ BARU — Render checkbox bulan (RPD_EDIT_OPEN_MONTHS) & centang yang sudah dibuka
+    // ✅ BARU — Render checklist bulan (RPD_EDIT_OPEN_MONTHS): searchable,
+    // custom checkbox (lihat .search-checklist-* di bop-styles.css).
     const monthsGrid = document.getElementById('rpdEditMonthsGrid');
+    const monthsSearch = document.getElementById('rpdEditMonthsSearch');
     if (monthsGrid) {
         let openMonths = [];
         try { openMonths = JSON.parse(config.RPD_EDIT_OPEN_MONTHS || '[]'); } catch (e) { openMonths = []; }
 
-        monthsGrid.innerHTML = APP_CONFIG.MONTHS.map(m => `
-            <label style="display:flex; align-items:center; gap:6px; font-weight:normal; cursor:pointer;">
-                <input type="checkbox" class="rpd-edit-month-cb" value="${m}" ${openMonths.includes(m) ? 'checked' : ''}>
-                ${m}
-            </label>
-        `).join('');
+        // Status centang per bulan disimpan di luar DOM supaya tidak hilang
+        // ketika list difilter ulang oleh kotak pencarian.
+        _rpdEditMonthsChecked = {};
+        APP_CONFIG.MONTHS.forEach(m => { _rpdEditMonthsChecked[m] = openMonths.includes(m); });
+
+        const renderMonthsList = (filterText) => {
+            const q = (filterText || '').trim().toLowerCase();
+            const visible = APP_CONFIG.MONTHS.filter(m => !q || m.toLowerCase().includes(q));
+            monthsGrid.innerHTML = visible.length ? visible.map(m => `
+                <label class="search-checklist-row">
+                    <input type="checkbox" class="rpd-edit-month-cb" value="${m}"
+                        ${_rpdEditMonthsChecked[m] ? 'checked' : ''}
+                        onchange="_rpdEditMonthsChecked['${m}'] = this.checked">
+                    <span class="search-checklist-box"></span>
+                    <span class="search-checklist-label">${m}</span>
+                </label>
+            `).join('') : '<div class="search-checklist-empty">Bulan tidak ditemukan</div>';
+        };
+
+        renderMonthsList('');
+        if (monthsSearch) {
+            monthsSearch.value = '';
+            monthsSearch.oninput = () => renderMonthsList(monthsSearch.value);
+        }
         console.log('[CONFIG] Set RPD Edit Open Months to:', openMonths);
     } else {
         console.error('[CONFIG] rpdEditMonthsGrid element not found!');
@@ -1728,21 +1752,11 @@ function displayRPDs(rpds) {
     
     let totalNominal = 0;
     
-    // ✅ Cek RPD_STATUS dari cache config
+    // ✅ FIX: Edit RPD memakai RPD_EDIT_OPEN_MONTHS, BUKAN RPD_STATUS.
+    // RPD_STATUS hanya berlaku untuk tambah RPD baru (lihat showRPDModal).
     const _rpdCfg = getLocalCache('config');
-    const _rpdStatusClosed = _rpdCfg && _rpdCfg.RPD_STATUS === 'closed';
-
-    // Helper: apakah bulan/tahun RPD sudah lewat dari bulan sekarang?
-    function _isRpdMonthPast(rpdMonth, rpdYear) {
-        const _now = new Date();
-        const _curYear  = _now.getFullYear();
-        const _curMonth = _now.getMonth(); // 0-based
-        const _rpdMonthIdx = APP_CONFIG.MONTHS.indexOf(rpdMonth); // 0-based
-        const _rpdYear  = parseInt(rpdYear);
-        if (_rpdYear < _curYear) return true;
-        if (_rpdYear === _curYear && _rpdMonthIdx < _curMonth) return true;
-        return false;
-    }
+    let _rpdEditOpenMonths = [];
+    try { _rpdEditOpenMonths = JSON.parse((_rpdCfg && _rpdCfg.RPD_EDIT_OPEN_MONTHS) || '[]'); } catch (e) { _rpdEditOpenMonths = []; }
 
     const rows = filteredData.map((rpd, index) => {
         totalNominal += parseFloat(rpd.total || 0);
@@ -1756,10 +1770,11 @@ function displayRPDs(rpds) {
         const kuaColumn = currentUser.role === 'Admin' ? 
             `<td>${rpd.kua || '-'}</td>` : '';
 
-        // ✅ Edit button: sembunyikan untuk Operator jika status closed ATAU bulan sudah lewat
+        // ✅ FIX: Edit button mengikuti bulan yang dibuka Admin utk edit
+        // (RPD_EDIT_OPEN_MONTHS) — sama persis dengan yang dicek server saat
+        // submit, supaya tombol tidak pernah "kelihatan ada tapi ditolak".
         const _canEdit = currentUser.role !== 'Admin'
-            && !_rpdStatusClosed
-            && !_isRpdMonthPast(rpd.month, rpd.year);
+            && _rpdEditOpenMonths.includes(rpd.month);
         
         return `
         <tr>
@@ -1979,14 +1994,17 @@ async function showRPDModal(rpd = null) {
     // Check if config allows RPD input (tanpa loading)
     try {
         const config = await apiCall('getRPDConfig');
-        if (config.RPD_STATUS === 'closed' && currentUser.role !== 'Admin') {
+        const isEditMode = !!(rpd && rpd.id);
+
+        // ✅ FIX: RPD_STATUS hanya berlaku untuk TAMBAH RPD baru — bukan edit.
+        if (!isEditMode && config.RPD_STATUS === 'closed' && currentUser.role !== 'Admin') {
             showNotification('Pengisian RPD sedang ditutup', 'warning');
             return;
         }
 
-        // ✅ BARU — Edit RPD yang sudah ada (rpd.id) hanya boleh utk Operator KUA
-        // kalau bulannya termasuk yang dibuka Admin (RPD_EDIT_OPEN_MONTHS).
-        if (rpd && rpd.id && currentUser.role !== 'Admin') {
+        // ✅ Edit RPD yang sudah ada memakai gate-nya sendiri (RPD_EDIT_OPEN_MONTHS),
+        // TIDAK bergantung pada RPD_STATUS sama sekali.
+        if (isEditMode && currentUser.role !== 'Admin') {
             let openMonths = [];
             try { openMonths = JSON.parse(config.RPD_EDIT_OPEN_MONTHS || '[]'); } catch (e) { openMonths = []; }
             if (!openMonths.includes(rpd.month)) {
@@ -7411,9 +7429,11 @@ async function saveConfig() {
             REALISASI_STATUS: realisasiStatusEl.value,
             REALISASI_MAX_FILE_SIZE: parseInt(maxFileSizeEl.value) || 5,
             REALISASI_MAX_FILES: parseInt(maxFilesEl.value) || 10,
-            // ✅ BARU — bulan yang dibuka utk edit RPD oleh Operator KUA
+            // ✅ FIX: baca dari _rpdEditMonthsChecked (state), bukan dari DOM —
+            // kalau kotak pencarian sedang memfilter list, bulan yang sudah
+            // dicentang tapi sedang tersembunyi tidak akan ke-skip.
             RPD_EDIT_OPEN_MONTHS: JSON.stringify(
-                Array.from(document.querySelectorAll('.rpd-edit-month-cb:checked')).map(cb => cb.value)
+                Object.keys(_rpdEditMonthsChecked).filter(m => _rpdEditMonthsChecked[m])
             )
         };
 
@@ -8500,8 +8520,10 @@ function displayRPDsFiltered() {
     // Calculate total
     let totalNominal = 0;
     
+    // ✅ FIX: Edit RPD memakai RPD_EDIT_OPEN_MONTHS, BUKAN RPD_STATUS.
     const _rpdCfg2 = getLocalCache('config');
-    const _rpdStatusClosed2 = _rpdCfg2 && _rpdCfg2.RPD_STATUS === 'closed';
+    let _rpdEditOpenMonths2 = [];
+    try { _rpdEditOpenMonths2 = JSON.parse((_rpdCfg2 && _rpdCfg2.RPD_EDIT_OPEN_MONTHS) || '[]'); } catch (e) { _rpdEditOpenMonths2 = []; }
 
     const rows = filteredData.map((rpd, index) => {
         totalNominal += parseFloat(rpd.total || 0);
@@ -8511,12 +8533,8 @@ function displayRPDsFiltered() {
         rpdDataStore.set(rpdId, rpd);
         const kuaColumn = currentUser.role === 'Admin' ? `<td>${rpd.kua || '-'}</td>` : '';
 
-        const _rpdMonthIdx2 = APP_CONFIG.MONTHS.indexOf(rpd.month);
-        const _rpdYear2 = parseInt(rpd.year);
-        const _now2 = new Date();
-        const _isPast2 = _rpdYear2 < _now2.getFullYear() ||
-            (_rpdYear2 === _now2.getFullYear() && _rpdMonthIdx2 < _now2.getMonth());
-        const _canEdit2 = currentUser.role !== 'Admin' && !_rpdStatusClosed2 && !_isPast2;
+        // ✅ FIX: sama seperti displayRPDs — ikuti RPD_EDIT_OPEN_MONTHS
+        const _canEdit2 = currentUser.role !== 'Admin' && _rpdEditOpenMonths2.includes(rpd.month);
         
         return `
         <tr>

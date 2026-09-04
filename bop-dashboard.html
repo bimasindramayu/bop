@@ -244,8 +244,11 @@
                                 RPD yang sudah pernah disubmit hanya bisa diubah lagi oleh Operator KUA
                                 pada bulan-bulan yang dicentang di sini. Admin selalu bisa edit kapan saja.
                             </small>
-                            <div id="rpdEditMonthsGrid" style="display:grid; grid-template-columns: repeat(3, 1fr); gap:8px;">
-                                <!-- diisi JS: satu checkbox per bulan -->
+                            <div id="rpdEditMonthsPicker" class="search-checklist">
+                                <input type="text" id="rpdEditMonthsSearch" class="search-checklist-search" placeholder="Search...">
+                                <div id="rpdEditMonthsGrid" class="search-checklist-list">
+                                    <!-- diisi JS: satu baris (checkbox + label) per bulan -->
+                                </div>
                             </div>
                         </div>
                         <button class="btn" onclick="saveConfig()">Simpan Konfigurasi</button>
