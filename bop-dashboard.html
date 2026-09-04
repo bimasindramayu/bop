@@ -238,6 +238,16 @@
                             <label>Maksimal Jumlah File</label>
                             <input type="number" id="realisasiMaxFiles" min="1" max="20" value="10">
                         </div>
+                        <div class="form-group">
+                            <label>Bulan Dibuka untuk Edit RPD (Operator KUA)</label>
+                            <small style="display:block; color:#666; margin-bottom:8px;">
+                                RPD yang sudah pernah disubmit hanya bisa diubah lagi oleh Operator KUA
+                                pada bulan-bulan yang dicentang di sini. Admin selalu bisa edit kapan saja.
+                            </small>
+                            <div id="rpdEditMonthsGrid" style="display:grid; grid-template-columns: repeat(3, 1fr); gap:8px;">
+                                <!-- diisi JS: satu checkbox per bulan -->
+                            </div>
+                        </div>
                         <button class="btn" onclick="saveConfig()">Simpan Konfigurasi</button>
                     </div>
                 </div>

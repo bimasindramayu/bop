@@ -71,6 +71,12 @@ function doPost(e) {
       case 'deleteRealisasi':
         result = withQuotaCheck(action, data, function() { return handleBOPAction(action, data); });
         break;
+      case 'saveRPD':   // ← termasuk edit RPD oleh Admin/Operator KUA
+        result = withQuotaCheck(action, data, function() { return handleBOPAction(action, data); });
+        break;
+      case 'saveAutoPaymentNominal':
+        result = withQuotaCheck(action, data, function() { return handleBOPAction(action, data); });
+        break;
 
       // BOP Actions
       case 'getBudgets':
@@ -79,7 +85,6 @@ function doPost(e) {
       case 'getRPDConfig':
       case 'saveRPDConfig':
       case 'getRPDs':
-      case 'saveRPD':
       case 'deleteRPD':
       case 'getRealisasis':
       case 'uploadFile':
@@ -111,7 +116,6 @@ function doPost(e) {
       case 'getAutoPaymentConfig':
       case 'saveAutoPaymentConfig':
       case 'getAutoPaymentNominal':
-      case 'saveAutoPaymentNominal':
         // Delegate ke BOP module
         result = handleBOPAction(action, data);
         break;

@@ -3093,6 +3093,13 @@ function updateRPDConfig(data) {
       'REALISASI_MAX_FILE_SIZE': data.REALISASI_MAX_FILE_SIZE || 5,
       'REALISASI_MAX_FILES': data.REALISASI_MAX_FILES || 5
     };
+    // ✅ BARU — bulan-bulan yang dibuka Admin utk EDIT RPD yang sudah ada
+    // (Operator KUA). Disimpan sebagai JSON array string, mis. '["November","Desember"]'.
+    // Hanya ditulis kalau memang dikirim, supaya panggilan updateRPDConfig lama
+    // (yang tidak tahu field ini) tidak menimpanya jadi kosong secara tidak sengaja.
+    if (data.RPD_EDIT_OPEN_MONTHS !== undefined) {
+      configKeys['RPD_EDIT_OPEN_MONTHS'] = data.RPD_EDIT_OPEN_MONTHS;
+    }
     
     Logger.log('[UPDATE_RPD_CONFIG] Config keys to update:', JSON.stringify(configKeys));
     

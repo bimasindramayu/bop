@@ -1595,6 +1595,23 @@ function displayRPDConfig(config) {
     } else {
         console.error('[CONFIG] realisasiMaxFiles element not found!');
     }
+
+    // ✅ BARU — Render checkbox bulan (RPD_EDIT_OPEN_MONTHS) & centang yang sudah dibuka
+    const monthsGrid = document.getElementById('rpdEditMonthsGrid');
+    if (monthsGrid) {
+        let openMonths = [];
+        try { openMonths = JSON.parse(config.RPD_EDIT_OPEN_MONTHS || '[]'); } catch (e) { openMonths = []; }
+
+        monthsGrid.innerHTML = APP_CONFIG.MONTHS.map(m => `
+            <label style="display:flex; align-items:center; gap:6px; font-weight:normal; cursor:pointer;">
+                <input type="checkbox" class="rpd-edit-month-cb" value="${m}" ${openMonths.includes(m) ? 'checked' : ''}>
+                ${m}
+            </label>
+        `).join('');
+        console.log('[CONFIG] Set RPD Edit Open Months to:', openMonths);
+    } else {
+        console.error('[CONFIG] rpdEditMonthsGrid element not found!');
+    }
 }
 
 async function saveRPDConfig() {
@@ -1966,6 +1983,17 @@ async function showRPDModal(rpd = null) {
             showNotification('Pengisian RPD sedang ditutup', 'warning');
             return;
         }
+
+        // ✅ BARU — Edit RPD yang sudah ada (rpd.id) hanya boleh utk Operator KUA
+        // kalau bulannya termasuk yang dibuka Admin (RPD_EDIT_OPEN_MONTHS).
+        if (rpd && rpd.id && currentUser.role !== 'Admin') {
+            let openMonths = [];
+            try { openMonths = JSON.parse(config.RPD_EDIT_OPEN_MONTHS || '[]'); } catch (e) { openMonths = []; }
+            if (!openMonths.includes(rpd.month)) {
+                showNotification('Edit RPD bulan ' + rpd.month + ' sedang ditutup oleh Admin.', 'warning');
+                return;
+            }
+        }
     } catch (error) {
         console.error('[RPD ERROR] Failed to check config', error);
     }
@@ -2018,6 +2046,51 @@ async function showRPDModal(rpd = null) {
         }
     } catch (error) {
         console.error('[RPD ERROR] Failed to get budget:', error);
+    }
+
+    // ✅ BARU — Info per pos akun: Total RPD setahun & Total Realisasi setahun
+    // (Approved/Paid) yang sudah pernah disubmit, supaya operator punya
+    // konteks saat merevisi RPD bulan ini.
+    let posInfoHTML = '';
+    try {
+        const _posYear = (rpd && rpd.year) ? rpd.year : new Date().getFullYear();
+        const _posMonth = (rpd && rpd.month) ? rpd.month : '';
+        const _posKua = currentUser.role === 'Admin' ? (rpd ? rpd.kua : currentUser.kua) : currentUser.kua;
+        const posCtx = await _getRealisasiPosLimitContext(_posKua, _posMonth, _posYear, null);
+
+        const posRows = [];
+        Object.entries(APP_CONFIG.BOP.RPD_PARAMETERS).forEach(([code, param]) => {
+            param.items.forEach(item => {
+                const rpdSetahun = (posCtx.rpdAnnual[code] && posCtx.rpdAnnual[code][item]) ? posCtx.rpdAnnual[code][item] : 0;
+                const realSetahun = (posCtx.used[code] && posCtx.used[code][item]) ? posCtx.used[code][item] : 0;
+                const label = item === 'Nominal' ? param.name : `${param.name} — ${item}`;
+                posRows.push(`
+                    <tr>
+                        <td style="padding:6px 8px;">${label}</td>
+                        <td style="padding:6px 8px; text-align:right;">${formatCurrency(rpdSetahun)}</td>
+                        <td style="padding:6px 8px; text-align:right;">${formatCurrency(realSetahun)}</td>
+                    </tr>
+                `);
+            });
+        });
+
+        posInfoHTML = `
+            <div class="summary-box" style="max-height:220px; overflow-y:auto;">
+                <div style="font-weight:600; margin-bottom:8px;">Rincian per Pos Akun (Tahun ${_posYear})</div>
+                <table style="width:100%; border-collapse:collapse; font-size:13px;">
+                    <thead>
+                        <tr style="border-bottom:2px solid #dee2e6;">
+                            <th style="text-align:left; padding:6px 8px;">Pos Akun</th>
+                            <th style="text-align:right; padding:6px 8px;">Total RPD Setahun</th>
+                            <th style="text-align:right; padding:6px 8px;">Total Realisasi Setahun</th>
+                        </tr>
+                    </thead>
+                    <tbody>${posRows.join('')}</tbody>
+                </table>
+            </div>
+        `;
+    } catch (error) {
+        console.error('[RPD ERROR] Failed to get per-pos info:', error);
     }
 
     // Create modal if doesn't exist
@@ -2090,9 +2163,11 @@ async function showRPDModal(rpd = null) {
                 </div>
                 <div class="summary-item">
                     <span>Sisa Nominal RPD:</span>
-                    <strong style="color: #28a745;">${formatCurrency(budgetInfo.sisaRPD)}</strong>
+                    <strong id="sisaNominalRPDInfo" style="color: #28a745;">${formatCurrency(budgetInfo.sisaRPD)}</strong>
                 </div>
             </div>
+
+            ${posInfoHTML}
             
             <form id="rpdForm" data-edit-mode="${rpd ? 'true' : 'false'}" data-existing-rpd-total="${rpd ? (rpd.total || 0) : 0}">
                 <div class="form-group">
@@ -2238,6 +2313,27 @@ async function showRPDModal(rpd = null) {
             showNotification('Total RPD tidak boleh 0. Silakan isi nominal untuk minimal satu item.', 'warning');
             return;
         }
+
+        // ✅ BARU — Guard terakhir sebelum submit (jaga-jaga kalau submit terpicu
+        // lewat Enter, bukan klik tombol yang sudah di-disable). Pemblokir yang
+        // sebenarnya (otoritatif) tetap di server.
+        if (currentUser.role !== 'Admin') {
+            const cachedRPDs2 = getLocalCache('rpds') || [];
+            const isEdit2 = !!(rpd && rpd.id);
+            const baseline2 = cachedRPDs2
+                .filter(r => r.year == year && (currentUser.role === 'Admin' || r.kua === currentUser.kua))
+                .reduce((s, r) => s + (parseFloat(r.total) || 0), 0);
+            const oldTotal2 = isEdit2 ? (parseFloat(rpd.total) || 0) : 0;
+            const newAnnual2 = baseline2 - oldTotal2 + total;
+            const budgetTotal2 = budgetInfo.budget || 0;
+            if (newAnnual2 > budgetTotal2) {
+                showNotification(
+                    'Total RPD setahun (' + formatCurrency(newAnnual2) + ') melebihi Budget tahunan (' +
+                    formatCurrency(budgetTotal2) + '). Silakan kurangi nominal.', 'error'
+                );
+                return;
+            }
+        }
         
         try {
             const submitData = {
@@ -2248,7 +2344,8 @@ async function showRPDModal(rpd = null) {
                 total: total,
                 data: rpdData,
                 userId: currentUser.id,
-                username: currentUser.username
+                username: currentUser.username,
+                role: currentUser.role // ✅ FIX: sebelumnya tidak dikirim — dibutuhkan server utk skip Admin dari guard bulan-edit & budget
             };
             
             console.log('[RPD FORM] Submitting to API:', submitData);
@@ -2444,6 +2541,36 @@ function updateRPDSummaryBox(currentTotal) {
     } else {
         sisaNominalEl.style.color = '#28a745'; // Green
         totalRPDEl.style.color = '#333'; // Default
+    }
+
+    // ✅ BARU — Blokir submit sungguhan (bukan cuma warna) kalau total RPD
+    // setahun melebihi Budget. Admin dikecualikan (sama seperti di server).
+    if (currentUser && currentUser.role !== 'Admin') {
+        const isOverBudget = sisaNominal < 0;
+        const submitBtn = document.querySelector('#rpdForm button[type="submit"]');
+        let warningBanner = document.getElementById('rpdBudgetOverWarning');
+
+        if (isOverBudget) {
+            if (!warningBanner) {
+                warningBanner = document.createElement('div');
+                warningBanner.id = 'rpdBudgetOverWarning';
+                warningBanner.className = 'budget-over-warning';
+                const summaryBoxes = document.querySelectorAll('#modal .summary-box');
+                const firstSummaryBox = summaryBoxes[0];
+                if (firstSummaryBox) firstSummaryBox.insertAdjacentElement('afterend', warningBanner);
+            }
+            warningBanner.innerHTML = `
+                ⚠️ <strong>Total RPD setahun melebihi Budget!</strong>
+                Kelebihan: <strong>${formatCurrency(Math.abs(sisaNominal))}</strong>
+                — Kurangi nominal agar tidak melebihi Budget tahunan
+                <strong>${formatCurrency(budgetTahunan)}</strong>.
+            `;
+            warningBanner.style.display = 'block';
+            if (submitBtn) submitBtn.disabled = true;
+        } else {
+            if (warningBanner) warningBanner.style.display = 'none';
+            if (submitBtn) submitBtn.disabled = false;
+        }
     }
 }
 
@@ -3010,7 +3137,7 @@ async function showRealisasiModal(realisasi = null) {
                 <button class="btn-close" onclick="closeRealisasiModal()">×</button>
             </div>
             
-            <form id="realisasiForm">
+            <form id="realisasiForm" data-editing-id="${realisasi ? realisasi.id : ''}">
                 <div class="modal-body">
                     
                     <!-- Info Budget -->
@@ -3686,51 +3813,54 @@ async function submitRealisasi(e) {
     });
     
     // Handle file uploads
+    // ✅ FIX: form tidak punya elemen #realisasiFiles (dulu selalu throw di sini).
+    // File yang sudah dipilih user sudah di-base64-kan & ditampung di global
+    // `uploadedFiles` oleh handleFileInputChange() saat file dipilih — upload
+    // ke Drive dilakukan di sini, saat submit.
     const files = [];
-    const fileInput = document.getElementById('realisasiFiles');
-    
-    if (fileInput.files.length > 0) {
-      for (let i = 0; i < fileInput.files.length; i++) {
-        const file = fileInput.files[i];
-        
-        // Convert to base64
-        const reader = new FileReader();
-        const fileData = await new Promise((resolve, reject) => {
-          reader.onload = (e) => resolve(e.target.result.split(',')[1]);
-          reader.onerror = reject;
-          reader.readAsDataURL(file);
-        });
-        
-        // Upload to drive
-        const uploadResult = await apiCall('uploadFile', {
-          filename: sanitizeFileName(file.name), // ✅ FIX: Sanitize filename
-          fileData: fileData,
-          mimeType: file.type,
-          originalName: file.name // Keep original for display purposes
-        });
-        
-        files.push(uploadResult);
-      }
+    for (const f of uploadedFiles) {
+      const uploadResult = await apiCall('uploadFile', {
+        filename: sanitizeFileName(f.fileName), // ✅ FIX: Sanitize filename
+        fileData: f.fileData,
+        mimeType: f.mimeType,
+        originalName: f.fileName // Keep original for display purposes
+      });
+      files.push(uploadResult);
     }
+    // Gabungkan dengan file lama yang tidak dihapus (mode edit)
+    const existingFilesInput = document.getElementById('existingFilesData');
+    let existingFiles = [];
+    if (existingFilesInput && existingFilesInput.value) {
+      try { existingFiles = JSON.parse(existingFilesInput.value) || []; } catch (e) { existingFiles = []; }
+    }
+    const allFiles = existingFiles.concat(files);
     
     // Submit realisasi
+    // ✅ FIX: id realisasi yang sedang diedit dibaca dari atribut data-editing-id
+    // pada <form id="realisasiForm"> (global `editingRealisasi` sebelumnya tidak
+    // pernah didefinisikan sehingga baris ini selalu throw ReferenceError).
+    const formEl = document.getElementById('realisasiForm');
+    const editingId = formEl?.dataset.editingId || undefined;
     const submitData = {
-      id: editingRealisasi?.id,
+      id: editingId,
       kua: currentUser.kua,
       userId: currentUser.id,
+      username: currentUser.username, // ✅ FIX: sebelumnya tidak dikirim, kolom Username selalu kosong
+      role: currentUser.role,         // ✅ FIX: dibutuhkan agar validasi budget/RPD di server tahu Admin vs Operator KUA
       month: document.getElementById('realisasiMonth').value,
       year: document.getElementById('realisasiYear')?.value || new Date().getFullYear(),
       data: realisasiData,
       total: total,
-      files: files
+      files: allFiles
     };
     
-    console.log('[REALISASI FORM] Submitting with', files.length, 'files');
+    console.log('[REALISASI FORM] Submitting with', allFiles.length, 'files');
     
     const result = await apiCall('saveRealisasi', submitData);
     
     hideLoading();
     showNotification(result.message || 'Realisasi berhasil disimpan', 'success');
+    uploadedFiles = []; // ✅ reset agar tidak terbawa ke form berikutnya
     closeModal();
     loadRealisasis();
     
@@ -4300,16 +4430,116 @@ function displayUploadedFilesWithPreview() {
     console.log('[FILE] ========== DISPLAY FILES WITH PREVIEW END ==========');
 }
 
-function calculateRealisasiTotal() {
+// ✅ BARU (v2 — per item, bukan per kode) — Cache konteks batas RPD untuk form
+// realisasi yang sedang terbuka. Dihitung ulang hanya kalau KUA / bulan /
+// tahun / (mode edit) berubah — bukan setiap keystroke.
+//
+// PENTING: sebagian kode akun (mis. 521111) punya beberapa item di dalamnya
+// (ATK Kantor, Jamuan Tamu, dst). Konteks ini disimpan PER ITEM, bukan
+// digabung per kode, supaya pos yang sudah lewat pagu tidak "tertutupi" oleh
+// sisa pagu item lain dalam kode yang sama.
+let _posLimitCache    = null;
+let _posLimitCacheKey = '';
+
+/**
+ * Ambil (atau hitung ulang bila konteks berubah) total RPD setahun per
+ * (kode,item), total realisasi Approved/Paid yang sudah terpakai setahun per
+ * (kode,item) (AP-aware), dan data RPD bulan yang sedang diisi per (kode,item).
+ * Dipakai untuk peringatan real-time di form — pemblokir yang sebenarnya
+ * (otoritatif) ada di server (lihat _validateRealisasiAgainstRPD di
+ * code-bop-enhanced.gs).
+ */
+async function _getRealisasiPosLimitContext(kua, month, year, excludeId) {
+    const key = `${kua}|${month}|${year}|${excludeId || ''}`;
+    if (_posLimitCache && _posLimitCacheKey === key) return _posLimitCache;
+
+    let allRpds = getLocalCache('rpds');
+    if (!allRpds) {
+        try { allRpds = await apiCall('getRPDs', { kua, year }); } catch (e) { allRpds = []; }
+    }
+    let allReal = getLocalCache('realisasis');
+    if (!allReal) {
+        try { allReal = await apiCall('getRealisasis', { kua, year }); } catch (e) { allReal = []; }
+    }
+    allRpds = allRpds || [];
+    allReal = allReal || [];
+
+    // RPD setahun per (kode,item) + data RPD bulan berjalan per (kode,item)
+    const rpdAnnual = {};    // rpdAnnual[code][item] = sum setahun
+    let rpdMonthData = null; // {code:{item:val}} khusus bulan yg sedang diisi
+    allRpds.forEach(r => {
+        if (r.kua !== kua || String(r.year) !== String(year)) return;
+        Object.entries(r.data || {}).forEach(([code, items]) => {
+            if (!rpdAnnual[code]) rpdAnnual[code] = {};
+            Object.entries(items).forEach(([item, v]) => {
+                rpdAnnual[code][item] = (rpdAnnual[code][item] || 0) + (parseFloat(v) || 0);
+            });
+        });
+        if (r.month === month) rpdMonthData = r.data || {};
+    });
+
+    // AP config + nominal per bulan yang relevan (utk konversi realisasi historis yg AP-aktif)
+    const apCfg    = await apGetConfig();
+    const kuaApCfg = apCfg[kua] || null;
+    const relevantMonths = [...new Set(
+        allReal.filter(r => r.kua === kua && String(r.year) === String(year)
+                          && (r.status === 'Approved' || r.status === 'Paid')
+                          && r.id !== excludeId)
+               .map(r => r.month)
+    )];
+    const nomByMonth = {};
+    for (const m of relevantMonths) {
+        try {
+            const nomData = await apGetNominals(m, year);
+            nomByMonth[m] = (nomData && nomData[kua]) ? nomData[kua] : {};
+        } catch (e) { nomByMonth[m] = {}; }
+    }
+
+    // Total realisasi Approved/Paid yang sudah terpakai setahun, per (kode,item) (AP-aware)
+    const used = {}; // used[code][item] = sum
+    allReal.forEach(r => {
+        if (r.kua !== kua || String(r.year) !== String(year)) return;
+        if (r.status !== 'Approved' && r.status !== 'Paid') return;
+        if (r.id === excludeId) return;
+        const nom = nomByMonth[r.month] || {};
+        Object.entries(r.data || {}).forEach(([code, items]) => {
+            const isAP = kuaApCfg && kuaApCfg[code] === true;
+            if (!used[code]) used[code] = {};
+            Object.keys(items).forEach(item => {
+                const v = isAP
+                    ? (parseFloat(nom[code] || 0) || 0) // kode AP selalu 1 item ("Nominal")
+                    : (parseFloat(items[item]) || 0);
+                used[code][item] = (used[code][item] || 0) + v;
+            });
+        });
+    });
+
+    _posLimitCache    = { rpdAnnual, used, rpdMonthData };
+    _posLimitCacheKey = key;
+    return _posLimitCache;
+}
+
+/** Label pos akun yang enak dibaca — sama seperti _posLabel di backend. */
+function _posLabelClient(code, item) {
+    const param = APP_CONFIG.BOP.RPD_PARAMETERS[code];
+    const codeName = param ? param.name : code;
+    return item === 'Nominal' ? codeName : `${codeName} — ${item}`;
+}
+
+async function calculateRealisasiTotal() {
     let total = 0;
     
     console.log('[CALCULATE_REALISASI_TOTAL] Starting calculation...');
     
     const inputs = document.querySelectorAll('.realisasi-input');
+    const byPos = []; // ✅ BARU — [{code,item,value}] per pos akun pada form ini
     inputs.forEach((input, index) => {
         // ✅ Parse formatted value
         const value = parseFormattedNumber(input.value);
         total += value;
+        if (input.dataset.code && input.dataset.item) {
+            byPos.push({ code: input.dataset.code, item: input.dataset.item, value });
+        }
         
         console.log(`[CALCULATE_REALISASI_TOTAL] Input ${index + 1} (${input.id}): ${input.value} → ${value}`);
     });
@@ -4325,7 +4555,7 @@ function calculateRealisasiTotal() {
         console.warn('[CALCULATE_REALISASI_TOTAL] Element realisasiTotalDisplay not found!');
     }
 
-    // ✅ BUDGET GUARD: Real-time warning untuk Operator KUA
+    // ✅ BUDGET & RPD GUARD: Real-time warning untuk Operator KUA
     if (currentUser && currentUser.role === 'Operator KUA') {
         const sisaBudgetEl = document.getElementById('sisaBudgetInfo');
         const totalSection = document.querySelector('.total-section');
@@ -4339,14 +4569,57 @@ function calculateRealisasiTotal() {
         // Bandingkan: total input sekarang vs sisa budget
         const isOverBudget = total > sisaBudgetRaw && sisaBudgetRaw > 0;
 
+        // ✅ BARU — RULE 1 & 2: cek terhadap RPD, PER POS AKUN (kode+item),
+        // bukan digabung. Ini hanya peringatan dini di client; pemblokir yang
+        // sebenarnya (otoritatif, tidak bisa dilewati) ada di server.
+        let annualMessages = []; // Rule 1: melebihi sisa RPD setahun
+        let monthMessages  = []; // Rule 2: melebihi RPD bulan berjalan
+        const kua      = currentUser.kua;
+        const month    = document.getElementById('realisasiMonth')?.value;
+        const year     = document.getElementById('realisasiYear')?.value || new Date().getFullYear();
+        const formElRT = document.getElementById('realisasiForm');
+        const excludeIdRT = formElRT?.dataset.editingId || null;
+
+        if (kua && month) {
+            try {
+                const ctx = await _getRealisasiPosLimitContext(kua, month, year, excludeIdRT);
+
+                byPos.forEach(({ code, item, value }) => {
+                    if (value <= 0) return;
+                    const label = _posLabelClient(code, item);
+
+                    // Rule 2: nominal pos ini vs RPD pos ini bulan berjalan
+                    if (ctx.rpdMonthData) {
+                        const capBulan = (ctx.rpdMonthData[code] && ctx.rpdMonthData[code][item] !== undefined)
+                            ? (parseFloat(ctx.rpdMonthData[code][item]) || 0) : 0;
+                        if (value > capBulan) {
+                            monthMessages.push(`${label}: RPD bulan ${month} ${formatCurrency(capBulan)}, diajukan ${formatCurrency(value)}`);
+                        }
+                    }
+
+                    // Rule 1: (sudah terpakai setahun + diajukan) vs RPD pos ini setahun
+                    const cap  = (ctx.rpdAnnual[code] && ctx.rpdAnnual[code][item] !== undefined) ? (ctx.rpdAnnual[code][item] || 0) : 0;
+                    const used = (ctx.used[code] && ctx.used[code][item] !== undefined) ? (ctx.used[code][item] || 0) : 0;
+                    if (used + value > cap) {
+                        const sisa = Math.max(0, cap - used);
+                        annualMessages.push(`${label}: sisa RPD setahun ${formatCurrency(sisa)}, diajukan ${formatCurrency(value)}`);
+                    }
+                });
+            } catch (e) {
+                console.warn('[CALCULATE_REALISASI_TOTAL] Cek batas RPD gagal (non-fatal):', e);
+            }
+        }
+
+        const isBlocked = isOverBudget || monthMessages.length > 0 || annualMessages.length > 0;
+
         // Update tampilan total section
         if (totalSection) {
-            totalSection.classList.toggle('over-budget', isOverBudget);
+            totalSection.classList.toggle('over-budget', isBlocked);
         }
 
         // Tampilkan/sembunyikan banner peringatan di bawah total
         let warningBanner = document.getElementById('budgetOverWarning');
-        if (isOverBudget) {
+        if (isBlocked) {
             if (!warningBanner) {
                 warningBanner = document.createElement('div');
                 warningBanner.id = 'budgetOverWarning';
@@ -4355,13 +4628,23 @@ function calculateRealisasiTotal() {
                     totalSection.insertAdjacentElement('afterend', warningBanner);
                 }
             }
-            const selisih = total - sisaBudgetRaw;
-            warningBanner.innerHTML = `
-                ⚠️ <strong>Total melebihi sisa budget!</strong>
-                Kelebihan: <strong>${formatCurrency(selisih)}</strong>
-                — Kurangi nominal agar tidak melebihi sisa budget 
-                <strong>${formatCurrency(sisaBudgetRaw)}</strong>.
-            `;
+            let html = '';
+            if (isOverBudget) {
+                const selisih = total - sisaBudgetRaw;
+                html += `⚠️ <strong>Total melebihi sisa budget!</strong>
+                    Kelebihan: <strong>${formatCurrency(selisih)}</strong>
+                    — Kurangi nominal agar tidak melebihi sisa budget
+                    <strong>${formatCurrency(sisaBudgetRaw)}</strong>.<br>`;
+            }
+            if (monthMessages.length > 0) {
+                html += `⚠️ <strong>Melebihi RPD bulan ${month} untuk pos berikut:</strong><br>` +
+                        monthMessages.map(m => `• ${m}`).join('<br>') + '<br>';
+            }
+            if (annualMessages.length > 0) {
+                html += `⚠️ <strong>Melebihi sisa RPD setahun untuk pos berikut:</strong><br>` +
+                        annualMessages.map(m => `• ${m}`).join('<br>');
+            }
+            warningBanner.innerHTML = html;
             warningBanner.style.display = 'block';
             if (submitBtn) submitBtn.disabled = true;
         } else {
@@ -7127,7 +7410,11 @@ async function saveConfig() {
             RPD_STATUS: rpdStatusEl.value,
             REALISASI_STATUS: realisasiStatusEl.value,
             REALISASI_MAX_FILE_SIZE: parseInt(maxFileSizeEl.value) || 5,
-            REALISASI_MAX_FILES: parseInt(maxFilesEl.value) || 10
+            REALISASI_MAX_FILES: parseInt(maxFilesEl.value) || 10,
+            // ✅ BARU — bulan yang dibuka utk edit RPD oleh Operator KUA
+            RPD_EDIT_OPEN_MONTHS: JSON.stringify(
+                Array.from(document.querySelectorAll('.rpd-edit-month-cb:checked')).map(cb => cb.value)
+            )
         };
 
         console.log('[SAVE_CONFIG] Config data to save:', configData);

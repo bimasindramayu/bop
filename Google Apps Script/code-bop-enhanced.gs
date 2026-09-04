@@ -112,10 +112,49 @@ function validateOptimisticLock(data, existingUpdatedAt) {
 // ===== ENHANCED SAVE OPERATIONS =====
 
 /**
+ * ✅ BARU — Ambil satu nilai dari sheet Config berdasarkan key.
+ */
+function _getConfigValue(key) {
+  try {
+    const sheet = getSheet(SHEETS.CONFIG);
+    const rows = sheet.getDataRange().getValues();
+    for (let i = 1; i < rows.length; i++) {
+      if (rows[i][0] === key) return rows[i][1];
+    }
+  } catch (e) {
+    Logger.log('[GET_CONFIG_VALUE ERROR] ' + e.toString());
+  }
+  return null;
+}
+
+/**
+ * ✅ BARU — Total Budget (Pagu) tahunan utk satu KUA+tahun. 0 kalau tidak ada baris Budget-nya.
+ */
+function _getBudgetTotalForKUA(kua, year) {
+  try {
+    const sheet = getSheet(SHEETS.BUDGET);
+    const rows = sheet.getDataRange().getValues();
+    for (let i = 1; i < rows.length; i++) {
+      if (rows[i][1] === kua && rows[i][2] == year) {
+        return parseFloat(rows[i][3]) || 0;
+      }
+    }
+  } catch (e) {
+    Logger.log('[GET_BUDGET_TOTAL ERROR] ' + e.toString());
+  }
+  return 0;
+}
+
+/**
  * Save RPD dengan lock protection dan optimistic locking
  * ✅ Prevents race conditions
  * ✅ Validates concurrent updates
  * ✅ Returns updated timestamp
+ * ✅ BARU — Khusus Operator KUA (Admin dilewati):
+ *    - Edit RPD yang sudah ada hanya boleh utk bulan yang dibuka Admin
+ *      (Config: RPD_EDIT_OPEN_MONTHS).
+ *    - Total RPD setahun (akumulasi 12 bulan) tidak boleh melebihi Budget
+ *      tahunan KUA tsb.
  */
 function saveRPDEnhanced(data) {
   Logger.log('[SAVE_RPD_ENHANCED] KUA: ' + data.kua + ', Month: ' + data.month + ', Year: ' + data.year);
@@ -127,33 +166,74 @@ function saveRPDEnhanced(data) {
       const sheet = getSheet(SHEETS.RPD);
       const rows = sheet.getDataRange().getValues();
       const now = new Date();
-      
-      // Check if RPD exists
+
+      // ✅ BARU — Cari dulu row yang cocok (kua+month+year) SEBELUM menulis
+      // apa pun, supaya kita tahu ini create atau edit, dan tahu oldTotal-nya,
+      // untuk keperluan validasi di bawah.
+      let foundIndex = -1;
+      let oldTotal   = 0;
       for (let i = 1; i < rows.length; i++) {
-        if (rows[i][1] === data.kua && 
-            rows[i][2] === data.month && 
+        if (rows[i][1] === data.kua &&
+            rows[i][2] === data.month &&
             rows[i][3] == data.year) {
-          
-          // ✅ Optimistic lock validation
-          if (!validateOptimisticLock(data, rows[i][7])) {
-            return errorResponse('Data sudah diubah oleh user lain. Silakan refresh dan coba lagi.');
-          }
-          
-          // Update existing RPD
-          sheet.getRange(i + 1, 5).setValue(parseFloat(data.total) || 0);
-          sheet.getRange(i + 1, 6).setValue(JSON.stringify(data.data));
-          sheet.getRange(i + 1, 8).setValue(now);
-          sheet.getRange(i + 1, 9).setValue(data.userId);
-          sheet.getRange(i + 1, 10).setValue(data.username);
-          
-          Logger.log('[SAVE_RPD_ENHANCED] ✓ Updated RPD at row: ' + (i + 1));
-          
-          return successResponse({ 
-            message: 'RPD berhasil diupdate',
-            id: rows[i][0],
-            updatedAt: now.toISOString()
-          });
+          foundIndex = i;
+          oldTotal   = parseFloat(rows[i][4]) || 0;
+          break;
         }
+      }
+      const isEdit = foundIndex >= 0;
+
+      // ✅ BARU — Validasi khusus Operator KUA (Admin dilewati)
+      if (data.role !== 'Admin') {
+        // Rule A: EDIT RPD yang sudah ada hanya boleh kalau bulannya
+        // termasuk dalam daftar yang dibuka Admin.
+        if (isEdit) {
+          let openMonths = [];
+          try { openMonths = JSON.parse(_getConfigValue('RPD_EDIT_OPEN_MONTHS') || '[]'); } catch (e) { openMonths = []; }
+          if (openMonths.indexOf(data.month) === -1) {
+            Logger.log('[SAVE_RPD_ENHANCED] ⛔ Edit RPD bulan ' + data.month + ' belum dibuka Admin');
+            return errorResponse('Edit RPD bulan ' + data.month + ' sedang ditutup. Hubungi Admin untuk membuka periode edit bulan ini di menu Konfigurasi.');
+          }
+        }
+
+        // Rule B: total RPD setahun (semua bulan, termasuk yang sedang
+        // disimpan ini) tidak boleh melebihi Budget tahunan KUA ini.
+        const budgetTotal   = _getBudgetTotalForKUA(data.kua, data.year);
+        const currentAnnual = calculateTotalRPD(data.kua, data.year); // masih termasuk oldTotal row ini kalau edit
+        const newAnnual     = currentAnnual - oldTotal + (parseFloat(data.total) || 0);
+        if (newAnnual > budgetTotal) {
+          const sisaUntukBulanIni = Math.max(0, budgetTotal - (currentAnnual - oldTotal));
+          Logger.log('[SAVE_RPD_ENHANCED] ⛔ Total RPD setahun (' + newAnnual + ') melebihi Budget (' + budgetTotal + ')');
+          return errorResponse(
+            'Total RPD setahun (Rp ' + newAnnual.toLocaleString('id-ID') + ') melebihi Budget tahunan (Rp ' +
+            budgetTotal.toLocaleString('id-ID') + '). Sisa yang tersedia untuk bulan ' + data.month + ': Rp ' +
+            sisaUntukBulanIni.toLocaleString('id-ID') + '.'
+          );
+        }
+      }
+
+      if (isEdit) {
+        const i = foundIndex;
+
+        // ✅ Optimistic lock validation
+        if (!validateOptimisticLock(data, rows[i][7])) {
+          return errorResponse('Data sudah diubah oleh user lain. Silakan refresh dan coba lagi.');
+        }
+        
+        // Update existing RPD
+        sheet.getRange(i + 1, 5).setValue(parseFloat(data.total) || 0);
+        sheet.getRange(i + 1, 6).setValue(JSON.stringify(data.data));
+        sheet.getRange(i + 1, 8).setValue(now);
+        sheet.getRange(i + 1, 9).setValue(data.userId);
+        sheet.getRange(i + 1, 10).setValue(data.username);
+        
+        Logger.log('[SAVE_RPD_ENHANCED] ✓ Updated RPD at row: ' + (i + 1));
+        
+        return successResponse({ 
+          message: 'RPD berhasil diupdate',
+          id: rows[i][0],
+          updatedAt: now.toISOString()
+        });
       }
       
       // Create new RPD
@@ -188,6 +268,158 @@ function saveRPDEnhanced(data) {
 }
 
 /**
+ * ✅ BARU (v2 — per item, bukan per kode) — Validasi realisasi terhadap RPD,
+ * khusus Operator KUA (Admin dilewati).
+ *
+ * PENTING: sebagian kode akun (mis. 521111 "Belanja Operasional Perkantoran")
+ * punya beberapa item di dalamnya (ATK Kantor, Jamuan Tamu, Pramubakti, Alat
+ * Rumah Tangga Kantor). Validasi ini dihitung PER ITEM, bukan digabung per
+ * kode — karena RPD & pagu tiap item pada dasarnya berdiri sendiri-sendiri.
+ * (v1 sebelumnya salah: menjumlahkan semua item dalam satu kode jadi satu
+ * angka, sehingga pos yang sudah lewat pagu bisa "tertutupi" oleh sisa pagu
+ * item lain dalam kode yang sama.)
+ *
+ * Rule 1 (per item, akumulasi 1 tahun):
+ *   total realisasi Approved+Paid item itu sepanjang tahun (tidak termasuk
+ *   row yang sedang diedit) + nominal yang diajukan sekarang untuk item itu,
+ *   TIDAK BOLEH melebihi total RPD item itu sepanjang tahun (akumulasi 12 bulan).
+ *
+ * Rule 2 (per item, RPD bulan berjalan):
+ *   nominal yang diajukan sekarang untuk item itu TIDAK BOLEH melebihi RPD
+ *   item itu pada bulan yang sama (kua+month+year yang sama).
+ *
+ * AP-aware: untuk kode yang AutoPayment aktif (522111/522112 — keduanya
+ * kode single-item "Nominal"), nominal yang dihitung adalah AutoPaymentNominal
+ * bulan terkait — bukan input manual.
+ *
+ * Menggunakan ulang helper yang sudah ada di code-bop.gs:
+ * _loadAPData, _agregateRPDRowDetail, _agregateRealisasiRowDetail, BOP_CONFIG.
+ *
+ * @param {Object} data      payload dari client: {kua, month, year, data:{code:{item:val}}}
+ * @param {String} excludeId id realisasi yang sedang diedit (dikecualikan dari akumulasi "sudah terpakai"), atau falsy jika realisasi baru
+ * @return {String|null}     pesan error (Bahasa Indonesia) jika melanggar, null jika lolos
+ */
+function _validateRealisasiAgainstRPD(data, excludeId) {
+  try {
+    var kua   = data.kua;
+    var year  = data.year;
+    var month = data.month;
+    var submittedData = data.data || {};
+
+    // ── AP config & nominal AutoPayment bulan berjalan ──────────────
+    var apInfo   = _loadAPData(year);
+    var kuaApCfg = apInfo.apCfg[kua] || null;
+    var hasAP    = kuaApCfg && (kuaApCfg['522111'] || kuaApCfg['522112']);
+    var nomMonth = (apInfo.apNom[kua] && apInfo.apNom[kua][month]) ? apInfo.apNom[kua][month] : {};
+
+    // ── Nominal yang diajukan sekarang, per (kode,item) — AP-aware ──
+    var incoming = {}; // incoming[code][item] = amount
+    Object.keys(submittedData).forEach(function(code) {
+      var isAP = hasAP && kuaApCfg[code] === true;
+      incoming[code] = {};
+      Object.keys(submittedData[code] || {}).forEach(function(item) {
+        incoming[code][item] = isAP
+          ? (parseFloat(nomMonth[code] || 0) || 0) // kode AP selalu 1 item ("Nominal")
+          : (parseFloat(submittedData[code][item]) || 0);
+      });
+    });
+
+    // ── Kumpulkan RPD 1 tahun (semua bulan) per (kode,item); ────────
+    // ── sekaligus simpan data RPD bulan yang sama secara utuh ───────
+    var rpdSheet = getSheet(SHEETS.RPD);
+    var rpdRows  = rpdSheet.getDataRange().getValues();
+    var rpdAnnualByKUA = {};
+    var rpdMonthData   = null; // {code:{item:val}} khusus bulan yg sedang diisi
+    for (var i = 1; i < rpdRows.length; i++) {
+      if (rpdRows[i][1] !== kua || rpdRows[i][3] != year) continue;
+      _agregateRPDRowDetail(rpdRows[i], rpdAnnualByKUA);
+      if (rpdRows[i][2] === month) {
+        try { rpdMonthData = JSON.parse(rpdRows[i][5] || '{}'); } catch (e) { rpdMonthData = {}; }
+      }
+    }
+    var rpdAnnual = rpdAnnualByKUA[kua] || {}; // {code:{item:sumSetahun}}
+
+    // ── RULE 2: per (kode,item), nominal yang diajukan vs RPD bulan yang sama ──
+    var violations2 = [];
+    if (rpdMonthData !== null) {
+      Object.keys(incoming).forEach(function(code) {
+        Object.keys(incoming[code]).forEach(function(item) {
+          var addNow = incoming[code][item];
+          if (addNow <= 0) return;
+          var capBulan = (rpdMonthData[code] && rpdMonthData[code][item] !== undefined)
+            ? (parseFloat(rpdMonthData[code][item]) || 0) : 0;
+          if (addNow > capBulan) {
+            violations2.push(
+              _posLabel(code, item) + ': RPD bulan ' + month + ' Rp ' + capBulan.toLocaleString('id-ID') +
+              ', diajukan Rp ' + addNow.toLocaleString('id-ID')
+            );
+          }
+        });
+      });
+    }
+    if (violations2.length > 0) {
+      return 'Nominal melebihi RPD bulan ' + month + ' untuk pos berikut:\n• ' + violations2.join('\n• ');
+    }
+
+    // ── Kumpulkan realisasi Approved/Paid 1 tahun, per (kode,item) ──
+    // ── (AP-aware, exclude row yang sedang diedit) ──────────────────
+    var realSheet = getSheet(SHEETS.REALISASI);
+    var realRows  = realSheet.getDataRange().getValues();
+    var usedByKUA = {};
+    for (var j = 1; j < realRows.length; j++) {
+      if (realRows[j][1] !== kua || realRows[j][4] != year) continue;
+      if (excludeId && realRows[j][0] === excludeId) continue;
+      var st = normalizeStatusEnhanced(realRows[j][8]);
+      if (st !== 'Approved' && st !== 'Paid') continue;
+      _agregateRealisasiRowDetail(realRows[j], usedByKUA, apInfo.apCfg, apInfo.apNom, 'include');
+    }
+    var used = usedByKUA[kua] || {}; // {code:{item:sudahTerpakaiSetahun}}
+
+    // ── RULE 1: per (kode,item), (sudah terpakai + diajukan) <= RPD setahun item itu ──
+    var violations1 = [];
+    Object.keys(incoming).forEach(function(code) {
+      Object.keys(incoming[code]).forEach(function(item) {
+        var addNow = incoming[code][item];
+        if (addNow <= 0) return; // tidak ada nominal utk item ini pada submission ini
+        var cap = (rpdAnnual[code] && rpdAnnual[code][item] !== undefined) ? (rpdAnnual[code][item] || 0) : 0;
+        var usd = (used[code] && used[code][item] !== undefined) ? (used[code][item] || 0) : 0;
+        if (usd + addNow > cap) {
+          var sisa = Math.max(0, cap - usd);
+          violations1.push(
+            _posLabel(code, item) + ': RPD 1 tahun Rp ' + cap.toLocaleString('id-ID') +
+            ', sudah terealisasi Rp ' + usd.toLocaleString('id-ID') +
+            ', sisa Rp ' + sisa.toLocaleString('id-ID') +
+            ', diajukan Rp ' + addNow.toLocaleString('id-ID')
+          );
+        }
+      });
+    });
+
+    if (violations1.length > 0) {
+      return 'Nominal melebihi sisa RPD setahun untuk pos berikut:\n• ' + violations1.join('\n• ');
+    }
+
+    return null; // lolos semua validasi
+
+  } catch (e) {
+    Logger.log('[VALIDATE_REALISASI_RPD ERROR] ' + e.toString());
+    return null; // fail-open: error internal pada validasi tidak boleh memblokir submit
+  }
+}
+
+/**
+ * Label pos akun yang enak dibaca utk pesan error.
+ * Kode dengan 1 item ("Nominal", mis. Listrik/Telepon/Air) cukup ditampilkan
+ * nama kodenya saja; kode dengan beberapa item ditampilkan "NamaKode — Item".
+ */
+function _posLabel(code, item) {
+  var param = BOP_CONFIG.RPD_PARAMETERS[code];
+  var codeName = param ? param.name : code;
+  if (item === 'Nominal') return codeName;
+  return codeName + ' — ' + item;
+}
+
+/**
  * Save Realisasi dengan lock protection dan validation
  * ✅ Prevents duplicate realisasi for same month
  * ✅ Validates status before update
@@ -219,6 +451,16 @@ function saveRealisasiEnhanced(data) {
             const normalizedStatus = normalizeStatusEnhanced(currentStatus);
             if (normalizedStatus === 'Approved' || normalizedStatus === 'Paid') {
               return errorResponse('Realisasi dengan status ' + normalizedStatus + ' tidak dapat diubah.');
+            }
+
+            // ✅ BARU — Validasi terhadap RPD (per pos akun setahun + RPD bulan berjalan),
+            // khusus Operator KUA. Row yang sedang diedit dikecualikan dari akumulasi.
+            if (data.role !== 'Admin') {
+              const rpdViolation = _validateRealisasiAgainstRPD(data, data.id);
+              if (rpdViolation) {
+                Logger.log('[SAVE_REALISASI_ENHANCED] ⛔ RPD validation failed (update): ' + rpdViolation);
+                return errorResponse(rpdViolation);
+              }
             }
             
             // Update realisasi
@@ -287,6 +529,16 @@ function saveRealisasiEnhanced(data) {
             }
           } catch (budgetErr) {
             Logger.log('[SAVE_REALISASI_ENHANCED] Budget check error (non-fatal): ' + budgetErr.toString());
+          }
+        }
+
+        // ✅ BARU — Validasi terhadap RPD (per pos akun setahun + RPD bulan berjalan),
+        // khusus Operator KUA.
+        if (data.role !== 'Admin') {
+          const rpdViolation = _validateRealisasiAgainstRPD(data, null);
+          if (rpdViolation) {
+            Logger.log('[SAVE_REALISASI_ENHANCED] ⛔ RPD validation failed (create): ' + rpdViolation);
+            return errorResponse(rpdViolation);
           }
         }
         
